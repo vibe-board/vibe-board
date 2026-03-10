@@ -4,20 +4,21 @@ const path = require("path");
 const crypto = require("crypto");
 
 // Replaced during npm pack by workflow
-const R2_BASE_URL = "__R2_PUBLIC_URL__";
+const GITHUB_RELEASES_REPO = "__GITHUB_RELEASES_REPO__"; // e.g. owner/repo
 const BINARY_TAG = "__BINARY_TAG__"; // e.g., v0.0.135-20251215122030
 const CACHE_DIR = path.join(require("os").homedir(), ".vibe-kanban", "bin");
 
-// Local development mode: use binaries from npx-cli/dist/ instead of R2
+// Local development mode: use binaries from npx-cli/dist/ instead of GitHub Release
 // Only activate if dist/ exists (i.e., running from source after local-build.sh)
 const LOCAL_DIST_DIR = path.join(__dirname, "..", "dist");
 const LOCAL_DEV_MODE = fs.existsSync(LOCAL_DIST_DIR) || process.env.VIBE_KANBAN_LOCAL === "1";
 
-async function fetchJson(url) {
+async function fetchJson(url, options = {}) {
   return new Promise((resolve, reject) => {
-    https.get(url, (res) => {
+    const reqOpts = options.headers ? { headers: options.headers } : {};
+    https.get(url, reqOpts, (res) => {
       if (res.statusCode === 301 || res.statusCode === 302) {
-        return fetchJson(res.headers.location).then(resolve).catch(reject);
+        return fetchJson(res.headers.location, options).then(resolve).catch(reject);
       }
       if (res.statusCode !== 200) {
         return reject(new Error(`HTTP ${res.statusCode} fetching ${url}`));
@@ -116,22 +117,36 @@ async function ensureBinary(platform, binaryName, onProgress) {
 
   fs.mkdirSync(cacheDir, { recursive: true });
 
-  const manifest = await fetchJson(`${R2_BASE_URL}/binaries/${BINARY_TAG}/manifest.json`);
+  const manifestUrl = `https://github.com/${GITHUB_RELEASES_REPO}/releases/download/${BINARY_TAG}/binaries-manifest.json`;
+  const manifest = await fetchJson(manifestUrl);
   const binaryInfo = manifest.platforms?.[platform]?.[binaryName];
 
   if (!binaryInfo) {
     throw new Error(`Binary ${binaryName} not available for ${platform}`);
   }
 
-  const url = `${R2_BASE_URL}/binaries/${BINARY_TAG}/${platform}/${binaryName}.zip`;
+  const assetName = `${binaryName}-${platform}.zip`;
+  const url = `https://github.com/${GITHUB_RELEASES_REPO}/releases/download/${BINARY_TAG}/${assetName}`;
   await downloadFile(url, zipPath, binaryInfo.sha256, onProgress);
 
   return zipPath;
 }
 
 async function getLatestVersion() {
-  const manifest = await fetchJson(`${R2_BASE_URL}/binaries/manifest.json`);
-  return manifest.latest;
+  const apiUrl = `https://api.github.com/repos/${GITHUB_RELEASES_REPO}/releases?per_page=1`;
+  const releases = await fetchJson(apiUrl, {
+    headers: { "User-Agent": "vibe-kanban-cli" },
+  });
+  if (!Array.isArray(releases) || releases.length === 0) return null;
+  return releases[0].tag_name || null;
 }
 
-module.exports = { R2_BASE_URL, BINARY_TAG, CACHE_DIR, LOCAL_DEV_MODE, LOCAL_DIST_DIR, ensureBinary, getLatestVersion };
+module.exports = {
+  GITHUB_RELEASES_REPO,
+  BINARY_TAG,
+  CACHE_DIR,
+  LOCAL_DEV_MODE,
+  LOCAL_DIST_DIR,
+  ensureBinary,
+  getLatestVersion,
+};

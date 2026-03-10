@@ -578,13 +578,19 @@ jobs:
           path: npx-cli/dist/
           retention-days: 1
 
-  upload-to-r2:
-    needs: [bump-version, package-npx-cli]
+  create-prerelease:
+    needs: [bump-version, build-frontend, package-npx-cli]
     runs-on: ubuntu-latest-m
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ needs.bump-version.outputs.new_tag }}
+
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: frontend-dist
+          path: frontend/dist/
 
       - name: Download all platform packages
         uses: actions/download-artifact@v7
@@ -593,24 +599,26 @@ jobs:
           path: binaries/
           merge-multiple: true
 
-      - name: List downloaded binaries
+      - name: List downloaded artifacts
         run: |
-          echo "Downloaded binaries:"
+          echo "Frontend dist:"
+          find frontend/dist
+          echo "Binaries:"
           find binaries/
 
-      - name: Configure AWS CLI for R2
-        run: |
-          aws configure set aws_access_key_id ${{ secrets.R2_BINARIES_ACCESS_KEY_ID }}
-          aws configure set aws_secret_access_key ${{ secrets.R2_BINARIES_SECRET_ACCESS_KEY }}
-          aws configure set default.region auto
-
-      - name: Generate manifest and upload to R2
+      - name: Prepare release assets (binaries + manifest)
         run: |
           TAG="${{ needs.bump-version.outputs.new_tag }}"
-          ENDPOINT="${{ secrets.R2_BINARIES_ENDPOINT }}"
-          BUCKET="${{ secrets.R2_BINARIES_BUCKET }}"
-
-          # Generate version manifest with checksums
+          mkdir -p release-assets
+          # Copy binaries with unique names for GitHub Release (one asset per file)
+          for platform in linux-x64 linux-arm64 windows-x64 windows-arm64 macos-x64 macos-arm64; do
+            for binary in vibe-kanban vibe-kanban-mcp vibe-kanban-review; do
+              if [ -f "binaries/$platform/$binary.zip" ]; then
+                cp "binaries/$platform/$binary.zip" "release-assets/${binary}-${platform}.zip"
+              fi
+            done
+          done
+          # Generate version manifest with checksums (same shape as before for download.js)
           node -e "
             const fs = require('fs');
             const crypto = require('crypto');
@@ -631,65 +639,10 @@ jobs:
                 }
               }
             }
-            fs.writeFileSync('version-manifest.json', JSON.stringify(manifest, null, 2));
-            console.log('Generated manifest:');
-            console.log(JSON.stringify(manifest, null, 2));
+            fs.writeFileSync('release-assets/binaries-manifest.json', JSON.stringify(manifest, null, 2));
           "
-
-          # Upload binaries (use full tag for path, allows multiple pre-releases to coexist)
-          for platform in linux-x64 linux-arm64 windows-x64 windows-arm64 macos-x64 macos-arm64; do
-            for binary in vibe-kanban vibe-kanban-mcp vibe-kanban-review; do
-              if [ -f "binaries/$platform/$binary.zip" ]; then
-                echo "Uploading binaries/$platform/$binary.zip..."
-                aws s3 cp "binaries/$platform/$binary.zip" \
-                  "s3://$BUCKET/binaries/$TAG/$platform/$binary.zip" \
-                  --endpoint-url "$ENDPOINT"
-              fi
-            done
-          done
-
-          # Upload version manifest
-          echo "Uploading version manifest..."
-          aws s3 cp version-manifest.json \
-            "s3://$BUCKET/binaries/$TAG/manifest.json" \
-            --endpoint-url "$ENDPOINT" --content-type "application/json"
-
-          # Update global manifest
-          VERSION="${{ needs.bump-version.outputs.new_version }}"
-          echo "Updating global manifest..."
-          echo "{\"latest\": \"$VERSION\"}" | aws s3 cp - \
-            "s3://$BUCKET/binaries/manifest.json" \
-            --endpoint-url "$ENDPOINT" --content-type "application/json"
-
-      - name: Verify upload
-        run: |
-          TAG="${{ needs.bump-version.outputs.new_tag }}"
-          ENDPOINT="${{ secrets.R2_BINARIES_ENDPOINT }}"
-          BUCKET="${{ secrets.R2_BINARIES_BUCKET }}"
-
-          echo "Listing uploaded files..."
-          aws s3 ls "s3://$BUCKET/binaries/$TAG/" \
-            --endpoint-url "$ENDPOINT" \
-            --recursive
-
-  create-prerelease:
-    needs: [bump-version, build-frontend, upload-to-r2]
-    runs-on: ubuntu-latest-m
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.bump-version.outputs.new_tag }}
-
-      - name: Download frontend artifact
-        uses: actions/download-artifact@v7
-        with:
-          name: frontend-dist
-          path: frontend/dist/
-
-      - name: List downloaded artifacts
-        run: |
-          echo "Frontend dist:"
-          find frontend/dist
+          echo "Release assets:"
+          ls -la release-assets/
 
       - name: Zip frontend
         run: |
@@ -700,11 +653,10 @@ jobs:
       - name: Setup Node for npm pack
         uses: ./.github/actions/setup-node
 
-      - name: Inject R2 URL and tag, then Pack
+      - name: Inject GitHub Release repo and tag, then Pack
         run: |
           cd npx-cli
-          # Replace placeholders with actual values
-          sed -i "s|__R2_PUBLIC_URL__|${{ secrets.R2_BINARIES_PUBLIC_URL }}|g" bin/download.js
+          sed -i "s|__GITHUB_RELEASES_REPO__|${{ github.repository }}|g" bin/download.js
           sed -i "s|__BINARY_TAG__|${{ needs.bump-version.outputs.new_tag }}|g" bin/download.js
           npm pack
 
@@ -718,3 +670,5 @@ jobs:
           files: |
             vibe-kanban-${{ needs.bump-version.outputs.new_tag }}.zip
             npx-cli/*.tgz
+            release-assets/binaries-manifest.json
+            release-assets/*.zip
