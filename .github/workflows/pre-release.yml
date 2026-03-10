@@ -27,11 +27,16 @@ env:
   NODE_VERSION: 22
   PNPM_VERSION: 10.13.1
   RUST_TOOLCHAIN: nightly-2025-12-04
-  CARGO_XWIN_VERSION: 0.20.2
+  # GitHub-hosted runners (one place to change per OS): https://docs.github.com/en/actions/using-github-hosted-runners
+  RUNNER_UBUNTU: ubuntu-latest          # Linux x64
+  RUNNER_UBUNTU_ARM: ubuntu-24.04-arm   # Linux arm64
+  RUNNER_WINDOWS: windows-latest      # Windows x64
+  RUNNER_WINDOWS_ARM: windows-11-arm  # Windows arm64 (public preview)
+  RUNNER_MACOS: macos-15               # macOS (x64 + arm64)
 
 jobs:
   bump-version:
-    runs-on: ubuntu-latest-m
+    runs-on: ${{ env.RUNNER_UBUNTU }}
     outputs:
       new_tag: ${{ steps.version.outputs.new_tag }}
       new_version: ${{ steps.version.outputs.new_version }}
@@ -152,7 +157,7 @@ jobs:
 
   build-frontend:
     needs: bump-version
-    runs-on: ubuntu-latest-x64-l
+    runs-on: ${{ env.RUNNER_UBUNTU }}
     env:
       VITE_PUBLIC_REACT_VIRTUOSO_LICENSE_KEY: ${{ secrets.PUBLIC_REACT_VIRTUOSO_LICENSE_KEY }}
       VITE_VK_SHARED_API_BASE: ${{ secrets.VK_SHARED_API_BASE }}
@@ -207,22 +212,22 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-musl
-            os: ubuntu-latest-x64-l
+            os: ${{ env.RUNNER_UBUNTU }}
             name: linux-x64
           - target: aarch64-unknown-linux-musl
-            os: ubuntu-latest-arm64-l
+            os: ${{ env.RUNNER_UBUNTU_ARM }}
             name: linux-arm64
           - target: x86_64-pc-windows-msvc
-            os: ubuntu-latest-x64-l
+            os: ${{ env.RUNNER_WINDOWS }}
             name: windows-x64
           - target: x86_64-apple-darwin
-            os: macos-15-xlarge
+            os: ${{ env.RUNNER_MACOS }}
             name: macos-x64
           - target: aarch64-apple-darwin
-            os: macos-15-xlarge
+            os: ${{ env.RUNNER_MACOS }}
             name: macos-arm64
           - target: aarch64-pc-windows-msvc
-            os: ubuntu-latest-x64-l
+            os: ${{ env.RUNNER_WINDOWS_ARM }}
             name: windows-arm64
     env:
       CARGO_INCREMENTAL: "0"
@@ -231,7 +236,6 @@ jobs:
       SCCACHE_CACHE_SIZE: "10G"
       CARGO_HOME: ${{ github.workspace }}/.cargo
       RUSTUP_HOME: ${{ github.workspace }}/.rustup
-      XWIN_CACHE_DIR: ${{ github.workspace }}/.xwin-cache
     steps:
       - uses: actions/checkout@v6
         with:
@@ -259,11 +263,6 @@ jobs:
           sudo apt-get update
           DEBIAN_FRONTEND=noninteractive sudo apt-get install -y clang libclang-dev lld llvm nasm cmake ninja-build
 
-          if [[ "${{ matrix.target }}" == *"windows"* ]]; then
-            DEBIAN_FRONTEND=noninteractive sudo apt-get install -y clang-19 clang-tools-19 llvm-19 lld-19
-            echo "/usr/lib/llvm-19/bin" >> $GITHUB_PATH
-          fi
-
       - name: Cache Cargo registry
         uses: actions/cache@v5
         with:
@@ -279,25 +278,14 @@ jobs:
             cargo-${{ runner.os }}-${{ env.RUST_TOOLCHAIN }}-${{ matrix.target }}-
 
       - name: Install Zig
-        if: runner.os == 'Linux' && !contains(matrix.target, 'windows')
+        if: runner.os == 'Linux'
         uses: BloopAI/setup-zig@main
         with:
           version: 0.15.2
 
       - name: Install cargo zigbuild
-        if: runner.os == 'Linux' && !contains(matrix.target, 'windows')
+        if: runner.os == 'Linux'
         run: cargo install --locked cargo-zigbuild --version 0.20.1
-
-      - name: Install cargo xwin
-        if: runner.os == 'Linux' && contains(matrix.target, 'windows')
-        run: cargo install --locked cargo-xwin --version ${{ env.CARGO_XWIN_VERSION }}
-
-      - name: Cache xwin downloads
-        if: runner.os == 'Linux' && contains(matrix.target, 'windows')
-        uses: actions/cache@v5
-        with:
-          path: ${{ github.workspace }}/.xwin-cache
-          key: xwin-${{ runner.os }}-${{ matrix.target }}-cargo-xwin-${{ env.CARGO_XWIN_VERSION }}
 
       - name: Cache target
         uses: actions/cache@v5
@@ -320,7 +308,7 @@ jobs:
           path: frontend/dist/
 
       - name: Build backend (Linux)
-        if: runner.os == 'Linux' && !contains(matrix.target, 'windows')
+        if: runner.os == 'Linux'
         run: |
           cargo zigbuild --release --target ${{ matrix.target }} -p server -p review --bin server --bin mcp_task_server --bin review
         env:
@@ -342,25 +330,13 @@ jobs:
           POSTHOG_API_ENDPOINT: ${{ secrets.POSTHOG_API_ENDPOINT }}
           VK_SHARED_API_BASE: ${{ secrets.VK_SHARED_API_BASE }}
 
-      - name: Build backend (Windows)
-        if: runner.os == 'Linux' && contains(matrix.target, 'windows')
-        run: |
-          if [[ "${{ matrix.target }}" == "aarch64-pc-windows-msvc" ]]; then
-            # ring requires clang on arm64 windows. See https://github.com/briansmith/ring/issues/2117
-            chmod +x scripts/ring-cc-wrapper.sh scripts/clang
-            export PATH="${{ github.workspace }}/scripts:$PATH"
-            export RING_CC=/usr/lib/llvm-19/bin/clang
-            export DEFAULT_CC=clang-cl
-            export CC_aarch64_pc_windows_msvc="${{ github.workspace }}/scripts/ring-cc-wrapper.sh"
-          fi
-          cargo xwin build --cross-compiler clang-cl --release --target ${{ matrix.target }} -p server -p review --bin server --bin mcp_task_server --bin review
+      - name: Build backend (Windows native)
+        if: runner.os == 'Windows'
+        run: cargo build --release --target ${{ matrix.target }} -p server -p review --bin server --bin mcp_task_server --bin review
         env:
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
           POSTHOG_API_ENDPOINT: ${{ secrets.POSTHOG_API_ENDPOINT }}
           VK_SHARED_API_BASE: ${{ secrets.VK_SHARED_API_BASE }}
-          # Avoid aws-lc-sys CMake failures when Rust's `release` profile includes debug info.
-          # Without this, cmake-rs selects RelWithDebInfo and CMake fails when ASM is enabled.
-          CARGO_PROFILE_RELEASE_DEBUG: 0
 
       - name: Setup Sentry CLI
         uses: matbour/setup-sentry-cli@v2
@@ -488,7 +464,7 @@ jobs:
 
   package-npx-cli:
     needs: [bump-version, build-frontend, build-backend]
-    runs-on: ubuntu-latest-m
+    runs-on: ${{ env.RUNNER_UBUNTU }}
     strategy:
       # NOTE: This matrix must be kept in sync with build-backend job above
       # GitHub Actions doesn't support YAML anchors, so duplication is unavoidable
@@ -580,7 +556,7 @@ jobs:
 
   create-prerelease:
     needs: [bump-version, build-frontend, package-npx-cli]
-    runs-on: ubuntu-latest-m
+    runs-on: ${{ env.RUNNER_UBUNTU }}
     steps:
       - uses: actions/checkout@v6
         with:
