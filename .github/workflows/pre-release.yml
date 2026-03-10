@@ -351,13 +351,18 @@ jobs:
           fi
 
       # macOS: prepare unsigned zips first (fallback when signing skipped); signing overwrites dist/ if successful
+      # Zip entries must be named vibe-kanban, vibe-kanban-mcp, vibe-kanban-review (CLI expects these after extract)
       - name: Prepare unsigned binaries (macOS)
         if: runner.os == 'macOS'
         run: |
           mkdir -p dist
-          zip -j dist/vibe-kanban-${{ matrix.name }}.zip target/${{ matrix.target }}/release/server
-          zip -j dist/vibe-kanban-mcp-${{ matrix.name }}.zip target/${{ matrix.target }}/release/mcp_task_server
-          zip -j dist/vibe-kanban-review-${{ matrix.name }}.zip target/${{ matrix.target }}/release/review
+          cp target/${{ matrix.target }}/release/server vibe-kanban
+          cp target/${{ matrix.target }}/release/mcp_task_server vibe-kanban-mcp
+          cp target/${{ matrix.target }}/release/review vibe-kanban-review
+          zip -j dist/vibe-kanban-${{ matrix.name }}.zip vibe-kanban
+          zip -j dist/vibe-kanban-mcp-${{ matrix.name }}.zip vibe-kanban-mcp
+          zip -j dist/vibe-kanban-review-${{ matrix.name }}.zip vibe-kanban-review
+          rm -f vibe-kanban vibe-kanban-mcp vibe-kanban-review
 
       # Code signing for macOS only (optional when cert secrets not set)
       - name: Prepare Apple certificate (macOS)

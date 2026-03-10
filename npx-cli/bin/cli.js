@@ -133,7 +133,25 @@ async function extractAndRun(baseName, launch) {
     }
   }
 
+  // Fallback: older releases (e.g. unsigned macOS) shipped zip with binary named server / mcp_task_server / review
+  const fallbackNames = {
+    "vibe-kanban": "server",
+    "vibe-kanban-mcp": "mcp_task_server",
+    "vibe-kanban-review": "review",
+  };
+  let resolvedPath = binPath;
   if (!fs.existsSync(binPath)) {
+    const fallback = fallbackNames[baseName];
+    if (fallback) {
+      const fallbackPath = path.join(versionCacheDir, getBinaryName(fallback));
+      if (fs.existsSync(fallbackPath)) {
+        resolvedPath = fallbackPath;
+      }
+    }
+  } else {
+    resolvedPath = binPath;
+  }
+  if (!fs.existsSync(resolvedPath)) {
     console.error(`Extracted binary not found at: ${binPath}`);
     console.error("This usually indicates a corrupt download. Please try again.");
     process.exit(1);
@@ -142,11 +160,11 @@ async function extractAndRun(baseName, launch) {
   // Set permissions (non-Windows)
   if (platform !== "win32") {
     try {
-      fs.chmodSync(binPath, 0o755);
+      fs.chmodSync(resolvedPath, 0o755);
     } catch {}
   }
 
-  return launch(binPath);
+  return launch(resolvedPath);
 }
 
 async function main() {
