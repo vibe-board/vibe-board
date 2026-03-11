@@ -24,8 +24,30 @@ export function getAgentName(
       return 'Claude Code';
     case BaseCodingAgent.AMP:
       return 'AMP';
+    case BaseCodingAgent.AUGGIE:
+      return 'Auggie';
+    case BaseCodingAgent.CLINE:
+      return 'Cline';
+    case BaseCodingAgent.FAST_AGENT:
+      return 'Fast Agent';
     case BaseCodingAgent.GEMINI:
       return 'Gemini';
+    case BaseCodingAgent.GOOSE:
+      return 'Goose';
+    case BaseCodingAgent.JUNIE:
+      return 'Junie';
+    case BaseCodingAgent.KILO:
+      return 'Kilo';
+    case BaseCodingAgent.KIMI:
+      return 'Kimi';
+    case BaseCodingAgent.MISTRAL_VIBE:
+      return 'Mistral Vibe';
+    case BaseCodingAgent.NOVA:
+      return 'Nova';
+    case BaseCodingAgent.QODER:
+      return 'Qoder';
+    case BaseCodingAgent.STAKPAK:
+      return 'Stakpak';
     case BaseCodingAgent.CODEX:
       return 'Codex';
     case BaseCodingAgent.OPENCODE:
@@ -82,7 +104,17 @@ export function AgentIcon({ agent, className = 'h-4 w-4' }: AgentIconProps) {
     case BaseCodingAgent.DROID:
       iconPath = `/agents/droid${suffix}.svg`;
       break;
-    default:
+    case BaseCodingAgent.AUGGIE:
+    case BaseCodingAgent.CLINE:
+    case BaseCodingAgent.FAST_AGENT:
+    case BaseCodingAgent.GOOSE:
+    case BaseCodingAgent.JUNIE:
+    case BaseCodingAgent.KILO:
+    case BaseCodingAgent.KIMI:
+    case BaseCodingAgent.MISTRAL_VIBE:
+    case BaseCodingAgent.NOVA:
+    case BaseCodingAgent.QODER:
+    case BaseCodingAgent.STAKPAK:
       return null;
   }
 

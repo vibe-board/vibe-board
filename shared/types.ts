@@ -573,6 +573,28 @@ export type Autonomy = "normal" | "low" | "medium" | "high" | "skip-permissions-
 
 export type DroidReasoningEffort = "none" | "dynamic" | "off" | "low" | "medium" | "high";
 
+export type Auggie = { append_prompt: AppendPrompt, variant?: string | null, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+
+export type Cline = { append_prompt: AppendPrompt, variant?: string | null, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+
+export type FastAgent = { append_prompt: AppendPrompt, variant?: string | null, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+
+export type Goose = { append_prompt: AppendPrompt, variant?: string | null, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+
+export type Junie = { append_prompt: AppendPrompt, variant?: string | null, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+
+export type Kilo = { append_prompt: AppendPrompt, variant?: string | null, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+
+export type Kimi = { append_prompt: AppendPrompt, variant?: string | null, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+
+export type MistralVibe = { append_prompt: AppendPrompt, variant?: string | null, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+
+export type Nova = { append_prompt: AppendPrompt, variant?: string | null, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+
+export type Qoder = { append_prompt: AppendPrompt, variant?: string | null, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+
+export type Stakpak = { append_prompt: AppendPrompt, variant?: string | null, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+
 export type AppendPrompt = string | null;
 
 export type CodingAgentInitialRequest = { prompt: string, 
