@@ -47,6 +47,10 @@ pub(super) struct SdkEventEnvelope {
 pub(super) enum SdkEvent {
     MessageUpdated(MessageUpdatedEvent),
     MessagePartUpdated(MessagePartUpdatedEvent),
+    /// Streaming delta for a message part — carries only the incremental text.
+    /// We silently ignore these because `message.part.updated` already provides
+    /// the full accumulated state.
+    MessagePartDelta,
     MessageRemoved,
     MessagePartRemoved,
     PermissionAsked(PermissionAskedEvent),
@@ -73,6 +77,7 @@ impl SdkEvent {
             "message.part.updated" => {
                 SdkEvent::MessagePartUpdated(serde_json::from_value(envelope.properties).ok()?)
             }
+            "message.part.delta" => SdkEvent::MessagePartDelta,
             "message.removed" => SdkEvent::MessageRemoved,
             "message.part.removed" => SdkEvent::MessagePartRemoved,
             "permission.asked" => {

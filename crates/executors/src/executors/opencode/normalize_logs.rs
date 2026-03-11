@@ -242,6 +242,7 @@ impl LogState {
             SdkEvent::PermissionReplied
             | SdkEvent::MessageRemoved
             | SdkEvent::MessagePartRemoved
+            | SdkEvent::MessagePartDelta
             | SdkEvent::CommandExecuted
             | SdkEvent::SessionDiff
             | SdkEvent::TuiSessionSelect => {}
