@@ -96,6 +96,11 @@ pub enum NormalizedEntryType {
         needs_setup: bool,
     },
     TokenUsageInfo(TokenUsageInfo),
+    TaskDuration {
+        started_at: String,
+        completed_at: String,
+        duration_seconds: f64,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

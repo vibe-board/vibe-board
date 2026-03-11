@@ -44,3 +44,24 @@ export const nextActionPatch: (
   patchKey: 'next_action',
   executionProcessId: '',
 });
+
+export const taskDurationPatch = (
+  executionProcessId: string,
+  startedAt: string,
+  completedAt: string,
+  durationSeconds: number
+): PatchTypeWithKey => ({
+  type: 'NORMALIZED_ENTRY',
+  content: {
+    entry_type: {
+      type: 'task_duration',
+      started_at: startedAt,
+      completed_at: completedAt,
+      duration_seconds: durationSeconds,
+    },
+    content: '',
+    timestamp: null,
+  },
+  patchKey: `${executionProcessId}:duration`,
+  executionProcessId,
+});

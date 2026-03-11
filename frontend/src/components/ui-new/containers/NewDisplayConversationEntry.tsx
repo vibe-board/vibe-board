@@ -47,10 +47,12 @@ import type {
   AggregatedThinkingGroup,
 } from '@/hooks/useConversationHistory/types';
 import {
+  ClockIcon,
   FileTextIcon,
   ListMagnifyingGlassIcon,
   GlobeIcon,
 } from '@phosphor-icons/react';
+import { formatDateShortWithTime, formatDuration } from '@/utils/date';
 
 type Props = {
   expansionKey: string;
@@ -348,6 +350,22 @@ function NewDisplayConversationEntry(props: Props) {
           content={entry.content}
           expansionKey={expansionKey}
         />
+      );
+
+    case 'task_duration':
+      return (
+        <div className="flex items-center gap-1.5 text-xs text-low py-1">
+          <ClockIcon className="size-3 shrink-0" />
+          <span>
+            {formatDateShortWithTime(entryType.started_at)}
+            {' → '}
+            {formatDateShortWithTime(entryType.completed_at)}
+          </span>
+          <span className="opacity-50">|</span>
+          <span className="font-medium">
+            {formatDuration(entryType.duration_seconds)}
+          </span>
+        </div>
       );
 
     case 'next_action':

@@ -19,6 +19,7 @@ import {
   Brain,
   CheckSquare,
   ChevronDown,
+  Clock,
   Hammer,
   Edit,
   Eye,
@@ -30,6 +31,7 @@ import {
   User,
   Wrench,
 } from 'lucide-react';
+import { formatDateShortWithTime, formatDuration } from '@/utils/date';
 import RawLogText from '../common/RawLogText';
 import UserMessage from './UserMessage';
 import PendingApprovalEntry from './PendingApprovalEntry';
@@ -905,6 +907,23 @@ function DisplayConversationEntry({
     return (
       <div className="px-4 py-2 text-sm">
         <LoadingCard />
+      </div>
+    );
+  }
+
+  if (entry.entry_type.type === 'task_duration') {
+    return (
+      <div className="px-4 py-2 text-xs text-muted-foreground flex items-center gap-2">
+        <Clock className="h-3 w-3" />
+        <span>
+          {formatDateShortWithTime(entry.entry_type.started_at)}
+          {' → '}
+          {formatDateShortWithTime(entry.entry_type.completed_at)}
+        </span>
+        <span className="opacity-50">|</span>
+        <span className="font-medium">
+          {formatDuration(entry.entry_type.duration_seconds)}
+        </span>
       </div>
     );
   }

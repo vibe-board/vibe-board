@@ -28,3 +28,17 @@ export function formatRelativeTime(dateString: string): string {
   if (diffHours < 24) return `${diffHours}h ago`;
   return `${diffDays}d ago`;
 }
+
+/**
+ * Format a duration in seconds to a human-readable string.
+ * Examples: "5s", "2m 30s", "1h 15m 30s"
+ */
+export function formatDuration(seconds: number): string {
+  if (seconds < 0) return '0s';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}

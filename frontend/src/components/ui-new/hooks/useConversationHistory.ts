@@ -33,6 +33,7 @@ import {
   MIN_INITIAL_ENTRIES,
   nextActionPatch,
   REMAINING_BATCH_SIZE,
+  taskDurationPatch,
 } from '@/hooks/useConversationHistory/constants';
 
 export type {
@@ -301,6 +302,28 @@ export const useConversationHistory = ({
 
             if (isProcessRunning && !hasPendingApprovalEntry) {
               entries.push(makeLoadingPatch(p.executionProcess.id));
+            }
+
+            // Add duration entry for completed coding agent processes
+            const liveProcess = getLiveExecutionProcess(
+              p.executionProcess.id
+            );
+            if (!isProcessRunning && liveProcess?.completed_at) {
+              const startMs = new Date(
+                liveProcess.started_at as string
+              ).getTime();
+              const endMs = new Date(
+                liveProcess.completed_at as string
+              ).getTime();
+              const durationSeconds = (endMs - startMs) / 1000;
+              entries.push(
+                taskDurationPatch(
+                  p.executionProcess.id,
+                  liveProcess.started_at as string,
+                  liveProcess.completed_at as string,
+                  durationSeconds
+                )
+              );
             }
           } else if (
             p.executionProcess.executor_action.typ.type === 'ScriptRequest'
