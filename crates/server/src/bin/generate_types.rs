@@ -307,6 +307,50 @@ fn generate_schemas() -> Result<HashMap<&'static str, String>, serde_json::Error
             "droid",
             generate_json_schema::<executors::executors::droid::Droid>()?,
         ),
+        (
+            "auggie",
+            generate_json_schema::<executors::executors::auggie::Auggie>()?,
+        ),
+        (
+            "cline",
+            generate_json_schema::<executors::executors::cline::Cline>()?,
+        ),
+        (
+            "fast_agent",
+            generate_json_schema::<executors::executors::fast_agent::FastAgent>()?,
+        ),
+        (
+            "goose",
+            generate_json_schema::<executors::executors::goose::Goose>()?,
+        ),
+        (
+            "junie",
+            generate_json_schema::<executors::executors::junie::Junie>()?,
+        ),
+        (
+            "kilo",
+            generate_json_schema::<executors::executors::kilo::Kilo>()?,
+        ),
+        (
+            "kimi",
+            generate_json_schema::<executors::executors::kimi::Kimi>()?,
+        ),
+        (
+            "mistral_vibe",
+            generate_json_schema::<executors::executors::mistral_vibe::MistralVibe>()?,
+        ),
+        (
+            "nova",
+            generate_json_schema::<executors::executors::nova::Nova>()?,
+        ),
+        (
+            "qoder",
+            generate_json_schema::<executors::executors::qoder::Qoder>()?,
+        ),
+        (
+            "stakpak",
+            generate_json_schema::<executors::executors::stakpak::Stakpak>()?,
+        ),
     ]);
     println!(
         "✅ JSON schemas generated. {} schemas created.",

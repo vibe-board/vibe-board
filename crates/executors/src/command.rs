@@ -44,7 +44,7 @@ impl CommandParts {
 pub struct CmdOverrides {
     #[schemars(
         title = "Base Command Override",
-        description = "Override the base command (e.g. to pin agent version: npx -y @anthropic-ai/claude-code@3.0.0). Leave empty to use the default."
+        description = "Override the base command. Leave empty to use the default."
     )]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_command_override: Option<String>,

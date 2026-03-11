@@ -11,37 +11,13 @@
       "format": "textarea",
       "default": null
     },
-    "claude_code_router": {
-      "type": [
-        "boolean",
-        "null"
-      ]
-    },
-    "plan": {
-      "type": [
-        "boolean",
-        "null"
-      ]
-    },
-    "approvals": {
-      "type": [
-        "boolean",
-        "null"
-      ]
-    },
-    "model": {
+    "variant": {
       "type": [
         "string",
         "null"
       ]
     },
-    "dangerously_skip_permissions": {
-      "type": [
-        "boolean",
-        "null"
-      ]
-    },
-    "disable_api_key": {
+    "yolo": {
       "type": [
         "boolean",
         "null"
