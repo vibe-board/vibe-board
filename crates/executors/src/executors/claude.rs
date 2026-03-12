@@ -698,6 +698,7 @@ impl ClaudeLogProcessor {
                 // TODO: Add proper ToolResult support to NormalizedEntry when the type system supports it
                 None
             }
+            ClaudeContentItem::Unknown => None,
         }
     }
 
@@ -1002,6 +1003,7 @@ impl ClaudeLogProcessor {
                             }
                         }
                         ClaudeContentItem::ToolResult { .. } => {}
+                        ClaudeContentItem::Unknown => {}
                     }
                 }
             }
@@ -1431,18 +1433,8 @@ impl ClaudeLogProcessor {
                     patches.push(ConversationPatch::add_normalized_entry(idx, entry));
                 }
             }
-            ClaudeJson::Unknown { data } => {
-                let entry = NormalizedEntry {
-                    timestamp: None,
-                    entry_type: NormalizedEntryType::SystemMessage,
-                    content: format!(
-                        "Unrecognized JSON message: {}",
-                        serde_json::to_value(data).unwrap_or_default()
-                    ),
-                    metadata: None,
-                };
-                let idx = entry_index_provider.next();
-                patches.push(ConversationPatch::add_normalized_entry(idx, entry));
+            ClaudeJson::Unknown { .. } => {
+                // Silently ignore unrecognized messages (e.g. delta events)
             }
             ClaudeJson::ControlRequest { .. }
             | ClaudeJson::ControlResponse { .. }
@@ -1893,6 +1885,8 @@ pub enum ClaudeContentItem {
         content: serde_json::Value,
         is_error: Option<bool>,
     },
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
