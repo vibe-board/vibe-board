@@ -445,7 +445,7 @@ export type DirectoryListResponse = { entries: Array<DirectoryEntry>, current_pa
 
 export type SearchMode = "taskform" | "settings";
 
-export type Config = { config_version: string, theme: ThemeMode, executor_profile: ExecutorProfileId, disclaimer_acknowledged: boolean, onboarding_acknowledged: boolean, notifications: NotificationConfig, editor: EditorConfig, github: GitHubConfig, analytics_enabled: boolean, workspace_dir: string | null, last_app_version: string | null, show_release_notes: boolean, language: UiLanguage, git_branch_prefix: string, showcases: ShowcaseState, pr_auto_description_enabled: boolean, pr_auto_description_prompt: string | null, beta_workspaces: boolean, beta_workspaces_invitation_sent: boolean, commit_reminder_enabled: boolean, commit_reminder_prompt: string | null, send_message_shortcut: SendMessageShortcut, agent_order: Array<BaseCodingAgent>, project_order: Array<string>, };
+export type Config = { config_version: string, theme: ThemeMode, executor_profile: ExecutorProfileId, disclaimer_acknowledged: boolean, onboarding_acknowledged: boolean, notifications: NotificationConfig, editor: EditorConfig, github: GitHubConfig, analytics_enabled: boolean, workspace_dir: string | null, last_app_version: string | null, show_release_notes: boolean, language: UiLanguage, git_branch_prefix: string, showcases: ShowcaseState, pr_auto_description_enabled: boolean, pr_auto_description_prompt: string | null, beta_workspaces: boolean, beta_workspaces_invitation_sent: boolean, commit_reminder_enabled: boolean, commit_reminder_prompt: string | null, send_message_shortcut: SendMessageShortcut, agent_order: Array<BaseCodingAgent>, project_order: Array<string>, agent_enabled: Array<BaseCodingAgent>, };
 
 export type NotificationConfig = { sound_enabled: boolean, push_enabled: boolean, sound_file: SoundFile, };
 
@@ -504,9 +504,9 @@ working_dir: string | null, };
 
 export type ScriptRequestLanguage = "Bash";
 
-export enum BaseCodingAgent { CLAUDE_CODE = "CLAUDE_CODE", AMP = "AMP", AUGGIE = "AUGGIE", CLINE = "CLINE", FAST_AGENT = "FAST_AGENT", GEMINI = "GEMINI", GOOSE = "GOOSE", JUNIE = "JUNIE", KILO = "KILO", KIMI = "KIMI", MISTRAL_VIBE = "MISTRAL_VIBE", NOVA = "NOVA", QODER = "QODER", STAKPAK = "STAKPAK", CODEX = "CODEX", OPENCODE = "OPENCODE", CURSOR_AGENT = "CURSOR_AGENT", QWEN_CODE = "QWEN_CODE", COPILOT = "COPILOT", DROID = "DROID" }
+export enum BaseCodingAgent { CLAUDE_CODE = "CLAUDE_CODE", AMP = "AMP", GEMINI = "GEMINI", CODEX = "CODEX", OPENCODE = "OPENCODE", CURSOR_AGENT = "CURSOR_AGENT", QWEN_CODE = "QWEN_CODE", COPILOT = "COPILOT", DROID = "DROID", AUGGIE = "AUGGIE", AUTOHAND = "AUTOHAND", CLINE = "CLINE", CODEBUDDY_CODE = "CODEBUDDY_CODE", CORUST_AGENT = "CORUST_AGENT", CROW_CLI = "CROW_CLI", DEEPAGENTS = "DEEPAGENTS", DIMCODE = "DIMCODE", FAST_AGENT = "FAST_AGENT", GOOSE = "GOOSE", JUNIE = "JUNIE", KILO = "KILO", KIMI = "KIMI", MINION_CODE = "MINION_CODE", MISTRAL_VIBE = "MISTRAL_VIBE", NOVA = "NOVA", PI_ACP = "PI_ACP", QODER = "QODER", STAKPAK = "STAKPAK" }
 
-export type CodingAgent = { "CLAUDE_CODE": ClaudeCode } | { "AMP": Amp } | { "AUGGIE": Auggie } | { "CLINE": Cline } | { "FAST_AGENT": FastAgent } | { "GEMINI": Gemini } | { "GOOSE": Goose } | { "JUNIE": Junie } | { "KILO": Kilo } | { "KIMI": Kimi } | { "MISTRAL_VIBE": MistralVibe } | { "NOVA": Nova } | { "QODER": Qoder } | { "STAKPAK": Stakpak } | { "CODEX": Codex } | { "OPENCODE": Opencode } | { "CURSOR_AGENT": CursorAgent } | { "QWEN_CODE": QwenCode } | { "COPILOT": Copilot } | { "DROID": Droid };
+export type CodingAgent = { "CLAUDE_CODE": ClaudeCode } | { "AMP": Amp } | { "GEMINI": Gemini } | { "CODEX": Codex } | { "OPENCODE": Opencode } | { "CURSOR_AGENT": CursorAgent } | { "QWEN_CODE": QwenCode } | { "COPILOT": Copilot } | { "DROID": Droid } | { "AUGGIE": Auggie } | { "AUTOHAND": Autohand } | { "CLINE": Cline } | { "CODEBUDDY_CODE": CodebuddyCode } | { "CORUST_AGENT": CorustAgent } | { "CROW_CLI": CrowCli } | { "DEEPAGENTS": Deepagents } | { "DIMCODE": Dimcode } | { "FAST_AGENT": FastAgent } | { "GOOSE": Goose } | { "JUNIE": Junie } | { "KILO": Kilo } | { "KIMI": Kimi } | { "MINION_CODE": MinionCode } | { "MISTRAL_VIBE": MistralVibe } | { "NOVA": Nova } | { "PI_ACP": PiAcp } | { "QODER": Qoder } | { "STAKPAK": Stakpak };
 
 export type SlashCommandDescription = { 
 /**
@@ -538,7 +538,7 @@ executor: BaseCodingAgent,
  */
 variant: string | null, };
 
-export type ExecutorConfig = { [key in string]?: { "CLAUDE_CODE": ClaudeCode } | { "AMP": Amp } | { "AUGGIE": Auggie } | { "CLINE": Cline } | { "FAST_AGENT": FastAgent } | { "GEMINI": Gemini } | { "GOOSE": Goose } | { "JUNIE": Junie } | { "KILO": Kilo } | { "KIMI": Kimi } | { "MISTRAL_VIBE": MistralVibe } | { "NOVA": Nova } | { "QODER": Qoder } | { "STAKPAK": Stakpak } | { "CODEX": Codex } | { "OPENCODE": Opencode } | { "CURSOR_AGENT": CursorAgent } | { "QWEN_CODE": QwenCode } | { "COPILOT": Copilot } | { "DROID": Droid } };
+export type ExecutorConfig = { [key in string]?: { "CLAUDE_CODE": ClaudeCode } | { "AMP": Amp } | { "GEMINI": Gemini } | { "CODEX": Codex } | { "OPENCODE": Opencode } | { "CURSOR_AGENT": CursorAgent } | { "QWEN_CODE": QwenCode } | { "COPILOT": Copilot } | { "DROID": Droid } | { "AUGGIE": Auggie } | { "AUTOHAND": Autohand } | { "CLINE": Cline } | { "CODEBUDDY_CODE": CodebuddyCode } | { "CORUST_AGENT": CorustAgent } | { "CROW_CLI": CrowCli } | { "DEEPAGENTS": Deepagents } | { "DIMCODE": Dimcode } | { "FAST_AGENT": FastAgent } | { "GOOSE": Goose } | { "JUNIE": Junie } | { "KILO": Kilo } | { "KIMI": Kimi } | { "MINION_CODE": MinionCode } | { "MISTRAL_VIBE": MistralVibe } | { "NOVA": Nova } | { "PI_ACP": PiAcp } | { "QODER": Qoder } | { "STAKPAK": Stakpak } };
 
 export type ExecutorConfigs = { executors: { [key in BaseCodingAgent]?: ExecutorConfig }, };
 
@@ -584,27 +584,43 @@ export type Autonomy = "normal" | "low" | "medium" | "high" | "skip-permissions-
 
 export type DroidReasoningEffort = "none" | "dynamic" | "off" | "low" | "medium" | "high";
 
-export type Auggie = { append_prompt: AppendPrompt, variant?: string | null, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+export type Auggie = { append_prompt: AppendPrompt, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
 
-export type Cline = { append_prompt: AppendPrompt, variant?: string | null, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+export type Autohand = { append_prompt: AppendPrompt, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
 
-export type FastAgent = { append_prompt: AppendPrompt, variant?: string | null, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+export type Cline = { append_prompt: AppendPrompt, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
 
-export type Goose = { append_prompt: AppendPrompt, variant?: string | null, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+export type CodebuddyCode = { append_prompt: AppendPrompt, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
 
-export type Junie = { append_prompt: AppendPrompt, variant?: string | null, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+export type CorustAgent = { append_prompt: AppendPrompt, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
 
-export type Kilo = { append_prompt: AppendPrompt, variant?: string | null, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+export type CrowCli = { append_prompt: AppendPrompt, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
 
-export type Kimi = { append_prompt: AppendPrompt, variant?: string | null, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+export type Deepagents = { append_prompt: AppendPrompt, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
 
-export type MistralVibe = { append_prompt: AppendPrompt, variant?: string | null, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+export type Dimcode = { append_prompt: AppendPrompt, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
 
-export type Nova = { append_prompt: AppendPrompt, variant?: string | null, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+export type FastAgent = { append_prompt: AppendPrompt, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
 
-export type Qoder = { append_prompt: AppendPrompt, variant?: string | null, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+export type Goose = { append_prompt: AppendPrompt, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
 
-export type Stakpak = { append_prompt: AppendPrompt, variant?: string | null, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+export type Junie = { append_prompt: AppendPrompt, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+
+export type Kilo = { append_prompt: AppendPrompt, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+
+export type Kimi = { append_prompt: AppendPrompt, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+
+export type MinionCode = { append_prompt: AppendPrompt, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+
+export type MistralVibe = { append_prompt: AppendPrompt, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+
+export type Nova = { append_prompt: AppendPrompt, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+
+export type PiAcp = { append_prompt: AppendPrompt, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+
+export type Qoder = { append_prompt: AppendPrompt, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+
+export type Stakpak = { append_prompt: AppendPrompt, yolo?: boolean | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
 
 export type AppendPrompt = string | null;
 

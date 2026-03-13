@@ -26,8 +26,20 @@ export function getAgentName(
       return 'AMP';
     case BaseCodingAgent.AUGGIE:
       return 'Auggie';
+    case BaseCodingAgent.AUTOHAND:
+      return 'Autohand';
     case BaseCodingAgent.CLINE:
       return 'Cline';
+    case BaseCodingAgent.CODEBUDDY_CODE:
+      return 'Codebuddy Code';
+    case BaseCodingAgent.CORUST_AGENT:
+      return 'Corust Agent';
+    case BaseCodingAgent.CROW_CLI:
+      return 'Crow CLI';
+    case BaseCodingAgent.DEEPAGENTS:
+      return 'Deepagents';
+    case BaseCodingAgent.DIMCODE:
+      return 'Dimcode';
     case BaseCodingAgent.FAST_AGENT:
       return 'Fast Agent';
     case BaseCodingAgent.GEMINI:
@@ -40,10 +52,14 @@ export function getAgentName(
       return 'Kilo';
     case BaseCodingAgent.KIMI:
       return 'Kimi';
+    case BaseCodingAgent.MINION_CODE:
+      return 'Minion Code';
     case BaseCodingAgent.MISTRAL_VIBE:
       return 'Mistral Vibe';
     case BaseCodingAgent.NOVA:
       return 'Nova';
+    case BaseCodingAgent.PI_ACP:
+      return 'Pi ACP';
     case BaseCodingAgent.QODER:
       return 'Qoder';
     case BaseCodingAgent.STAKPAK:
@@ -86,8 +102,27 @@ export function AgentIcon({ agent, className = 'h-4 w-4' }: AgentIconProps) {
     case BaseCodingAgent.AUGGIE:
       iconPath = `/agents/auggie${suffix}.svg`;
       break;
+    case BaseCodingAgent.AUTOHAND:
+      iconPath = `/agents/autohand${suffix}.svg`;
+      break;
     case BaseCodingAgent.CLINE:
       iconPath = `/agents/cline${suffix}.svg`;
+      break;
+    case BaseCodingAgent.CODEBUDDY_CODE:
+      iconPath = `/agents/codebuddy${suffix}.svg`;
+      break;
+    case BaseCodingAgent.CORUST_AGENT:
+      iconPath = `/agents/corust${suffix}.svg`;
+      break;
+    case BaseCodingAgent.CROW_CLI:
+      iconPath = `/agents/crow${suffix}.svg`;
+      break;
+    case BaseCodingAgent.DEEPAGENTS:
+      iconPath = `/agents/deepagents${suffix}.svg`;
+      break;
+    case BaseCodingAgent.DIMCODE:
+      iconPath = `/agents/dimcode${suffix}.svg`;
+      break;
       break;
     case BaseCodingAgent.FAST_AGENT:
       iconPath = `/agents/fast-agent${suffix}.svg`;
@@ -107,11 +142,17 @@ export function AgentIcon({ agent, className = 'h-4 w-4' }: AgentIconProps) {
     case BaseCodingAgent.KIMI:
       iconPath = `/agents/kimi${suffix}.svg`;
       break;
+    case BaseCodingAgent.MINION_CODE:
+      iconPath = `/agents/minion${suffix}.svg`;
+      break;
     case BaseCodingAgent.MISTRAL_VIBE:
       iconPath = `/agents/mistral${suffix}.svg`;
       break;
     case BaseCodingAgent.NOVA:
       iconPath = `/agents/nova${suffix}.svg`;
+      break;
+    case BaseCodingAgent.PI_ACP:
+      iconPath = `/agents/pi${suffix}.svg`;
       break;
     case BaseCodingAgent.QODER:
       iconPath = `/agents/qoder${suffix}.svg`;

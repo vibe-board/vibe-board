@@ -10,7 +10,7 @@ use workspace_utils::msg_store::MsgStore;
 pub use super::acp::AcpAgentHarness;
 use crate::{
     approvals::ExecutorApprovalService,
-    command::{CmdOverrides, CommandBuildError, CommandBuilder, apply_overrides},
+    command::{apply_overrides, CmdOverrides, CommandBuildError, CommandBuilder},
     env::ExecutionEnv,
     executors::{
         AppendPrompt, AvailabilityInfo, ExecutorError, SpawnedChild, StandardCodingAgentExecutor,
@@ -23,8 +23,6 @@ pub struct MistralVibe {
     #[serde(default)]
     pub append_prompt: AppendPrompt,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub variant: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub yolo: Option<bool>,
     #[serde(flatten)]
     pub cmd: CmdOverrides,
@@ -34,18 +32,9 @@ pub struct MistralVibe {
     pub approvals: Option<Arc<dyn ExecutorApprovalService>>,
 }
 
-/// Default base command for Mistral Vibe ACP. Uses uvx to run without pre-install (like npx).
-const DEFAULT_MISTRAL_VIBE_BASE: &str = "uvx mistral-vibe";
-
 impl MistralVibe {
     fn build_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
-        let binary = self.variant.as_deref().unwrap_or(DEFAULT_MISTRAL_VIBE_BASE);
-        let mut builder = CommandBuilder::new(binary.to_string());
-
-        if self.yolo.unwrap_or(false) {
-            builder = builder.extend_params(["--yolo"]);
-        }
-
+        let builder = CommandBuilder::new("mistral-vibe").extend_params(["acp"]);
         apply_overrides(builder, &self.cmd)
     }
 }
@@ -62,9 +51,9 @@ impl StandardCodingAgentExecutor for MistralVibe {
         prompt: &str,
         env: &ExecutionEnv,
     ) -> Result<SpawnedChild, ExecutorError> {
-        let harness = AcpAgentHarness::with_session_namespace("mistral_vibe_sessions");
+        let command = self.build_command_builder()?.build_initial()?;
         let combined_prompt = self.append_prompt.combine_prompt(prompt);
-        let vibe_command = self.build_command_builder()?.build_initial()?;
+        let harness = AcpAgentHarness::with_session_namespace("mistral_vibe_sessions");
         let approvals = if self.yolo.unwrap_or(false) {
             None
         } else {
@@ -74,7 +63,7 @@ impl StandardCodingAgentExecutor for MistralVibe {
             .spawn_with_command(
                 current_dir,
                 combined_prompt,
-                vibe_command,
+                command,
                 env,
                 &self.cmd,
                 approvals,
@@ -90,9 +79,9 @@ impl StandardCodingAgentExecutor for MistralVibe {
         _reset_to_message_id: Option<&str>,
         env: &ExecutionEnv,
     ) -> Result<SpawnedChild, ExecutorError> {
-        let harness = AcpAgentHarness::with_session_namespace("mistral_vibe_sessions");
+        let command = self.build_command_builder()?.build_follow_up(&[])?;
         let combined_prompt = self.append_prompt.combine_prompt(prompt);
-        let vibe_command = self.build_command_builder()?.build_follow_up(&[])?;
+        let harness = AcpAgentHarness::with_session_namespace("mistral_vibe_sessions");
         let approvals = if self.yolo.unwrap_or(false) {
             None
         } else {
@@ -103,7 +92,7 @@ impl StandardCodingAgentExecutor for MistralVibe {
                 current_dir,
                 combined_prompt,
                 session_id,
-                vibe_command,
+                command,
                 env,
                 &self.cmd,
                 approvals,
@@ -125,11 +114,7 @@ impl StandardCodingAgentExecutor for MistralVibe {
             .map(|p| p.exists())
             .unwrap_or(false);
 
-        let installation_indicator_found = dirs::home_dir()
-            .map(|home| home.join(".mistral").join("installation_id").exists())
-            .unwrap_or(false);
-
-        if mcp_config_found || installation_indicator_found {
+        if mcp_config_found {
             AvailabilityInfo::InstallationFound
         } else {
             AvailabilityInfo::NotFound

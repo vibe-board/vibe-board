@@ -815,6 +815,7 @@ export function AgentSettings() {
         <AgentOrderCard
           profiles={profiles}
           agentOrder={config?.agent_order}
+          agentEnabled={config?.agent_enabled}
           disabled={executorSaving}
           onReorder={async (newOrder) => {
             setExecutorSaving(true);
@@ -823,6 +824,21 @@ export function AgentSettings() {
               reloadSystem();
             } catch (err) {
               console.error('Failed to save agent order:', err);
+            } finally {
+              setExecutorSaving(false);
+            }
+          }}
+          onToggleEnabled={async (agent, enabled) => {
+            setExecutorSaving(true);
+            try {
+              const currentEnabled = config?.agent_enabled || [];
+              const newEnabled = enabled
+                ? [...currentEnabled, agent]
+                : currentEnabled.filter((a) => a !== agent);
+              await updateAndSaveConfig({ agent_enabled: newEnabled });
+              reloadSystem();
+            } catch (err) {
+              console.error('Failed to save agent enabled state:', err);
             } finally {
               setExecutorSaving(false);
             }
@@ -851,10 +867,14 @@ export function AgentSettings() {
 
 function SortableAgentItem({
   agent,
+  enabled,
   disabled,
+  onToggle,
 }: {
   agent: BaseCodingAgent;
+  enabled: boolean;
   disabled: boolean;
+  onToggle: (agent: BaseCodingAgent, enabled: boolean) => void;
 }) {
   const {
     attributes,
@@ -888,6 +908,11 @@ function SortableAgentItem({
       >
         <GripVertical className="h-4 w-4" />
       </button>
+      <Checkbox
+        checked={enabled}
+        onCheckedChange={(checked) => onToggle(agent, !!checked)}
+        disabled={disabled}
+      />
       <AgentIcon agent={agent} className="w-5 h-5 shrink-0" />
       <span className="flex-1 text-sm">{toPrettyCase(agent)}</span>
     </div>
@@ -897,13 +922,17 @@ function SortableAgentItem({
 function AgentOrderCard({
   profiles,
   agentOrder,
+  agentEnabled,
   disabled,
   onReorder,
+  onToggleEnabled,
 }: {
   profiles: Record<string, unknown>;
   agentOrder: BaseCodingAgent[] | undefined | null;
+  agentEnabled: BaseCodingAgent[] | undefined | null;
   disabled: boolean;
   onReorder: (newOrder: BaseCodingAgent[]) => void;
+  onToggleEnabled: (agent: BaseCodingAgent, enabled: boolean) => void;
 }) {
   const { t } = useTranslation(['settings']);
   const sortedAgents = getSortedAgents(
@@ -955,7 +984,9 @@ function AgentOrderCard({
                 <SortableAgentItem
                   key={agent}
                   agent={agent}
+                  enabled={!agentEnabled || agentEnabled.includes(agent)}
                   disabled={disabled}
+                  onToggle={onToggleEnabled}
                 />
               ))}
             </div>

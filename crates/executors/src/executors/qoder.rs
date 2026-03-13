@@ -10,7 +10,7 @@ use workspace_utils::msg_store::MsgStore;
 pub use super::acp::AcpAgentHarness;
 use crate::{
     approvals::ExecutorApprovalService,
-    command::{CmdOverrides, CommandBuildError, CommandBuilder, apply_overrides},
+    command::{apply_overrides, CmdOverrides, CommandBuildError, CommandBuilder},
     env::ExecutionEnv,
     executors::{
         AppendPrompt, AvailabilityInfo, ExecutorError, SpawnedChild, StandardCodingAgentExecutor,
@@ -23,8 +23,6 @@ pub struct Qoder {
     #[serde(default)]
     pub append_prompt: AppendPrompt,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub variant: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub yolo: Option<bool>,
     #[serde(flatten)]
     pub cmd: CmdOverrides,
@@ -36,14 +34,8 @@ pub struct Qoder {
 
 impl Qoder {
     fn build_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
-        let version = self.variant.as_deref().unwrap_or("0.1.30");
-        let mut builder = CommandBuilder::new(format!("npx -y @qoder-ai/qodercli@{}", version));
-
-        if self.yolo.unwrap_or(false) {
-            builder = builder.extend_params(["--yolo"]);
-        }
-
-        builder = builder.extend_params(["--acp"]);
+        let builder =
+            CommandBuilder::new("npx -y @qoder-ai/qodercli@0.1.31").extend_params(["--acp"]);
         apply_overrides(builder, &self.cmd)
     }
 }
@@ -60,9 +52,9 @@ impl StandardCodingAgentExecutor for Qoder {
         prompt: &str,
         env: &ExecutionEnv,
     ) -> Result<SpawnedChild, ExecutorError> {
-        let harness = AcpAgentHarness::with_session_namespace("qoder_sessions");
+        let command = self.build_command_builder()?.build_initial()?;
         let combined_prompt = self.append_prompt.combine_prompt(prompt);
-        let qoder_command = self.build_command_builder()?.build_initial()?;
+        let harness = AcpAgentHarness::with_session_namespace("qoder_sessions");
         let approvals = if self.yolo.unwrap_or(false) {
             None
         } else {
@@ -72,7 +64,7 @@ impl StandardCodingAgentExecutor for Qoder {
             .spawn_with_command(
                 current_dir,
                 combined_prompt,
-                qoder_command,
+                command,
                 env,
                 &self.cmd,
                 approvals,
@@ -88,9 +80,9 @@ impl StandardCodingAgentExecutor for Qoder {
         _reset_to_message_id: Option<&str>,
         env: &ExecutionEnv,
     ) -> Result<SpawnedChild, ExecutorError> {
-        let harness = AcpAgentHarness::with_session_namespace("qoder_sessions");
+        let command = self.build_command_builder()?.build_follow_up(&[])?;
         let combined_prompt = self.append_prompt.combine_prompt(prompt);
-        let qoder_command = self.build_command_builder()?.build_follow_up(&[])?;
+        let harness = AcpAgentHarness::with_session_namespace("qoder_sessions");
         let approvals = if self.yolo.unwrap_or(false) {
             None
         } else {
@@ -101,7 +93,7 @@ impl StandardCodingAgentExecutor for Qoder {
                 current_dir,
                 combined_prompt,
                 session_id,
-                qoder_command,
+                command,
                 env,
                 &self.cmd,
                 approvals,
@@ -123,11 +115,7 @@ impl StandardCodingAgentExecutor for Qoder {
             .map(|p| p.exists())
             .unwrap_or(false);
 
-        let installation_indicator_found = dirs::home_dir()
-            .map(|home| home.join(".qoder").join("installation_id").exists())
-            .unwrap_or(false);
-
-        if mcp_config_found || installation_indicator_found {
+        if mcp_config_found {
             AvailabilityInfo::InstallationFound
         } else {
             AvailabilityInfo::NotFound

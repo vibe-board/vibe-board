@@ -10,7 +10,7 @@ use workspace_utils::msg_store::MsgStore;
 pub use super::acp::AcpAgentHarness;
 use crate::{
     approvals::ExecutorApprovalService,
-    command::{CmdOverrides, CommandBuildError, CommandBuilder, apply_overrides},
+    command::{apply_overrides, CmdOverrides, CommandBuildError, CommandBuilder},
     env::ExecutionEnv,
     executors::{
         AppendPrompt, AvailabilityInfo, ExecutorError, SpawnedChild, StandardCodingAgentExecutor,
@@ -23,8 +23,6 @@ pub struct Nova {
     #[serde(default)]
     pub append_prompt: AppendPrompt,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub variant: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub yolo: Option<bool>,
     #[serde(flatten)]
     pub cmd: CmdOverrides,
@@ -36,14 +34,8 @@ pub struct Nova {
 
 impl Nova {
     fn build_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
-        let version = self.variant.as_deref().unwrap_or("1.0.76");
-        let mut builder = CommandBuilder::new(format!("npx -y @compass-ai/nova@{}", version));
-
-        if self.yolo.unwrap_or(false) {
-            builder = builder.extend_params(["--yolo"]);
-        }
-
-        builder = builder.extend_params(["acp"]);
+        let builder =
+            CommandBuilder::new("npx -y @compass-ai/nova@1.0.78").extend_params(["acp"]);
         apply_overrides(builder, &self.cmd)
     }
 }
@@ -60,9 +52,9 @@ impl StandardCodingAgentExecutor for Nova {
         prompt: &str,
         env: &ExecutionEnv,
     ) -> Result<SpawnedChild, ExecutorError> {
-        let harness = AcpAgentHarness::with_session_namespace("nova_sessions");
+        let command = self.build_command_builder()?.build_initial()?;
         let combined_prompt = self.append_prompt.combine_prompt(prompt);
-        let nova_command = self.build_command_builder()?.build_initial()?;
+        let harness = AcpAgentHarness::with_session_namespace("nova_sessions");
         let approvals = if self.yolo.unwrap_or(false) {
             None
         } else {
@@ -72,7 +64,7 @@ impl StandardCodingAgentExecutor for Nova {
             .spawn_with_command(
                 current_dir,
                 combined_prompt,
-                nova_command,
+                command,
                 env,
                 &self.cmd,
                 approvals,
@@ -88,9 +80,9 @@ impl StandardCodingAgentExecutor for Nova {
         _reset_to_message_id: Option<&str>,
         env: &ExecutionEnv,
     ) -> Result<SpawnedChild, ExecutorError> {
-        let harness = AcpAgentHarness::with_session_namespace("nova_sessions");
+        let command = self.build_command_builder()?.build_follow_up(&[])?;
         let combined_prompt = self.append_prompt.combine_prompt(prompt);
-        let nova_command = self.build_command_builder()?.build_follow_up(&[])?;
+        let harness = AcpAgentHarness::with_session_namespace("nova_sessions");
         let approvals = if self.yolo.unwrap_or(false) {
             None
         } else {
@@ -101,7 +93,7 @@ impl StandardCodingAgentExecutor for Nova {
                 current_dir,
                 combined_prompt,
                 session_id,
-                nova_command,
+                command,
                 env,
                 &self.cmd,
                 approvals,
@@ -123,11 +115,7 @@ impl StandardCodingAgentExecutor for Nova {
             .map(|p| p.exists())
             .unwrap_or(false);
 
-        let installation_indicator_found = dirs::home_dir()
-            .map(|home| home.join(".nova").join("installation_id").exists())
-            .unwrap_or(false);
-
-        if mcp_config_found || installation_indicator_found {
+        if mcp_config_found {
             AvailabilityInfo::InstallationFound
         } else {
             AvailabilityInfo::NotFound

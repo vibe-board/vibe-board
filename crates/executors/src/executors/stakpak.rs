@@ -10,7 +10,7 @@ use workspace_utils::msg_store::MsgStore;
 pub use super::acp::AcpAgentHarness;
 use crate::{
     approvals::ExecutorApprovalService,
-    command::{CmdOverrides, CommandBuildError, CommandBuilder, apply_overrides},
+    command::{apply_overrides, CmdOverrides, CommandBuildError, CommandBuilder},
     env::ExecutionEnv,
     executors::{
         AppendPrompt, AvailabilityInfo, ExecutorError, SpawnedChild, StandardCodingAgentExecutor,
@@ -23,8 +23,6 @@ pub struct Stakpak {
     #[serde(default)]
     pub append_prompt: AppendPrompt,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub variant: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub yolo: Option<bool>,
     #[serde(flatten)]
     pub cmd: CmdOverrides,
@@ -34,19 +32,9 @@ pub struct Stakpak {
     pub approvals: Option<Arc<dyn ExecutorApprovalService>>,
 }
 
-/// Default base command for Stakpak. Use after install (e.g. `curl -sSL https://stakpak.dev/install.sh | sh`), then `stakpak` is in PATH.
-const DEFAULT_STAKPAK_BASE: &str = "stakpak";
-
 impl Stakpak {
     fn build_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
-        let binary = self.variant.as_deref().unwrap_or(DEFAULT_STAKPAK_BASE);
-        let mut builder = CommandBuilder::new(binary.to_string());
-
-        if self.yolo.unwrap_or(false) {
-            builder = builder.extend_params(["--yolo"]);
-        }
-
-        builder = builder.extend_params(["acp"]);
+        let builder = CommandBuilder::new("stakpak").extend_params(["acp"]);
         apply_overrides(builder, &self.cmd)
     }
 }
@@ -63,9 +51,9 @@ impl StandardCodingAgentExecutor for Stakpak {
         prompt: &str,
         env: &ExecutionEnv,
     ) -> Result<SpawnedChild, ExecutorError> {
-        let harness = AcpAgentHarness::with_session_namespace("stakpak_sessions");
+        let command = self.build_command_builder()?.build_initial()?;
         let combined_prompt = self.append_prompt.combine_prompt(prompt);
-        let stakpak_command = self.build_command_builder()?.build_initial()?;
+        let harness = AcpAgentHarness::with_session_namespace("stakpak_sessions");
         let approvals = if self.yolo.unwrap_or(false) {
             None
         } else {
@@ -75,7 +63,7 @@ impl StandardCodingAgentExecutor for Stakpak {
             .spawn_with_command(
                 current_dir,
                 combined_prompt,
-                stakpak_command,
+                command,
                 env,
                 &self.cmd,
                 approvals,
@@ -91,9 +79,9 @@ impl StandardCodingAgentExecutor for Stakpak {
         _reset_to_message_id: Option<&str>,
         env: &ExecutionEnv,
     ) -> Result<SpawnedChild, ExecutorError> {
-        let harness = AcpAgentHarness::with_session_namespace("stakpak_sessions");
+        let command = self.build_command_builder()?.build_follow_up(&[])?;
         let combined_prompt = self.append_prompt.combine_prompt(prompt);
-        let stakpak_command = self.build_command_builder()?.build_follow_up(&[])?;
+        let harness = AcpAgentHarness::with_session_namespace("stakpak_sessions");
         let approvals = if self.yolo.unwrap_or(false) {
             None
         } else {
@@ -104,7 +92,7 @@ impl StandardCodingAgentExecutor for Stakpak {
                 current_dir,
                 combined_prompt,
                 session_id,
-                stakpak_command,
+                command,
                 env,
                 &self.cmd,
                 approvals,
@@ -126,11 +114,7 @@ impl StandardCodingAgentExecutor for Stakpak {
             .map(|p| p.exists())
             .unwrap_or(false);
 
-        let installation_indicator_found = dirs::home_dir()
-            .map(|home| home.join(".stakpak").join("installation_id").exists())
-            .unwrap_or(false);
-
-        if mcp_config_found || installation_indicator_found {
+        if mcp_config_found {
             AvailabilityInfo::InstallationFound
         } else {
             AvailabilityInfo::NotFound

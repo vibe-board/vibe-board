@@ -13,13 +13,13 @@ use crate::{
     command::{apply_overrides, CmdOverrides, CommandBuildError, CommandBuilder},
     env::ExecutionEnv,
     executors::{
-        AppendPrompt, AvailabilityInfo, ExecutorError, SpawnedChild, StandardCodingAgentExecutor,
+        AppendPrompt, ExecutorError, SpawnedChild, StandardCodingAgentExecutor,
     },
 };
 
 #[derive(Derivative, Clone, Serialize, Deserialize, TS, JsonSchema)]
 #[derivative(Debug, PartialEq)]
-pub struct Auggie {
+pub struct MinionCode {
     #[serde(default)]
     pub append_prompt: AppendPrompt,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -32,16 +32,16 @@ pub struct Auggie {
     pub approvals: Option<Arc<dyn ExecutorApprovalService>>,
 }
 
-impl Auggie {
+impl MinionCode {
     fn build_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
         let builder =
-            CommandBuilder::new("npx -y @augmentcode/auggie@0.19.0").extend_params(["--acp"]);
+            CommandBuilder::new("uvx minion-code@0.1.42").extend_params(["acp"]);
         apply_overrides(builder, &self.cmd)
     }
 }
 
 #[async_trait]
-impl StandardCodingAgentExecutor for Auggie {
+impl StandardCodingAgentExecutor for MinionCode {
     fn use_approvals(&mut self, approvals: Arc<dyn ExecutorApprovalService>) {
         self.approvals = Some(approvals);
     }
@@ -52,9 +52,9 @@ impl StandardCodingAgentExecutor for Auggie {
         prompt: &str,
         env: &ExecutionEnv,
     ) -> Result<SpawnedChild, ExecutorError> {
-        let auggie_command = self.build_command_builder()?.build_initial()?;
+        let command = self.build_command_builder()?.build_initial()?;
         let combined_prompt = self.append_prompt.combine_prompt(prompt);
-        let harness = AcpAgentHarness::with_session_namespace("auggie_sessions");
+        let harness = AcpAgentHarness::with_session_namespace("minion_sessions");
         let approvals = if self.yolo.unwrap_or(false) {
             None
         } else {
@@ -64,7 +64,7 @@ impl StandardCodingAgentExecutor for Auggie {
             .spawn_with_command(
                 current_dir,
                 combined_prompt,
-                auggie_command,
+                command,
                 env,
                 &self.cmd,
                 approvals,
@@ -80,9 +80,9 @@ impl StandardCodingAgentExecutor for Auggie {
         _reset_to_message_id: Option<&str>,
         env: &ExecutionEnv,
     ) -> Result<SpawnedChild, ExecutorError> {
-        let auggie_command = self.build_command_builder()?.build_follow_up(&[])?;
+        let command = self.build_command_builder()?.build_follow_up(&[])?;
         let combined_prompt = self.append_prompt.combine_prompt(prompt);
-        let harness = AcpAgentHarness::with_session_namespace("auggie_sessions");
+        let harness = AcpAgentHarness::with_session_namespace("minion_sessions");
         let approvals = if self.yolo.unwrap_or(false) {
             None
         } else {
@@ -93,7 +93,7 @@ impl StandardCodingAgentExecutor for Auggie {
                 current_dir,
                 combined_prompt,
                 session_id,
-                auggie_command,
+                command,
                 env,
                 &self.cmd,
                 approvals,
@@ -106,19 +106,6 @@ impl StandardCodingAgentExecutor for Auggie {
     }
 
     fn default_mcp_config_path(&self) -> Option<std::path::PathBuf> {
-        dirs::home_dir().map(|home| home.join(".augment").join("settings.json"))
-    }
-
-    fn get_availability_info(&self) -> AvailabilityInfo {
-        let mcp_config_found = self
-            .default_mcp_config_path()
-            .map(|p| p.exists())
-            .unwrap_or(false);
-
-        if mcp_config_found {
-            AvailabilityInfo::InstallationFound
-        } else {
-            AvailabilityInfo::NotFound
-        }
+        None
     }
 }

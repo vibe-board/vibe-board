@@ -209,14 +209,22 @@ fn generate_types_content() -> String {
         executors::executors::droid::Autonomy::decl(),
         executors::executors::droid::ReasoningEffortLevel::decl(),
         executors::executors::auggie::Auggie::decl(),
+        executors::executors::autohand::Autohand::decl(),
         executors::executors::cline::Cline::decl(),
+        executors::executors::codebuddy_code::CodebuddyCode::decl(),
+        executors::executors::corust_agent::CorustAgent::decl(),
+        executors::executors::crow_cli::CrowCli::decl(),
+        executors::executors::deepagents::Deepagents::decl(),
+        executors::executors::dimcode::Dimcode::decl(),
         executors::executors::fast_agent::FastAgent::decl(),
         executors::executors::goose::Goose::decl(),
         executors::executors::junie::Junie::decl(),
         executors::executors::kilo::Kilo::decl(),
         executors::executors::kimi::Kimi::decl(),
+        executors::executors::minion_code::MinionCode::decl(),
         executors::executors::mistral_vibe::MistralVibe::decl(),
         executors::executors::nova::Nova::decl(),
+        executors::executors::pi_acp::PiAcp::decl(),
         executors::executors::qoder::Qoder::decl(),
         executors::executors::stakpak::Stakpak::decl(),
         executors::executors::AppendPrompt::decl(),
@@ -329,8 +337,32 @@ fn generate_schemas() -> Result<HashMap<&'static str, String>, serde_json::Error
             generate_json_schema::<executors::executors::auggie::Auggie>()?,
         ),
         (
+            "autohand",
+            generate_json_schema::<executors::executors::autohand::Autohand>()?,
+        ),
+        (
             "cline",
             generate_json_schema::<executors::executors::cline::Cline>()?,
+        ),
+        (
+            "codebuddy_code",
+            generate_json_schema::<executors::executors::codebuddy_code::CodebuddyCode>()?,
+        ),
+        (
+            "corust_agent",
+            generate_json_schema::<executors::executors::corust_agent::CorustAgent>()?,
+        ),
+        (
+            "crow_cli",
+            generate_json_schema::<executors::executors::crow_cli::CrowCli>()?,
+        ),
+        (
+            "deepagents",
+            generate_json_schema::<executors::executors::deepagents::Deepagents>()?,
+        ),
+        (
+            "dimcode",
+            generate_json_schema::<executors::executors::dimcode::Dimcode>()?,
         ),
         (
             "fast_agent",
@@ -353,12 +385,20 @@ fn generate_schemas() -> Result<HashMap<&'static str, String>, serde_json::Error
             generate_json_schema::<executors::executors::kimi::Kimi>()?,
         ),
         (
+            "minion_code",
+            generate_json_schema::<executors::executors::minion_code::MinionCode>()?,
+        ),
+        (
             "mistral_vibe",
             generate_json_schema::<executors::executors::mistral_vibe::MistralVibe>()?,
         ),
         (
             "nova",
             generate_json_schema::<executors::executors::nova::Nova>()?,
+        ),
+        (
+            "pi_acp",
+            generate_json_schema::<executors::executors::pi_acp::PiAcp>()?,
         ),
         (
             "qoder",

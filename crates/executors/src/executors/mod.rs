@@ -21,10 +21,13 @@ use crate::{
     command::CommandBuildError,
     env::ExecutionEnv,
     executors::{
-        amp::Amp, auggie::Auggie, claude::ClaudeCode, cline::Cline, codex::Codex, copilot::Copilot,
-        cursor::CursorAgent, droid::Droid, fast_agent::FastAgent, gemini::Gemini, goose::Goose,
-        junie::Junie, kilo::Kilo, kimi::Kimi, mistral_vibe::MistralVibe, nova::Nova,
-        opencode::Opencode, qoder::Qoder, qwen::QwenCode, stakpak::Stakpak,
+        amp::Amp, autohand::Autohand, auggie::Auggie, claude::ClaudeCode, cline::Cline,
+        codebuddy_code::CodebuddyCode, codex::Codex, copilot::Copilot, corust_agent::CorustAgent,
+        crow_cli::CrowCli, cursor::CursorAgent, deepagents::Deepagents, dimcode::Dimcode,
+        droid::Droid, fast_agent::FastAgent, gemini::Gemini,
+        goose::Goose, junie::Junie, kilo::Kilo, kimi::Kimi, minion_code::MinionCode,
+        mistral_vibe::MistralVibe, nova::Nova, opencode::Opencode, pi_acp::PiAcp,
+        qoder::Qoder, qwen::QwenCode, stakpak::Stakpak,
     },
     logs::utils::patch,
     mcp_config::McpConfig,
@@ -32,12 +35,18 @@ use crate::{
 
 pub mod acp;
 pub mod amp;
+pub mod autohand;
 pub mod auggie;
 pub mod claude;
 pub mod cline;
+pub mod codebuddy_code;
 pub mod codex;
 pub mod copilot;
+pub mod corust_agent;
+pub mod crow_cli;
 pub mod cursor;
+pub mod deepagents;
+pub mod dimcode;
 pub mod droid;
 pub mod fast_agent;
 pub mod gemini;
@@ -45,9 +54,11 @@ pub mod goose;
 pub mod junie;
 pub mod kilo;
 pub mod kimi;
+pub mod minion_code;
 pub mod mistral_vibe;
 pub mod nova;
 pub mod opencode;
+pub mod pi_acp;
 #[cfg(feature = "qa-mode")]
 pub mod qa_mock;
 pub mod qoder;
@@ -118,20 +129,10 @@ pub enum ExecutorError {
     sqlx(type_name = "TEXT", rename_all = "SCREAMING_SNAKE_CASE")
 )]
 pub enum CodingAgent {
+    // Original 9 reliable agents
     ClaudeCode,
     Amp,
-    Auggie,
-    Cline,
-    FastAgent,
     Gemini,
-    Goose,
-    Junie,
-    Kilo,
-    Kimi,
-    MistralVibe,
-    Nova,
-    Qoder,
-    Stakpak,
     Codex,
     Opencode,
     #[serde(alias = "CURSOR")]
@@ -141,6 +142,26 @@ pub enum CodingAgent {
     QwenCode,
     Copilot,
     Droid,
+    // ACP Registry agents (from mobvibe)
+    Auggie,
+    Autohand,
+    Cline,
+    CodebuddyCode,
+    CorustAgent,
+    CrowCli,
+    Deepagents,
+    Dimcode,
+    FastAgent,
+    Goose,
+    Junie,
+    Kilo,
+    Kimi,
+    MinionCode,
+    MistralVibe,
+    Nova,
+    PiAcp,
+    Qoder,
+    Stakpak,
     #[cfg(feature = "qa-mode")]
     QaMock(QaMockExecutor),
 }
@@ -211,20 +232,29 @@ impl CodingAgent {
                 BaseAgentCapability::SetupHelper,
                 BaseAgentCapability::ContextUsage,
             ],
+            // All ACP agents support SessionFork
             Self::Amp(_)
             | Self::Gemini(_)
             | Self::QwenCode(_)
             | Self::Auggie(_)
-            | Self::Goose(_)
-            | Self::Kimi(_)
-            | Self::MistralVibe(_)
-            | Self::Qoder(_)
+            | Self::Autohand(_)
             | Self::Cline(_)
+            | Self::CodebuddyCode(_)
+            | Self::CorustAgent(_)
+            | Self::CrowCli(_)
+            | Self::Deepagents(_)
+            | Self::Dimcode(_)
+            | Self::FastAgent(_)
+            | Self::Goose(_)
             | Self::Junie(_)
             | Self::Kilo(_)
-            | Self::Stakpak(_)
-            | Self::FastAgent(_)
-            | Self::Nova(_) => {
+            | Self::Kimi(_)
+            | Self::MinionCode(_)
+            | Self::MistralVibe(_)
+            | Self::Nova(_)
+            | Self::PiAcp(_)
+            | Self::Qoder(_)
+            | Self::Stakpak(_) => {
                 vec![BaseAgentCapability::SessionFork]
             }
             Self::CursorAgent(_) => vec![BaseAgentCapability::SetupHelper],

@@ -10,10 +10,10 @@ use workspace_utils::msg_store::MsgStore;
 pub use super::acp::AcpAgentHarness;
 use crate::{
     approvals::ExecutorApprovalService,
-    command::{CmdOverrides, CommandBuildError, CommandBuilder, apply_overrides},
+    command::{apply_overrides, CmdOverrides, CommandBuildError, CommandBuilder},
     env::ExecutionEnv,
     executors::{
-        AppendPrompt, AvailabilityInfo, ExecutorError, SpawnedChild, StandardCodingAgentExecutor,
+        AppendPrompt, ExecutorError, SpawnedChild, StandardCodingAgentExecutor,
     },
 };
 
@@ -22,8 +22,6 @@ use crate::{
 pub struct FastAgent {
     #[serde(default)]
     pub append_prompt: AppendPrompt,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub variant: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub yolo: Option<bool>,
     #[serde(flatten)]
@@ -36,14 +34,8 @@ pub struct FastAgent {
 
 impl FastAgent {
     fn build_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
-        let version = self.variant.as_deref().unwrap_or("0.5.9");
-        let mut builder = CommandBuilder::new(format!("uvx fast-agent-acp=={}", version));
-
-        if self.yolo.unwrap_or(false) {
-            builder = builder.extend_params(["--yolo"]);
-        }
-
-        builder = builder.extend_params(["-x"]);
+        let builder =
+            CommandBuilder::new("uvx fast-agent-acp==0.5.11").extend_params(["-x"]);
         apply_overrides(builder, &self.cmd)
     }
 }
@@ -60,9 +52,9 @@ impl StandardCodingAgentExecutor for FastAgent {
         prompt: &str,
         env: &ExecutionEnv,
     ) -> Result<SpawnedChild, ExecutorError> {
-        let harness = AcpAgentHarness::with_session_namespace("fast_agent_sessions");
+        let command = self.build_command_builder()?.build_initial()?;
         let combined_prompt = self.append_prompt.combine_prompt(prompt);
-        let fast_agent_command = self.build_command_builder()?.build_initial()?;
+        let harness = AcpAgentHarness::with_session_namespace("fast_agent_sessions");
         let approvals = if self.yolo.unwrap_or(false) {
             None
         } else {
@@ -72,7 +64,7 @@ impl StandardCodingAgentExecutor for FastAgent {
             .spawn_with_command(
                 current_dir,
                 combined_prompt,
-                fast_agent_command,
+                command,
                 env,
                 &self.cmd,
                 approvals,
@@ -88,9 +80,9 @@ impl StandardCodingAgentExecutor for FastAgent {
         _reset_to_message_id: Option<&str>,
         env: &ExecutionEnv,
     ) -> Result<SpawnedChild, ExecutorError> {
-        let harness = AcpAgentHarness::with_session_namespace("fast_agent_sessions");
+        let command = self.build_command_builder()?.build_follow_up(&[])?;
         let combined_prompt = self.append_prompt.combine_prompt(prompt);
-        let fast_agent_command = self.build_command_builder()?.build_follow_up(&[])?;
+        let harness = AcpAgentHarness::with_session_namespace("fast_agent_sessions");
         let approvals = if self.yolo.unwrap_or(false) {
             None
         } else {
@@ -101,7 +93,7 @@ impl StandardCodingAgentExecutor for FastAgent {
                 current_dir,
                 combined_prompt,
                 session_id,
-                fast_agent_command,
+                command,
                 env,
                 &self.cmd,
                 approvals,
@@ -114,23 +106,6 @@ impl StandardCodingAgentExecutor for FastAgent {
     }
 
     fn default_mcp_config_path(&self) -> Option<std::path::PathBuf> {
-        dirs::home_dir().map(|home| home.join(".fast_agent").join("settings.json"))
-    }
-
-    fn get_availability_info(&self) -> AvailabilityInfo {
-        let mcp_config_found = self
-            .default_mcp_config_path()
-            .map(|p| p.exists())
-            .unwrap_or(false);
-
-        let installation_indicator_found = dirs::home_dir()
-            .map(|home| home.join(".fast_agent").join("installation_id").exists())
-            .unwrap_or(false);
-
-        if mcp_config_found || installation_indicator_found {
-            AvailabilityInfo::InstallationFound
-        } else {
-            AvailabilityInfo::NotFound
-        }
+        None
     }
 }

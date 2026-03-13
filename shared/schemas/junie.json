@@ -11,12 +11,6 @@
       "format": "textarea",
       "default": null
     },
-    "variant": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
     "yolo": {
       "type": [
         "boolean",

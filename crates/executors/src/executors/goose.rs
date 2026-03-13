@@ -10,7 +10,7 @@ use workspace_utils::msg_store::MsgStore;
 pub use super::acp::AcpAgentHarness;
 use crate::{
     approvals::ExecutorApprovalService,
-    command::{CmdOverrides, CommandBuildError, CommandBuilder, apply_overrides},
+    command::{apply_overrides, CmdOverrides, CommandBuildError, CommandBuilder},
     env::ExecutionEnv,
     executors::{
         AppendPrompt, AvailabilityInfo, ExecutorError, SpawnedChild, StandardCodingAgentExecutor,
@@ -23,8 +23,6 @@ pub struct Goose {
     #[serde(default)]
     pub append_prompt: AppendPrompt,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub variant: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub yolo: Option<bool>,
     #[serde(flatten)]
     pub cmd: CmdOverrides,
@@ -36,14 +34,7 @@ pub struct Goose {
 
 impl Goose {
     fn build_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
-        let binary = self.variant.as_deref().unwrap_or("goose");
-        let mut builder = CommandBuilder::new(binary.to_string());
-
-        if self.yolo.unwrap_or(false) {
-            builder = builder.extend_params(["--yolo"]);
-        }
-
-        builder = builder.extend_params(["acp"]);
+        let builder = CommandBuilder::new("goose").extend_params(["acp"]);
         apply_overrides(builder, &self.cmd)
     }
 }
@@ -60,9 +51,9 @@ impl StandardCodingAgentExecutor for Goose {
         prompt: &str,
         env: &ExecutionEnv,
     ) -> Result<SpawnedChild, ExecutorError> {
-        let harness = AcpAgentHarness::with_session_namespace("goose_sessions");
+        let command = self.build_command_builder()?.build_initial()?;
         let combined_prompt = self.append_prompt.combine_prompt(prompt);
-        let goose_command = self.build_command_builder()?.build_initial()?;
+        let harness = AcpAgentHarness::with_session_namespace("goose_sessions");
         let approvals = if self.yolo.unwrap_or(false) {
             None
         } else {
@@ -72,7 +63,7 @@ impl StandardCodingAgentExecutor for Goose {
             .spawn_with_command(
                 current_dir,
                 combined_prompt,
-                goose_command,
+                command,
                 env,
                 &self.cmd,
                 approvals,
@@ -88,9 +79,9 @@ impl StandardCodingAgentExecutor for Goose {
         _reset_to_message_id: Option<&str>,
         env: &ExecutionEnv,
     ) -> Result<SpawnedChild, ExecutorError> {
-        let harness = AcpAgentHarness::with_session_namespace("goose_sessions");
+        let command = self.build_command_builder()?.build_follow_up(&[])?;
         let combined_prompt = self.append_prompt.combine_prompt(prompt);
-        let goose_command = self.build_command_builder()?.build_follow_up(&[])?;
+        let harness = AcpAgentHarness::with_session_namespace("goose_sessions");
         let approvals = if self.yolo.unwrap_or(false) {
             None
         } else {
@@ -101,7 +92,7 @@ impl StandardCodingAgentExecutor for Goose {
                 current_dir,
                 combined_prompt,
                 session_id,
-                goose_command,
+                command,
                 env,
                 &self.cmd,
                 approvals,
@@ -114,7 +105,7 @@ impl StandardCodingAgentExecutor for Goose {
     }
 
     fn default_mcp_config_path(&self) -> Option<std::path::PathBuf> {
-        dirs::home_dir().map(|home| home.join(".config").join("goose").join("settings.yaml"))
+        dirs::home_dir().map(|home| home.join(".config").join("goose").join("config.yaml"))
     }
 
     fn get_availability_info(&self) -> AvailabilityInfo {
@@ -123,11 +114,7 @@ impl StandardCodingAgentExecutor for Goose {
             .map(|p| p.exists())
             .unwrap_or(false);
 
-        let installation_indicator_found = dirs::home_dir()
-            .map(|home| home.join(".goose").join("installation_id").exists())
-            .unwrap_or(false);
-
-        if mcp_config_found || installation_indicator_found {
+        if mcp_config_found {
             AvailabilityInfo::InstallationFound
         } else {
             AvailabilityInfo::NotFound

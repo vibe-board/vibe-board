@@ -65,6 +65,20 @@ export function getSortedAgents(
 }
 
 /**
+ * Filter agents to only include enabled ones.
+ * If agentEnabled is null/undefined, all agents are considered enabled (backwards compat).
+ */
+export function filterEnabledAgents(
+  agents: BaseCodingAgent[],
+  agentEnabled: BaseCodingAgent[] | undefined | null
+): BaseCodingAgent[] {
+  if (!agentEnabled || agentEnabled.length === 0) {
+    return agents;
+  }
+  return agents.filter((a) => agentEnabled.includes(a));
+}
+
+/**
  * Extract ExecutorProfileId from an ExecutorAction chain.
  * Traverses the action chain to find the first coding agent request.
  */

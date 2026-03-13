@@ -401,16 +401,24 @@ impl CodingAgent {
             | CodingAgent::Amp(_)
             | CodingAgent::Droid(_)
             | CodingAgent::Auggie(_)
-            | CodingAgent::Goose(_)
-            | CodingAgent::Kimi(_)
-            | CodingAgent::MistralVibe(_)
-            | CodingAgent::Qoder(_)
+            | CodingAgent::Autohand(_)
             | CodingAgent::Cline(_)
+            | CodingAgent::CodebuddyCode(_)
+            | CodingAgent::CorustAgent(_)
+            | CodingAgent::CrowCli(_)
+            | CodingAgent::Deepagents(_)
+            | CodingAgent::Dimcode(_)
+            | CodingAgent::FastAgent(_)
+            | CodingAgent::Goose(_)
             | CodingAgent::Junie(_)
             | CodingAgent::Kilo(_)
-            | CodingAgent::Stakpak(_)
-            | CodingAgent::FastAgent(_)
-            | CodingAgent::Nova(_) => Passthrough,
+            | CodingAgent::Kimi(_)
+            | CodingAgent::MinionCode(_)
+            | CodingAgent::MistralVibe(_)
+            | CodingAgent::Nova(_)
+            | CodingAgent::PiAcp(_)
+            | CodingAgent::Qoder(_)
+            | CodingAgent::Stakpak(_) => Passthrough,
             CodingAgent::QwenCode(_) | CodingAgent::Gemini(_) => Gemini,
             CodingAgent::CursorAgent(_) => Cursor,
             CodingAgent::Codex(_) => Codex,
