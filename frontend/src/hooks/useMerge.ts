@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ExecutorProfileId } from 'shared/types';
 import { attemptsApi } from '@/lib/api';
 import { repoBranchKeys } from './useRepoBranches';
+import { taskKeys } from './useTask';
 
 export type MergeParams = {
   repoId: string;
@@ -33,6 +34,9 @@ export function useMerge(
 
       // Invalidate all repo branches queries
       queryClient.invalidateQueries({ queryKey: repoBranchKeys.all });
+
+      // Invalidate task queries so the task status updates to Done
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
 
       onSuccess?.();
     },
