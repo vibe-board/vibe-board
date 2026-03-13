@@ -26,7 +26,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
 import { JSONEditor } from '@/components/ui/json-editor';
-import { ChevronDown, Loader2 } from 'lucide-react';
+import { ChevronDown, Loader2, ArrowUp, ArrowDown } from 'lucide-react';
 
 import { ExecutorConfigForm } from '@/components/ExecutorConfigForm';
 import { useProfiles } from '@/hooks/useProfiles';
@@ -35,6 +35,8 @@ import { CreateConfigurationDialog } from '@/components/dialogs/settings/CreateC
 import { DeleteConfigurationDialog } from '@/components/dialogs/settings/DeleteConfigurationDialog';
 import { useAgentAvailability } from '@/hooks/useAgentAvailability';
 import { AgentAvailabilityIndicator } from '@/components/AgentAvailabilityIndicator';
+import { AgentIcon } from '@/components/agents/AgentIcon';
+import { toPrettyCase } from '@/utils/string';
 import type {
   BaseCodingAgent,
   ExecutorConfigs,
@@ -594,6 +596,90 @@ export function AgentSettings() {
               )}
               {t('common:buttons.save')}
             </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Agent Order</CardTitle>
+          <CardDescription>
+            Reorder agents using the up/down arrows. This order is used across all agent selectors.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-1">
+            {profiles &&
+              getSortedAgents(
+                Object.keys(profiles) as BaseCodingAgent[],
+                config?.agent_order
+              ).map((agent, index, arr) => (
+                <div
+                  key={agent}
+                  className="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-secondary/50"
+                >
+                  <AgentIcon agent={agent} className="w-5 h-5 shrink-0" />
+                  <span className="flex-1 text-sm">{toPrettyCase(agent)}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0"
+                    disabled={index === 0 || executorSaving}
+                    onClick={async () => {
+                      const order = getSortedAgents(
+                        Object.keys(profiles) as BaseCodingAgent[],
+                        config?.agent_order
+                      );
+                      const newOrder = [...order];
+                      [newOrder[index - 1], newOrder[index]] = [
+                        newOrder[index],
+                        newOrder[index - 1],
+                      ];
+                      setExecutorSaving(true);
+                      try {
+                        await updateAndSaveConfig({ agent_order: newOrder });
+                        reloadSystem();
+                      } catch (err) {
+                        console.error('Failed to save agent order:', err);
+                      } finally {
+                        setExecutorSaving(false);
+                      }
+                    }}
+                    title="Move up"
+                  >
+                    <ArrowUp className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0"
+                    disabled={index === arr.length - 1 || executorSaving}
+                    onClick={async () => {
+                      const order = getSortedAgents(
+                        Object.keys(profiles) as BaseCodingAgent[],
+                        config?.agent_order
+                      );
+                      const newOrder = [...order];
+                      [newOrder[index], newOrder[index + 1]] = [
+                        newOrder[index + 1],
+                        newOrder[index],
+                      ];
+                      setExecutorSaving(true);
+                      try {
+                        await updateAndSaveConfig({ agent_order: newOrder });
+                        reloadSystem();
+                      } catch (err) {
+                        console.error('Failed to save agent order:', err);
+                      } finally {
+                        setExecutorSaving(false);
+                      }
+                    }}
+                    title="Move down"
+                  >
+                    <ArrowDown className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
           </div>
         </CardContent>
       </Card>
