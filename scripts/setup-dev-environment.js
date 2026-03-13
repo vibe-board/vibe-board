@@ -124,8 +124,13 @@ async function allocatePorts() {
     }
   }
 
-  // Find new free ports
-  const frontendPort = await findFreePort(3000);
+  // Find new free ports using a random starting port to avoid
+  // collisions between parallel worktree dev servers
+  const minPort = 3000;
+  const maxPort = 9000;
+  const randomStart =
+    Math.floor(Math.random() * (maxPort - minPort + 1)) + minPort;
+  const frontendPort = await findFreePort(randomStart);
   const backendPort = await findFreePort(frontendPort + 1);
 
   const ports = {

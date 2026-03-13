@@ -67,6 +67,14 @@ impl Executable for ScriptRequest {
         // Apply environment variables
         env.apply_to_command(&mut command);
 
+        // For dev server scripts, remove vibe-kanban's port env vars so the
+        // dev server uses its own default port instead of inheriting them.
+        if self.context == ScriptContext::DevServer {
+            command.env_remove("PORT");
+            command.env_remove("FRONTEND_PORT");
+            command.env_remove("BACKEND_PORT");
+        }
+
         let child = command.group_spawn()?;
 
         Ok(child.into())
