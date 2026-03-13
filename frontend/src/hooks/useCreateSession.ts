@@ -37,6 +37,7 @@ export function useCreateSession() {
         retry_process_id: null,
         force_when_dirty: null,
         perform_git_reset: null,
+        allow_executor_change: null,
       };
       await sessionsApi.followUp(session.id, body);
 

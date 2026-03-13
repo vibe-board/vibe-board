@@ -284,7 +284,12 @@ export type CheckAgentAvailabilityQuery = { executor: BaseCodingAgent, };
 
 export type CurrentUserResponse = { user_id: string, };
 
-export type CreateFollowUpAttempt = { prompt: string, executor_profile_id: ExecutorProfileId, retry_process_id: string | null, force_when_dirty: boolean | null, perform_git_reset: boolean | null, };
+export type CreateFollowUpAttempt = { prompt: string, executor_profile_id: ExecutorProfileId, retry_process_id: string | null, force_when_dirty: boolean | null, perform_git_reset: boolean | null, 
+/**
+ * When true, allows changing the executor (e.g., from Claude Code to Amp).
+ * The previous conversation context will be included in the new prompt.
+ */
+allow_executor_change: boolean | null, };
 
 export type ResetProcessRequest = { process_id: string, force_when_dirty: boolean | null, perform_git_reset: boolean | null, };
 

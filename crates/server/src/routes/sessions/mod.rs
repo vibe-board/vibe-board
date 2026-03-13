@@ -90,6 +90,9 @@ pub struct CreateFollowUpAttempt {
     pub retry_process_id: Option<Uuid>,
     pub force_when_dirty: Option<bool>,
     pub perform_git_reset: Option<bool>,
+    /// When true, allows changing the executor (e.g., from Claude Code to Amp).
+    /// The previous conversation context will be included in the new prompt.
+    pub allow_executor_change: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -121,25 +124,35 @@ pub async fn follow_up(
         .await?;
 
     let executor_profile_id = payload.executor_profile_id;
+    let allow_executor_change = payload.allow_executor_change.unwrap_or(false);
 
     // Validate executor matches session if session has prior executions
+    // Skip validation if allow_executor_change is true
     let expected_executor: Option<String> =
         ExecutionProcess::latest_executor_profile_for_session(pool, session.id)
             .await?
             .map(|profile| profile.executor.to_string())
             .or_else(|| session.executor.clone());
 
-    if let Some(expected) = expected_executor {
+    let executor_changed = if let Some(expected) = expected_executor {
         let actual = executor_profile_id.executor.to_string();
         if expected != actual {
-            return Err(ApiError::Session(SessionError::ExecutorMismatch {
-                expected,
-                actual,
-            }));
+            if !allow_executor_change {
+                return Err(ApiError::Session(SessionError::ExecutorMismatch {
+                    expected,
+                    actual,
+                }));
+            }
+            true
+        } else {
+            false
         }
-    }
+    } else {
+        false
+    };
 
-    if session.executor.is_none() {
+    // Update session executor if changed or not set
+    if executor_changed || session.executor.is_none() {
         Session::update_executor(pool, session.id, &executor_profile_id.executor.to_string())
             .await?;
     }
@@ -155,7 +168,18 @@ pub async fn follow_up(
 
     let latest_session_info = CodingAgentTurn::find_latest_session_info(pool, session.id).await?;
 
-    let prompt = payload.prompt;
+    let mut prompt = payload.prompt;
+
+    // When executor changes, include previous conversation context in the prompt
+    // and treat as initial request (no session continuity)
+    if executor_changed {
+        if let Some(context) = CodingAgentTurn::build_context_summary(pool, session.id).await? {
+            prompt = format!(
+                "Previous conversation context (from a different executor):\n{}\n\n---\n\nCurrent request:\n{}",
+                context, prompt
+            );
+        }
+    }
 
     let repos = WorkspaceRepo::find_repos_for_workspace(pool, workspace.id).await?;
     let cleanup_action = deployment.container().cleanup_actions_for_repos(&repos);
@@ -167,14 +191,25 @@ pub async fn follow_up(
         .cloned();
 
     let action_type = if let Some(info) = latest_session_info {
-        let is_reset = payload.retry_process_id.is_some();
-        ExecutorActionType::CodingAgentFollowUpRequest(CodingAgentFollowUpRequest {
-            prompt: prompt.clone(),
-            session_id: info.session_id,
-            reset_to_message_id: if is_reset { info.message_id } else { None },
-            executor_profile_id: executor_profile_id.clone(),
-            working_dir: working_dir.clone(),
-        })
+        // When executor changed, don't use old session_id - start fresh with new executor
+        if executor_changed {
+            ExecutorActionType::CodingAgentInitialRequest(
+                executors::actions::coding_agent_initial::CodingAgentInitialRequest {
+                    prompt,
+                    executor_profile_id: executor_profile_id.clone(),
+                    working_dir,
+                },
+            )
+        } else {
+            let is_reset = payload.retry_process_id.is_some();
+            ExecutorActionType::CodingAgentFollowUpRequest(CodingAgentFollowUpRequest {
+                prompt,
+                session_id: info.session_id,
+                reset_to_message_id: if is_reset { info.message_id } else { None },
+                executor_profile_id: executor_profile_id.clone(),
+                working_dir: working_dir.clone(),
+            })
+        }
     } else {
         ExecutorActionType::CodingAgentInitialRequest(
             executors::actions::coding_agent_initial::CodingAgentInitialRequest {

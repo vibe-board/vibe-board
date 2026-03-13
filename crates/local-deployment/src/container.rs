@@ -19,7 +19,7 @@ use db::{
         execution_process_repo_state::ExecutionProcessRepoState,
         repo::Repo,
         scratch::{DraftFollowUpData, Scratch, ScratchType},
-        session::{Session, SessionError},
+        session::Session,
         task::{Task, TaskStatus},
         workspace::Workspace,
         workspace_repo::WorkspaceRepo,
@@ -938,27 +938,42 @@ impl LocalContainerService {
     ) -> Result<ExecutionProcess, ContainerError> {
         let executor_profile_id = queued_data.executor_profile_id.clone();
 
-        // Validate executor matches session if session has prior executions
+        // Check if executor changed (queued messages allow executor changes)
         let expected_executor: Option<String> =
             ExecutionProcess::latest_executor_profile_for_session(&self.db.pool, ctx.session.id)
                 .await?
                 .map(|profile| profile.executor.to_string())
                 .or_else(|| ctx.session.executor.clone());
 
-        if let Some(expected) = expected_executor {
+        let executor_changed = if let Some(expected) = expected_executor {
             let actual = executor_profile_id.executor.to_string();
-            if expected != actual {
-                return Err(SessionError::ExecutorMismatch { expected, actual }.into());
-            }
-        }
+            expected != actual
+        } else {
+            false
+        };
 
-        if ctx.session.executor.is_none() {
+        // Update session executor if changed or not set
+        if executor_changed || ctx.session.executor.is_none() {
             Session::update_executor(
                 &self.db.pool,
                 ctx.session.id,
                 &executor_profile_id.executor.to_string(),
             )
             .await?;
+        }
+
+        let mut prompt = queued_data.message.clone();
+
+        // When executor changes, include previous conversation context
+        if executor_changed {
+            if let Some(context) =
+                CodingAgentTurn::build_context_summary(&self.db.pool, ctx.session.id).await?
+            {
+                prompt = format!(
+                    "Previous conversation context (from a different executor):\n{}\n\n---\n\nCurrent request:\n{}",
+                    context, prompt
+                );
+            }
         }
 
         // Get latest agent turn for session continuity (from coding agent turns)
@@ -977,16 +992,25 @@ impl LocalContainerService {
             .cloned();
 
         let action_type = if let Some(info) = latest_session_info {
-            ExecutorActionType::CodingAgentFollowUpRequest(CodingAgentFollowUpRequest {
-                prompt: queued_data.message.clone(),
-                session_id: info.session_id,
-                reset_to_message_id: None,
-                executor_profile_id: executor_profile_id.clone(),
-                working_dir: working_dir.clone(),
-            })
+            // When executor changed, don't use old session_id - start fresh with new executor
+            if executor_changed {
+                ExecutorActionType::CodingAgentInitialRequest(CodingAgentInitialRequest {
+                    prompt,
+                    executor_profile_id: executor_profile_id.clone(),
+                    working_dir,
+                })
+            } else {
+                ExecutorActionType::CodingAgentFollowUpRequest(CodingAgentFollowUpRequest {
+                    prompt,
+                    session_id: info.session_id,
+                    reset_to_message_id: None,
+                    executor_profile_id: executor_profile_id.clone(),
+                    working_dir: working_dir.clone(),
+                })
+            }
         } else {
             ExecutorActionType::CodingAgentInitialRequest(CodingAgentInitialRequest {
-                prompt: queued_data.message.clone(),
+                prompt,
                 executor_profile_id: executor_profile_id.clone(),
                 working_dir,
             })

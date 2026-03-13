@@ -17,6 +17,7 @@ export interface RetryProcessParams {
   executionProcessId: string;
   branchStatus: RepoBranchStatus[] | undefined;
   processes: ExecutionProcess[] | undefined;
+  allowExecutorChange?: boolean;
 }
 
 class RetryDialogCancelledError extends Error {
@@ -39,6 +40,7 @@ export function useRetryProcess(
       executionProcessId,
       branchStatus,
       processes,
+      allowExecutorChange,
     }: RetryProcessParams) => {
       // Ask user for confirmation - dialog fetches its own preflight data
       let modalResult: RestoreLogsDialogResult | undefined;
@@ -62,6 +64,7 @@ export function useRetryProcess(
         retry_process_id: executionProcessId,
         force_when_dirty: modalResult.forceWhenDirty ?? false,
         perform_git_reset: modalResult.performGitReset ?? true,
+        allow_executor_change: allowExecutorChange ?? null,
       });
     },
     onSuccess: () => {

@@ -4,11 +4,13 @@ import WYSIWYGEditor from '@/components/ui/wysiwyg';
 import { useProject } from '@/contexts/ProjectContext';
 import { cn } from '@/lib/utils';
 import { VariantSelector } from '@/components/tasks/VariantSelector';
+import { AgentSelector } from '@/components/tasks/AgentSelector';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle, Loader2, Paperclip, Send, X } from 'lucide-react';
 import { imagesApi } from '@/lib/api';
 import type { WorkspaceWithSession } from '@/types/attempt';
+import type { BaseCodingAgent } from 'shared/types';
 import { useAttemptExecution } from '@/hooks/useAttemptExecution';
 import { useUserSystem } from '@/components/ConfigProvider';
 import { useBranchStatus } from '@/hooks/useBranchStatus';
@@ -49,6 +51,26 @@ export function RetryEditorInline({
     return extractProfileFromAction(process.executor_action);
   }, [attemptData.processes, executionProcessId]);
 
+  // Track selected executor (allows changing executor on retry)
+  const [selectedExecutor, setSelectedExecutor] = useState<BaseCodingAgent | null>(
+    processProfile?.executor ?? null
+  );
+
+  // Track if executor was changed from original
+  const executorChanged = useMemo(() => {
+    if (!processProfile || !selectedExecutor) return false;
+    return processProfile.executor !== selectedExecutor;
+  }, [processProfile, selectedExecutor]);
+
+  // Update selected executor when processProfile changes
+  const prevProcessProfileRef = useRef(processProfile);
+  if (prevProcessProfileRef.current !== processProfile && processProfile) {
+    prevProcessProfileRef.current = processProfile;
+    if (selectedExecutor !== processProfile.executor) {
+      setSelectedExecutor(processProfile.executor);
+    }
+  }
+
   const { selectedVariant, setSelectedVariant } = useVariant({
     processVariant: processProfile?.variant ?? null,
     scratchVariant: undefined,
@@ -62,32 +84,34 @@ export function RetryEditorInline({
 
   const isSending = retryMutation.isPending;
   const canSend =
-    !isAttemptRunning && !!message.trim() && !!sessionId && !!processProfile;
+    !isAttemptRunning && !!message.trim() && !!sessionId && !!processProfile && !!selectedExecutor;
 
   const onCancel = () => {
     onCancelled?.();
   };
 
   const onSend = useCallback(() => {
-    if (!canSend || !processProfile) return;
+    if (!canSend || !selectedExecutor) return;
     setSendError(null);
     retryMutation.mutate({
       message,
-      executor: processProfile.executor,
+      executor: selectedExecutor,
       variant: selectedVariant,
       executionProcessId,
       branchStatus,
       processes: attemptData.processes,
+      allowExecutorChange: executorChanged,
     });
   }, [
     canSend,
     retryMutation,
     message,
-    processProfile,
+    selectedExecutor,
     selectedVariant,
     executionProcessId,
     branchStatus,
     attemptData.processes,
+    executorChanged,
   ]);
 
   const handleCmdEnter = useCallback(() => {
@@ -154,10 +178,23 @@ export function RetryEditorInline({
       </div>
 
       <div className="flex items-center gap-2">
+        <AgentSelector
+          profiles={profiles}
+          selectedExecutorProfile={selectedExecutor ? { executor: selectedExecutor, variant: selectedVariant } : null}
+          onChange={(profile) => {
+            setSelectedExecutor(profile.executor);
+            // Reset variant when executor changes
+            if (profile.executor !== processProfile?.executor) {
+              setSelectedVariant(null);
+            }
+          }}
+          disabled={isSending}
+          className="w-32"
+        />
         <VariantSelector
           selectedVariant={selectedVariant}
           onChange={setSelectedVariant}
-          currentProfile={profiles?.[attempt.session?.executor ?? ''] ?? null}
+          currentProfile={selectedExecutor ? profiles?.[selectedExecutor] ?? null : null}
         />
         <input
           ref={fileInputRef}

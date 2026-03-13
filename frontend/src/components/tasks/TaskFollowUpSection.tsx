@@ -40,6 +40,7 @@ import { useHotkeysContext } from 'react-hotkeys-hook';
 import { useProject } from '@/contexts/ProjectContext';
 //
 import { VariantSelector } from '@/components/tasks/VariantSelector';
+import { AgentSelector } from '@/components/tasks/AgentSelector';
 import { useAttemptBranch } from '@/hooks/useAttemptBranch';
 import { FollowUpConflictSection } from '@/components/tasks/follow-up/FollowUpConflictSection';
 import { ClickedElementsBanner } from '@/components/tasks/ClickedElementsBanner';
@@ -51,6 +52,7 @@ import type {
   DraftFollowUpData,
   ExecutorProfileId,
   QueueStatus,
+  BaseCodingAgent,
 } from 'shared/types';
 import { getLatestProfileFromProcesses } from '@/utils/executor';
 import { buildResolveConflictsInstructions } from '@/lib/conflicts';
@@ -156,10 +158,31 @@ export function TaskFollowUpSection({
     [processes]
   );
 
+  // Executor selection - allows changing executor on follow-up
+  const [selectedExecutor, setSelectedExecutor] = useState<BaseCodingAgent | null>(
+    latestProfileId?.executor ?? null
+  );
+
+  // Track if executor was changed from original
+  const executorChanged = useMemo(() => {
+    if (!latestProfileId || !selectedExecutor) return false;
+    return latestProfileId.executor !== selectedExecutor;
+  }, [latestProfileId, selectedExecutor]);
+
+  // Update selected executor when latestProfileId changes (but not if user manually selected)
+  const prevLatestProfileRef = useRef(latestProfileId);
+  useEffect(() => {
+    if (prevLatestProfileRef.current !== latestProfileId && latestProfileId) {
+      prevLatestProfileRef.current = latestProfileId;
+      // Only auto-update if no manual selection or if the process changed
+      setSelectedExecutor(latestProfileId.executor);
+    }
+  }, [latestProfileId]);
+
   const currentProfile = useMemo(() => {
-    if (!latestProfileId) return null;
-    return profiles?.[latestProfileId.executor] ?? null;
-  }, [latestProfileId, profiles]);
+    if (!selectedExecutor) return null;
+    return profiles?.[selectedExecutor] ?? null;
+  }, [selectedExecutor, profiles]);
 
   // Variant selection with priority: user selection > scratch > process
   const { selectedVariant, setSelectedVariant: setVariantFromHook } =
@@ -352,8 +375,9 @@ export function TaskFollowUpSection({
       conflictMarkdown: conflictResolutionInstructions,
       reviewMarkdown,
       clickedMarkdown,
-      executor: latestProfileId?.executor ?? null,
+      executor: selectedExecutor,
       variant: selectedVariant,
+      allowExecutorChange: executorChanged,
       clearComments,
       clearClickedElements,
       onAfterSendCleanup: () => {
@@ -382,7 +406,7 @@ export function TaskFollowUpSection({
   ]);
 
   const canSendFollowUp = useMemo(() => {
-    if (!canTypeFollowUp || !latestProfileId?.executor) {
+    if (!canTypeFollowUp || !selectedExecutor) {
       return false;
     }
 
@@ -395,7 +419,7 @@ export function TaskFollowUpSection({
     );
   }, [
     canTypeFollowUp,
-    latestProfileId?.executor,
+    selectedExecutor,
     conflictResolutionInstructions,
     reviewMarkdown,
     clickedMarkdown,
@@ -446,9 +470,9 @@ export function TaskFollowUpSection({
         Boolean
       )
     );
-    if (latestProfileId) {
+    if (selectedExecutor) {
       await queueMessage(prompt, {
-        executor: latestProfileId.executor,
+        executor: selectedExecutor,
         variant: selectedVariant,
       });
     }
@@ -457,7 +481,7 @@ export function TaskFollowUpSection({
     conflictResolutionInstructions,
     reviewMarkdown,
     clickedMarkdown,
-    latestProfileId,
+    selectedExecutor,
     selectedVariant,
     queueMessage,
     cancelDebouncedSave,
@@ -778,7 +802,7 @@ export function TaskFollowUpSection({
                 onPasteFiles={handlePasteFiles}
                 repoIds={repos.map((r) => r.id)}
                 projectId={projectId}
-                executor={latestProfileId?.executor ?? null}
+                executor={selectedExecutor ?? null}
                 taskAttemptId={workspaceId}
                 onCmdEnter={handleSubmitShortcut}
                 className="min-h-[40px]"
@@ -792,6 +816,19 @@ export function TaskFollowUpSection({
       <div className="p-4">
         <div className="flex flex-row gap-2 items-center">
           <div className="flex-1 flex gap-2">
+            <AgentSelector
+              profiles={profiles}
+              selectedExecutorProfile={selectedExecutor ? { executor: selectedExecutor, variant: selectedVariant } : null}
+              onChange={(profile) => {
+                setSelectedExecutor(profile.executor);
+                // Reset variant when executor changes
+                if (profile.executor !== latestProfileId?.executor) {
+                  setVariantFromHook(null);
+                }
+              }}
+              disabled={!isEditable}
+              className="w-32"
+            />
             <VariantSelector
               currentProfile={currentProfile}
               selectedVariant={selectedVariant}

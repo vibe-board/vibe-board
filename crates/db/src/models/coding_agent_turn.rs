@@ -277,4 +277,60 @@ impl CodingAgentTurn {
 
         Ok(result.into_iter().collect())
     }
+
+    /// Build a context summary from all coding agent turns for a session.
+    /// Used when switching executors to preserve conversation history.
+    /// Returns None if there are no turns with content.
+    pub async fn build_context_summary(
+        pool: &SqlitePool,
+        session_id: Uuid,
+    ) -> Result<Option<String>, sqlx::Error> {
+        #[derive(FromRow)]
+        struct TurnContext {
+            prompt: Option<String>,
+            summary: Option<String>,
+        }
+
+        let turns: Vec<TurnContext> = sqlx::query_as!(
+            TurnContext,
+            r#"SELECT
+                cat.prompt,
+                cat.summary
+               FROM execution_processes ep
+               JOIN coding_agent_turns cat ON ep.id = cat.execution_process_id
+               WHERE ep.session_id = $1
+                 AND ep.run_reason = 'codingagent'
+                 AND ep.dropped = FALSE
+                 AND (cat.prompt IS NOT NULL OR cat.summary IS NOT NULL)
+               ORDER BY ep.created_at ASC"#,
+            session_id
+        )
+        .fetch_all(pool)
+        .await?;
+
+        if turns.is_empty() {
+            return Ok(None);
+        }
+
+        let context_parts: Vec<String> = turns
+            .iter()
+            .enumerate()
+            .filter_map(|(i, turn)| {
+                let user_msg = turn.prompt.as_deref().unwrap_or("(no message)");
+                let assistant_msg = turn.summary.as_deref().unwrap_or("(no response)");
+                Some(format!(
+                    "Turn {}:\nUser: {}\nAssistant: {}",
+                    i + 1,
+                    user_msg,
+                    assistant_msg
+                ))
+            })
+            .collect();
+
+        if context_parts.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(context_parts.join("\n\n")))
+        }
+    }
 }
