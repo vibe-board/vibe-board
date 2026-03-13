@@ -153,8 +153,6 @@ impl ClaudeCode {
                 "--permission-mode={}",
                 PermissionMode::BypassPermissions
             )]);
-        } else {
-            builder = builder.extend_params(["--disallowedTools=AskUserQuestion"]);
         }
         if self.dangerously_skip_permissions.unwrap_or(false) {
             builder = builder.extend_params(["--dangerously-skip-permissions"]);
