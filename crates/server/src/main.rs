@@ -1,4 +1,10 @@
+mod e2ee_bridge;
+mod e2ee_config;
+mod e2ee_crypto;
+
 use anyhow::{self, Error as AnyhowError};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use clap::{Parser, Subcommand};
 use deployment::{Deployment, DeploymentError};
 use server::{DeploymentImpl, routes};
 use services::services::container::ContainerService;
@@ -12,6 +18,32 @@ use utils::{
     port_file::write_port_file,
     sentry::{self as sentry_utils, SentrySource, sentry_layer},
 };
+
+#[derive(Parser)]
+#[command(name = "vibe-kanban", about = "Vibe Kanban — local-first Kanban board")]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Start the server (default if no subcommand given)
+    Server,
+
+    /// Authenticate with a remote gateway and generate master secret
+    Login {
+        /// Gateway URL (e.g., https://gateway.example.com)
+        #[arg(long)]
+        gateway: String,
+    },
+
+    /// Delete stored gateway credentials
+    Logout,
+
+    /// Show gateway connection status
+    Status,
+}
 
 #[derive(Debug, Error)]
 pub enum VibeKanbanError {
@@ -27,6 +59,35 @@ pub enum VibeKanbanError {
 
 #[tokio::main]
 async fn main() -> Result<(), VibeKanbanError> {
+    let cli = Cli::parse();
+
+    match cli.command {
+        None | Some(Commands::Server) => cmd_server().await,
+        Some(Commands::Login { gateway }) => {
+            init_tracing_simple();
+            cmd_login(&gateway).await.map_err(VibeKanbanError::Other)
+        }
+        Some(Commands::Logout) => {
+            cmd_logout().map_err(VibeKanbanError::Other)
+        }
+        Some(Commands::Status) => {
+            cmd_status().map_err(VibeKanbanError::Other)
+        }
+    }
+}
+
+/// Initialize simple tracing for CLI subcommands
+fn init_tracing_simple() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .try_init();
+}
+
+/// The original server main logic
+async fn cmd_server() -> Result<(), VibeKanbanError> {
     // Install rustls crypto provider before any TLS operations
     rustls::crypto::aws_lc_rs::default_provider()
         .install_default()
@@ -100,9 +161,34 @@ async fn main() -> Result<(), VibeKanbanError> {
 
     let host = std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
     let listener = tokio::net::TcpListener::bind(format!("{host}:{port}")).await?;
-    let actual_port = listener.local_addr()?.port(); // get → 53427 (example)
+    let actual_port = listener.local_addr()?.port();
 
     tracing::info!("Server running on http://{host}:{actual_port}");
+
+    // If VK_GATEWAY_URL is set and we have credentials, spawn bridge as background task
+    if let Ok(gateway_url) = std::env::var("VK_GATEWAY_URL") {
+        match e2ee_config::load_credentials() {
+            Ok(creds) if creds.gateway_url == gateway_url => {
+                let local_port = actual_port;
+                tokio::spawn(async move {
+                    tracing::info!("Starting E2EE bridge to gateway: {gateway_url}");
+                    if let Err(e) = e2ee_bridge::run_bridge(&creds, local_port).await {
+                        tracing::error!("E2EE bridge error: {e}");
+                    }
+                });
+            }
+            Ok(_) => {
+                tracing::warn!(
+                    "VK_GATEWAY_URL is set but credentials are for a different gateway. Run `vibe-kanban login --gateway {gateway_url}` first."
+                );
+            }
+            Err(_) => {
+                tracing::warn!(
+                    "VK_GATEWAY_URL is set but no credentials found. Run `vibe-kanban login --gateway {gateway_url}` first."
+                );
+            }
+        }
+    }
 
     // Production only: write port file for extension discovery and open browser
     if !cfg!(debug_assertions) {
@@ -127,6 +213,124 @@ async fn main() -> Result<(), VibeKanbanError> {
 
     perform_cleanup_actions(&deployment).await;
 
+    Ok(())
+}
+
+async fn cmd_login(gateway_url: &str) -> anyhow::Result<()> {
+    println!("Logging in to gateway: {gateway_url}");
+
+    // Prompt for email and password
+    print!("Email: ");
+    use std::io::Write;
+    std::io::stdout().flush()?;
+    let mut email = String::new();
+    std::io::stdin().read_line(&mut email)?;
+    let email = email.trim().to_string();
+
+    print!("Password: ");
+    std::io::stdout().flush()?;
+    let mut password = String::new();
+    std::io::stdin().read_line(&mut password)?;
+    let password = password.trim().to_string();
+
+    // Install rustls crypto provider for reqwest
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
+    let client = reqwest::Client::new();
+
+    // Login to get session token
+    let login_resp = client
+        .post(format!("{gateway_url}/api/auth/login"))
+        .json(&serde_json::json!({
+            "email": email,
+            "password": password,
+        }))
+        .send()
+        .await?;
+
+    if !login_resp.status().is_success() {
+        let status = login_resp.status();
+        let body = login_resp.text().await?;
+        anyhow::bail!("Login failed ({status}): {body}");
+    }
+
+    #[derive(serde::Deserialize)]
+    struct AuthResponse {
+        token: String,
+        user_id: String,
+    }
+
+    let auth: AuthResponse = login_resp.json().await?;
+    tracing::info!("Logged in as user_id={}", auth.user_id);
+
+    // Generate master secret
+    let master_secret = e2ee_core::generate_master_secret();
+    let master_secret_b64 = BASE64.encode(master_secret);
+
+    // Derive auth keypair and register device key
+    let crypto = e2ee_crypto::BridgeCryptoService::from_master_secret_b64(&master_secret_b64)?;
+    let pub_key_b64 = crypto.auth_public_key_b64();
+
+    let register_resp = client
+        .post(format!("{gateway_url}/api/auth/device/register"))
+        .header("Authorization", format!("Bearer {}", auth.token))
+        .json(&serde_json::json!({
+            "public_key": pub_key_b64,
+            "device_name": hostname::get()
+                .map(|h| h.to_string_lossy().to_string())
+                .unwrap_or_else(|_| "unknown".to_string()),
+        }))
+        .send()
+        .await?;
+
+    if !register_resp.status().is_success() {
+        let status = register_resp.status();
+        let body = register_resp.text().await?;
+        anyhow::bail!("Device registration failed ({status}): {body}");
+    }
+
+    tracing::info!("Device key registered");
+
+    // Save credentials
+    let creds = e2ee_config::Credentials {
+        master_secret: master_secret_b64.clone(),
+        gateway_url: gateway_url.to_string(),
+        session_token: auth.token,
+        user_id: auth.user_id,
+    };
+    e2ee_config::save_credentials(&creds)?;
+    tracing::info!("Credentials saved to {}", e2ee_config::credentials_path().display());
+
+    println!();
+    println!("Login successful!");
+    println!();
+    println!("Your master secret (for pairing WebUI):");
+    println!("  {master_secret_b64}");
+    println!();
+    println!("Enter this in WebUI Settings > E2EE > Pair Device");
+
+    Ok(())
+}
+
+fn cmd_status() -> anyhow::Result<()> {
+    match e2ee_config::load_credentials() {
+        Ok(creds) => {
+            println!("Status: Configured");
+            println!("  Gateway: {}", creds.gateway_url);
+            println!("  User ID: {}", creds.user_id);
+            println!("  Credentials: {}", e2ee_config::credentials_path().display());
+        }
+        Err(_) => {
+            println!("Status: Not configured");
+            println!("  Run `vibe-kanban login --gateway <url>` to set up");
+        }
+    }
+    Ok(())
+}
+
+fn cmd_logout() -> anyhow::Result<()> {
+    e2ee_config::delete_credentials()?;
+    println!("Logged out. Credentials deleted.");
     Ok(())
 }
 

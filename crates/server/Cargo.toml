@@ -47,6 +47,13 @@ url = "2.5"
 rand = { version = "0.8", features = ["std"] }
 sha2 = "0.10"
 regex = "1"
+e2ee-core = { path = "../e2ee-core" }
+tokio-tungstenite = "0.24"
+clap = { version = "4", features = ["derive"] }
+hostname = "0.4"
+whoami = "1"
+dirs = "6"
+urlencoding = "2"
 
 [build-dependencies]
 dotenv = "0.15"

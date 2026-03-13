@@ -11,6 +11,8 @@ members = [
     "crates/local-deployment",
     "crates/deployment",
     "crates/review",
+    "crates/e2ee-core",
+    "crates/e2ee-gateway",
 ]
 exclude = ["crates/remote"]
 
