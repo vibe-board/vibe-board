@@ -12,7 +12,7 @@ import {
   Popover,
   PopoverAnchor,
   PopoverContent,
-} from '@/components/ui-new/primitives/Popover';
+} from '@/components/ui/popover';
 
 // --- Headless Compound Components ---
 

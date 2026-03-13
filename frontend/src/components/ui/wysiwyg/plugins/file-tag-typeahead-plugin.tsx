@@ -1,7 +1,6 @@
 import {
   useState,
   useCallback,
-  useContext,
   useMemo,
   useEffect,
   useRef,
@@ -21,17 +20,7 @@ import {
 import { Tag as TagIcon, FileText, Cog } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { Repo } from 'shared/types';
-import type { RepoItem } from '@/components/ui-new/actions/pages';
-import {
-  SelectionDialog,
-  type SelectionPage,
-} from '@/components/ui-new/dialogs/SelectionDialog';
-import {
-  buildRepoSelectionPages,
-  type RepoSelectionResult,
-} from '@/components/ui-new/dialogs/selections/repoSelection';
 import { usePortalContainer } from '@/contexts/PortalContainerContext';
-import { WorkspaceContext } from '@/contexts/WorkspaceContext';
 import { useTypeaheadOpen } from '@/components/ui/wysiwyg/context/typeahead-open-context';
 import { repoApi } from '@/lib/api';
 import {
@@ -94,13 +83,6 @@ function getRepoDisplayName(repo: Repo): string {
   return repo.display_name || repo.name;
 }
 
-function toRepoItem(repo: Repo): RepoItem {
-  return {
-    id: repo.id,
-    display_name: getRepoDisplayName(repo),
-  };
-}
-
 export function FileTagTypeaheadPlugin({ repoIds }: { repoIds?: string[] }) {
   const [editor] = useLexicalComposerContext();
   const [options, setOptions] = useState<FileTagOption[]>([]);
@@ -117,12 +99,8 @@ export function FileTagTypeaheadPlugin({ repoIds }: { repoIds?: string[] }) {
   const { setIsOpen } = useTypeaheadOpen();
   const searchRequestRef = useRef(0);
   const lastQueryRef = useRef<string | null>(null);
-  // Use context directly to gracefully handle missing WorkspaceProvider (old UI)
-  const workspaceContext = useContext(WorkspaceContext);
-  const diffPaths = useMemo(
-    () => workspaceContext?.diffPaths ?? new Set<string>(),
-    [workspaceContext?.diffPaths]
-  );
+  // Workspace context removed - not available in legacy UI
+  const diffPaths = useMemo(() => new Set<string>(), []);
   const preferredRepoId = useUiPreferencesStore(
     (state) => state.fileSearchRepoId
   );
@@ -278,22 +256,12 @@ export function FileTagTypeaheadPlugin({ repoIds }: { repoIds?: string[] }) {
     setIsChoosingRepo(true);
     try {
       const repos = await loadRecentRepos(true);
-      const repoResult = (await SelectionDialog.show({
-        initialPageId: 'selectRepo',
-        pages: buildRepoSelectionPages(repos.map(toRepoItem)) as Record<
-          string,
-          SelectionPage
-        >,
-      })) as RepoSelectionResult | undefined;
+      if (repos.length === 0) return;
 
-      if (!repoResult?.repoId) {
-        return;
-      }
-
-      const selectedRepo = repos.find((repo) => repo.id === repoResult.repoId);
-      if (!selectedRepo) {
-        return;
-      }
+      // Simple selection: use the first repo, or cycle to next
+      const currentIndex = repos.findIndex((r) => r.id === preferredRepoId);
+      const nextIndex = (currentIndex + 1) % repos.length;
+      const selectedRepo = repos[nextIndex];
 
       setFileSearchRepo(selectedRepo.id);
       setPreferredRepoName(getRepoDisplayName(selectedRepo));
@@ -308,7 +276,7 @@ export function FileTagTypeaheadPlugin({ repoIds }: { repoIds?: string[] }) {
     } finally {
       setIsChoosingRepo(false);
     }
-  }, [loadRecentRepos, runSearch, setFileSearchRepo]);
+  }, [loadRecentRepos, runSearch, setFileSearchRepo, preferredRepoId]);
 
   const onQueryChange = useCallback(
     (query: string | null) => {

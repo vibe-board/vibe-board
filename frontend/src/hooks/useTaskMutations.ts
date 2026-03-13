@@ -3,7 +3,7 @@ import { useNavigateWithSearch } from '@/hooks';
 import { tasksApi } from '@/lib/api';
 import { paths } from '@/lib/paths';
 import { taskRelationshipsKeys } from '@/hooks/useTaskRelationships';
-import { workspaceSummaryKeys } from '@/components/ui-new/hooks/useWorkspaces';
+import { workspaceSummaryKeys } from '@/hooks/queryKeys';
 import type {
   CreateTask,
   CreateAndStartTaskRequest,

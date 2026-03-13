@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowSquareOut } from '@phosphor-icons/react';
@@ -24,8 +24,6 @@ import { useNavigateWithSearch } from '@/hooks';
 import NiceModal, { useModal } from '@ebay/nice-modal-react';
 import { defineModal } from '@/lib/modals';
 import { attemptsApi, repoApi } from '@/lib/api';
-import { WorkspaceContext } from '@/contexts/WorkspaceContext';
-import { SearchableDropdownContainer } from '@/components/ui-new/containers/SearchableDropdownContainer';
 import type { OpenPrInfo, GitRemote } from 'shared/types';
 
 export interface CreateWorkspaceFromPrDialogProps {}
@@ -37,8 +35,7 @@ const CreateWorkspaceFromPrDialogImpl =
     const { t } = useTranslation('tasks');
     const queryClient = useQueryClient();
 
-    const workspaceContext = useContext(WorkspaceContext);
-    const currentWorkspaceRepoId = workspaceContext?.repos[0]?.id ?? null;
+    const currentWorkspaceRepoId: string | null = null;
 
     const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
     const [selectedRemote, setSelectedRemote] = useState<string | null>(null);
@@ -314,36 +311,23 @@ const CreateWorkspaceFromPrDialogImpl =
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <SearchableDropdownContainer
-                    items={openPrs}
-                    selectedValue={selectedPrNumber?.toString() ?? null}
-                    getItemKey={(pr) => String(pr.number)}
-                    getItemLabel={(pr) => `#${pr.number}: ${pr.title}`}
-                    filterItem={(pr, query) =>
-                      String(pr.number).includes(query) ||
-                      pr.title.toLowerCase().includes(query)
-                    }
-                    onSelect={(pr) => setSelectedPrNumber(Number(pr.number))}
-                    trigger={
-                      <Button
-                        variant="outline"
-                        className="flex-1 justify-start font-normal min-w-0"
-                      >
-                        <span className="truncate">
-                          {selectedPr
-                            ? `#${selectedPr.number}: ${selectedPr.title}`
-                            : t('createWorkspaceFromPr.selectPullRequest')}
-                        </span>
-                      </Button>
-                    }
-                    contentClassName="w-[400px]"
-                    placeholder={t(
-                      'createWorkspaceFromPr.searchPrsPlaceholder'
-                    )}
-                    emptyMessage={t('createWorkspaceFromPr.noMatchingPrs')}
-                    getItemBadge={null}
-                    getItemIcon={null}
-                  />
+                  <Select
+                    value={selectedPrNumber?.toString() ?? undefined}
+                    onValueChange={(value) => setSelectedPrNumber(Number(value))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={t('createWorkspaceFromPr.selectPullRequest')}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {openPrs.map((pr) => (
+                        <SelectItem key={String(pr.number)} value={String(pr.number)}>
+                          #{String(pr.number)}: {pr.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   {selectedPr && (
                     <a
                       href={selectedPr.url}

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { tasksApi, attemptsApi } from '@/lib/api';
 import { taskKeys } from './useTask';
 import { taskRelationshipsKeys } from './useTaskRelationships';
-import { workspaceSummaryKeys } from '@/components/ui-new/hooks/useWorkspaces';
+import { workspaceSummaryKeys } from '@/hooks/queryKeys';
 import type { CreateAndStartTaskRequest } from 'shared/types';
 
 interface CreateWorkspaceParams {

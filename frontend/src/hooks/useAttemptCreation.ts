@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { attemptsApi } from '@/lib/api';
-import { workspaceSummaryKeys } from '@/components/ui-new/hooks/useWorkspaces';
+import { workspaceSummaryKeys } from '@/hooks/queryKeys';
 import type {
   ExecutorProfileId,
   WorkspaceRepoInput,

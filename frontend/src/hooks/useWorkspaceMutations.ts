@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { attemptsApi } from '@/lib/api';
 import { attemptKeys } from '@/hooks/useAttempt';
-import { workspaceSummaryKeys } from '@/components/ui-new/hooks/useWorkspaces';
+import { workspaceSummaryKeys } from '@/hooks/queryKeys';
 
 interface ToggleArchiveParams {
   workspaceId: string;

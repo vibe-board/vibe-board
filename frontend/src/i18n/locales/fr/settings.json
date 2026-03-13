@@ -285,6 +285,10 @@
     "agents": {
       "title": "Configurations des agents de codage",
       "description": "Personnalisez le comportement des agents de codage avec différentes configurations.",
+      "order": {
+        "title": "Ordre des agents",
+        "description": "Faites glisser pour réorganiser les agents. Cet ordre est utilisé dans tous les sélecteurs d'agents."
+      },
       "loading": "Chargement des configurations d'agents...",
       "selectAgent": "Sélectionner un agent",
       "save": {

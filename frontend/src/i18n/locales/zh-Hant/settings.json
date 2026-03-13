@@ -285,6 +285,10 @@
     "agents": {
       "title": "編碼代理設定",
       "description": "使用不同設定自訂編碼代理的行為。",
+      "order": {
+        "title": "代理排序",
+        "description": "拖動以調整代理順序。此排序將套用於所有代理選擇器。"
+      },
       "loading": "載入代理設定中...",
       "selectAgent": "選擇代理",
       "save": {

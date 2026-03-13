@@ -1,6 +1,11 @@
 import { useCallback, useMemo } from 'react';
 import { create } from 'zustand';
-import type { RepoAction } from '@/components/ui-new/primitives/RepoCard';
+export type RepoAction =
+  | 'pull-request'
+  | 'merge'
+  | 'change-target'
+  | 'rebase'
+  | 'push';
 import type { IssuePriority } from 'shared/remote-types';
 
 export const RIGHT_MAIN_PANEL_MODES = {

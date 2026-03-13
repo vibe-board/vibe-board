@@ -285,6 +285,10 @@
     "agents": {
       "title": "Coding Agent Configurations",
       "description": "Customize the behavior of coding agents with different configurations.",
+      "order": {
+        "title": "Agent Order",
+        "description": "Drag to reorder agents. This order is used across all agent selectors."
+      },
       "loading": "Loading agent configurations...",
       "selectAgent": "Select agent",
       "save": {

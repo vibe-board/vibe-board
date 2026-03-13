@@ -285,6 +285,10 @@
     "agents": {
       "title": "编码代理配置",
       "description": "使用不同的配置自定义编码代理的行为。",
+      "order": {
+        "title": "代理排序",
+        "description": "拖动以调整代理顺序。此排序将应用于所有代理选择器。"
+      },
       "loading": "加载代理配置中...",
       "selectAgent": "选择代理",
       "save": {

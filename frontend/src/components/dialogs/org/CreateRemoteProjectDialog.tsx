@@ -21,7 +21,7 @@ import {
   type Project,
 } from 'shared/remote-types';
 import { getRandomPresetColor, PRESET_COLORS } from '@/lib/colors';
-import { ColorPicker } from '@/components/ui-new/containers/ColorPickerContainer';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 export type CreateRemoteProjectDialogProps = {
   organizationId: string;
@@ -167,25 +167,36 @@ const CreateRemoteProjectDialogImpl =
                   disabled={isCreating}
                   className="flex-1"
                 />
-                <ColorPicker
-                  value={color}
-                  onChange={setColor}
-                  colors={PRESET_COLORS}
-                  disabled={isCreating}
-                  align="start"
-                  side="bottom"
-                >
-                  <button
-                    type="button"
-                    className="w-10 h-10 rounded border cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{ backgroundColor: `hsl(${color})` }}
-                    disabled={isCreating}
-                    aria-label={t(
-                      'createProjectDialog.selectColor',
-                      'Select project color'
-                    )}
-                  />
-                </ColorPicker>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="w-10 h-10 rounded border cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{ backgroundColor: `hsl(${color})` }}
+                      disabled={isCreating}
+                      aria-label={t(
+                        'createProjectDialog.selectColor',
+                        'Select project color'
+                      )}
+                    />
+                  </PopoverTrigger>
+                  <PopoverContent align="start" side="bottom" className="w-auto p-2">
+                    <div className="grid grid-cols-6 gap-1">
+                      {PRESET_COLORS.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          className={`w-6 h-6 rounded cursor-pointer border ${
+                            c === color ? 'ring-2 ring-primary ring-offset-1' : ''
+                          }`}
+                          style={{ backgroundColor: `hsl(${c})` }}
+                          onClick={() => setColor(c)}
+                          disabled={isCreating}
+                        />
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
 

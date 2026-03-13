@@ -26,8 +26,26 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
 import { JSONEditor } from '@/components/ui/json-editor';
-import { ChevronDown, Loader2, ArrowUp, ArrowDown } from 'lucide-react';
+import { ChevronDown, Loader2, GripVertical } from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import type { DragEndEvent } from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
+import { cn } from '@/lib/utils';
 import { ExecutorConfigForm } from '@/components/ExecutorConfigForm';
 import { useProfiles } from '@/hooks/useProfiles';
 import { useUserSystem } from '@/components/ConfigProvider';
@@ -602,90 +620,6 @@ export function AgentSettings() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Agent Order</CardTitle>
-          <CardDescription>
-            Reorder agents using the up/down arrows. This order is used across all agent selectors.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-1">
-            {profiles &&
-              getSortedAgents(
-                Object.keys(profiles) as BaseCodingAgent[],
-                config?.agent_order
-              ).map((agent, index, arr) => (
-                <div
-                  key={agent}
-                  className="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-secondary/50"
-                >
-                  <AgentIcon agent={agent} className="w-5 h-5 shrink-0" />
-                  <span className="flex-1 text-sm">{toPrettyCase(agent)}</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-0"
-                    disabled={index === 0 || executorSaving}
-                    onClick={async () => {
-                      const order = getSortedAgents(
-                        Object.keys(profiles) as BaseCodingAgent[],
-                        config?.agent_order
-                      );
-                      const newOrder = [...order];
-                      [newOrder[index - 1], newOrder[index]] = [
-                        newOrder[index],
-                        newOrder[index - 1],
-                      ];
-                      setExecutorSaving(true);
-                      try {
-                        await updateAndSaveConfig({ agent_order: newOrder });
-                        reloadSystem();
-                      } catch (err) {
-                        console.error('Failed to save agent order:', err);
-                      } finally {
-                        setExecutorSaving(false);
-                      }
-                    }}
-                    title="Move up"
-                  >
-                    <ArrowUp className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-0"
-                    disabled={index === arr.length - 1 || executorSaving}
-                    onClick={async () => {
-                      const order = getSortedAgents(
-                        Object.keys(profiles) as BaseCodingAgent[],
-                        config?.agent_order
-                      );
-                      const newOrder = [...order];
-                      [newOrder[index], newOrder[index + 1]] = [
-                        newOrder[index + 1],
-                        newOrder[index],
-                      ];
-                      setExecutorSaving(true);
-                      try {
-                        await updateAndSaveConfig({ agent_order: newOrder });
-                        reloadSystem();
-                      } catch (err) {
-                        console.error('Failed to save agent order:', err);
-                      } finally {
-                        setExecutorSaving(false);
-                      }
-                    }}
-                    title="Move down"
-                  >
-                    <ArrowDown className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
           <CardTitle>{t('settings.agents.title')}</CardTitle>
           <CardDescription>{t('settings.agents.description')}</CardDescription>
         </CardHeader>
@@ -877,6 +811,25 @@ export function AgentSettings() {
         </CardContent>
       </Card>
 
+      {profiles && (
+        <AgentOrderCard
+          profiles={profiles}
+          agentOrder={config?.agent_order}
+          disabled={executorSaving}
+          onReorder={async (newOrder) => {
+            setExecutorSaving(true);
+            try {
+              await updateAndSaveConfig({ agent_order: newOrder });
+              reloadSystem();
+            } catch (err) {
+              console.error('Failed to save agent order:', err);
+            } finally {
+              setExecutorSaving(false);
+            }
+          }}
+        />
+      )}
+
       {!useFormEditor && (
         <div className="sticky bottom-0 z-10 bg-background/80 backdrop-blur-sm border-t py-4">
           <div className="flex justify-end">
@@ -893,5 +846,122 @@ export function AgentSettings() {
         </div>
       )}
     </div>
+  );
+}
+
+function SortableAgentItem({
+  agent,
+  disabled,
+}: {
+  agent: BaseCodingAgent;
+  disabled: boolean;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: agent, disabled });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        'flex items-center gap-2 px-3 py-2 rounded-md',
+        isDragging
+          ? 'bg-secondary shadow-md z-10 opacity-90'
+          : 'hover:bg-secondary/50'
+      )}
+    >
+      <button
+        className="cursor-grab active:cursor-grabbing touch-none text-muted-foreground hover:text-foreground"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <AgentIcon agent={agent} className="w-5 h-5 shrink-0" />
+      <span className="flex-1 text-sm">{toPrettyCase(agent)}</span>
+    </div>
+  );
+}
+
+function AgentOrderCard({
+  profiles,
+  agentOrder,
+  disabled,
+  onReorder,
+}: {
+  profiles: Record<string, unknown>;
+  agentOrder: BaseCodingAgent[] | undefined | null;
+  disabled: boolean;
+  onReorder: (newOrder: BaseCodingAgent[]) => void;
+}) {
+  const { t } = useTranslation(['settings']);
+  const sortedAgents = getSortedAgents(
+    Object.keys(profiles) as BaseCodingAgent[],
+    agentOrder
+  );
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 5 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = sortedAgents.indexOf(active.id as BaseCodingAgent);
+    const newIndex = sortedAgents.indexOf(over.id as BaseCodingAgent);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const newOrder = arrayMove(sortedAgents, oldIndex, newIndex);
+    onReorder(newOrder);
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('settings.agents.order.title')}</CardTitle>
+        <CardDescription>
+          {t('settings.agents.order.description')}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={sortedAgents}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="space-y-1">
+              {sortedAgents.map((agent) => (
+                <SortableAgentItem
+                  key={agent}
+                  agent={agent}
+                  disabled={disabled}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+      </CardContent>
+    </Card>
   );
 }
