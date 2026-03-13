@@ -481,6 +481,7 @@ async fn generate_commit_message_via_agent(
     workspace: &Workspace,
     session: &Session,
     executor_profile_id: &ExecutorProfileId,
+    session_executor_profile_id: &ExecutorProfileId,
     current_branch: &str,
     target_branch: &str,
 ) -> Option<String> {
@@ -520,7 +521,14 @@ async fn generate_commit_message_via_agent(
         current_branch, target_branch
     );
 
-    let action_type = if let Some(info) = latest_session_info {
+    // If the commit message executor differs from the session executor,
+    // always use InitialRequest (a new session) since we can't follow up
+    // with a different executor on the same session.
+    let executor_differs = executor_profile_id.executor != session_executor_profile_id.executor;
+
+    let action_type = if let Some(info) = latest_session_info
+        && !executor_differs
+    {
         ExecutorActionType::CodingAgentFollowUpRequest(CodingAgentFollowUpRequest {
             prompt: prompt.clone(),
             session_id: info.session_id,
@@ -709,6 +717,8 @@ pub struct MergeTaskAttemptRequest {
     pub repo_id: Uuid,
     pub session_id: Uuid,
     pub executor_profile_id: ExecutorProfileId,
+    #[serde(default)]
+    pub commit_message_executor_profile_id: Option<ExecutorProfileId>,
 }
 
 #[derive(Debug, Deserialize, Serialize, TS)]
@@ -786,10 +796,17 @@ pub async fn merge_task_attempt(
         }));
     }
 
+    // Use the commit message executor profile override if provided, otherwise use session executor
+    let commit_message_profile = request
+        .commit_message_executor_profile_id
+        .as_ref()
+        .unwrap_or(&request.executor_profile_id);
+
     let commit_message = generate_commit_message_via_agent(
         &deployment,
         &workspace,
         &session,
+        commit_message_profile,
         &request.executor_profile_id,
         &workspace.branch,
         &workspace_repo.target_branch,

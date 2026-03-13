@@ -28,6 +28,7 @@ import {
   ThemeMode,
   UiLanguage,
 } from 'shared/types';
+import type { ExecutorProfileId } from 'shared/types';
 import { getLanguageOptions } from '@/i18n/languages';
 
 import { toPrettyCase } from '@/utils/string';
@@ -37,6 +38,7 @@ import { useTheme } from '@/components/ThemeProvider';
 import { useUserSystem } from '@/components/ConfigProvider';
 import { TagManager } from '@/components/TagManager';
 import { FolderPickerDialog } from '@/components/dialogs/shared/FolderPickerDialog';
+import ExecutorProfileSelector from '@/components/settings/ExecutorProfileSelector';
 
 export function GeneralSettings() {
   const { t } = useTranslation(['settings', 'common']);
@@ -51,6 +53,7 @@ export function GeneralSettings() {
   const {
     config,
     loading,
+    profiles,
     updateAndSaveConfig, // Use this on Save
   } = useUserSystem();
 
@@ -575,6 +578,65 @@ export function GeneralSettings() {
               {t('settings.general.pullRequests.customPrompt.helper')}
             </p>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('settings.general.commitMessage.title')}</CardTitle>
+          <CardDescription>
+            {t('settings.general.commitMessage.description')}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="use-custom-commit-agent"
+              checked={draft?.commit_message_executor_profile != null}
+              onCheckedChange={(checked: boolean) => {
+                if (checked) {
+                  updateDraft({
+                    commit_message_executor_profile:
+                      config?.executor_profile ?? null,
+                  });
+                } else {
+                  updateDraft({ commit_message_executor_profile: null });
+                }
+              }}
+            />
+            <div className="space-y-0.5">
+              <Label
+                htmlFor="use-custom-commit-agent"
+                className="cursor-pointer"
+              >
+                {t('settings.general.commitMessage.useCustom.label')}
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                {t('settings.general.commitMessage.useCustom.helper')}
+              </p>
+            </div>
+          </div>
+          {draft?.commit_message_executor_profile != null && (
+            <div className="ml-6 space-y-2">
+              <Label>
+                {t('settings.general.commitMessage.agent.label')}
+              </Label>
+              <ExecutorProfileSelector
+                profiles={profiles}
+                selectedProfile={
+                  draft.commit_message_executor_profile as ExecutorProfileId | null
+                }
+                onProfileSelect={(profile: ExecutorProfileId) =>
+                  updateDraft({
+                    commit_message_executor_profile: profile,
+                  })
+                }
+              />
+              <p className="text-sm text-muted-foreground">
+                {t('settings.general.commitMessage.agent.helper')}
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 

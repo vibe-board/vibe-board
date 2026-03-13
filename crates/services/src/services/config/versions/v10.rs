@@ -76,6 +76,8 @@ pub struct Config {
     pub project_order: Vec<uuid::Uuid>,
     #[serde(default = "default_agent_enabled")]
     pub agent_enabled: Vec<BaseCodingAgent>,
+    #[serde(default)]
+    pub commit_message_executor_profile: Option<ExecutorProfileId>,
 }
 
 impl Config {
@@ -106,6 +108,7 @@ impl Config {
             agent_order: old_config.agent_order,
             project_order: old_config.project_order,
             agent_enabled: default_agent_enabled(),
+            commit_message_executor_profile: None,
         }
     }
 
@@ -164,6 +167,7 @@ impl Default for Config {
             agent_order: Vec::new(),
             project_order: Vec::new(),
             agent_enabled: default_agent_enabled(),
+            commit_message_executor_profile: None,
         }
     }
 }

@@ -235,6 +235,8 @@ function GitOperations({
         repoId,
         sessionId: mergeSessionId,
         executorProfileId: mergeExecutorProfileId,
+        commitMessageExecutorProfileId:
+          config?.commit_message_executor_profile ?? null,
       });
       setMergeSuccess(true);
       setTimeout(() => setMergeSuccess(false), 2000);

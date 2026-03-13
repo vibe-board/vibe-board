@@ -10,6 +10,8 @@ export type MergeParams = {
   sessionId: string;
   /** Executor for the commit-message agent (same as send/followUp). Required. */
   executorProfileId: ExecutorProfileId;
+  /** Optional override executor profile for commit message generation. */
+  commitMessageExecutorProfileId?: ExecutorProfileId | null;
 };
 
 export function useMerge(
@@ -26,6 +28,8 @@ export function useMerge(
         repo_id: params.repoId,
         session_id: params.sessionId,
         executor_profile_id: params.executorProfileId,
+        commit_message_executor_profile_id:
+          params.commitMessageExecutorProfileId ?? null,
       });
     },
     onSuccess: () => {

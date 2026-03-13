@@ -168,6 +168,18 @@
           "helper": "Custom prompt for the AI agent when generating PR descriptions. Use {pr_number} and {pr_url} as placeholders."
         }
       },
+      "commitMessage": {
+        "title": "Commit Messages",
+        "description": "Configure the agent used for generating commit messages during merge.",
+        "useCustom": {
+          "label": "Use custom agent for commit messages",
+          "helper": "When enabled, a different agent profile is used for generating commit messages. Useful if your task agent is slow and causes timeouts."
+        },
+        "agent": {
+          "label": "Commit Message Agent",
+          "helper": "Select the agent profile to use for generating commit messages. A faster model is recommended."
+        }
+      },
       "commits": {
         "title": "Commits",
         "description": "Configure commit behavior for task attempts",
