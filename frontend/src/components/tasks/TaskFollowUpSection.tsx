@@ -66,6 +66,7 @@ import { PrCommentsDialog } from '@/components/dialogs/tasks/PrCommentsDialog';
 import type { NormalizedComment } from '@/components/ui/wysiwyg/nodes/pr-comment-node';
 import type { Session } from 'shared/types';
 import { buildAgentPrompt } from '@/utils/promptMessage';
+import { useApprovalMutation } from '@/hooks/useApprovalMutation';
 
 interface TaskFollowUpSectionProps {
   task: TaskWithAttemptStatus;
@@ -355,17 +356,43 @@ export function TaskFollowUpSection({
     isQueued && queuedMessage ? queuedMessage.data.message : localMessage;
 
   // Check if there's a pending approval - users shouldn't be able to type during approvals
+  // but should be able to type during question approvals (ask_user_question)
   const { entries } = useEntries();
-  const hasPendingApproval = useMemo(() => {
-    return entries.some((entry) => {
-      if (entry.type !== 'NORMALIZED_ENTRY') return false;
+  const { hasPendingApproval, hasPendingQuestion, pendingQuestionInfo } = useMemo(() => {
+    let hasPendingApproval = false;
+    let hasPendingQuestion = false;
+    let pendingQuestionInfo: {
+      approvalId: string;
+      executionProcessId: string;
+      question: string;
+    } | null = null;
+    for (const entry of entries) {
+      if (entry.type !== 'NORMALIZED_ENTRY') continue;
       const entryType = entry.content.entry_type;
-      return (
+      if (
         entryType.type === 'tool_use' &&
         entryType.status.status === 'pending_approval'
-      );
-    });
+      ) {
+        if (entryType.action_type.action === 'ask_user_question') {
+          hasPendingQuestion = true;
+          // Get the first unanswered question
+          const questions = entryType.action_type.questions;
+          if (questions.length > 0 && entryType.status.approval_id) {
+            pendingQuestionInfo = {
+              approvalId: entryType.status.approval_id,
+              executionProcessId: entry.executionProcessId,
+              question: questions[0].question,
+            };
+          }
+        } else {
+          hasPendingApproval = true;
+        }
+      }
+    }
+    return { hasPendingApproval, hasPendingQuestion, pendingQuestionInfo };
   }, [entries]);
+
+  const { answer: submitQuestionAnswer } = useApprovalMutation();
 
   // Send follow-up action
   const { isSendingFollowUp, followUpError, setFollowUpError, onSendFollowUp } =
@@ -387,6 +414,9 @@ export function TaskFollowUpSection({
       },
     });
 
+  // In question mode, allow typing but handle submit as question answer
+  const isInQuestionMode = hasPendingQuestion && !hasPendingApproval;
+
   // Separate logic for when textarea should be disabled vs when send button should be disabled
   const canTypeFollowUp = useMemo(() => {
     if (!workspaceId || processes.length === 0 || isSendingFollowUp) {
@@ -394,7 +424,7 @@ export function TaskFollowUpSection({
     }
 
     if (isRetryActive) return false; // disable typing while retry editor is active
-    if (hasPendingApproval) return false; // disable typing during approval
+    if (hasPendingApproval) return false; // disable typing during approval (not question)
     // Note: isQueued no longer blocks typing - editing auto-cancels the queue
     return true;
   }, [
@@ -410,6 +440,11 @@ export function TaskFollowUpSection({
       return false;
     }
 
+    // In question mode, allow sending only if there's a typed message
+    if (isInQuestionMode) {
+      return Boolean(localMessage.trim());
+    }
+
     // Allow sending if conflict instructions, review comments, clicked elements, or message is present
     return Boolean(
       conflictResolutionInstructions ||
@@ -420,12 +455,14 @@ export function TaskFollowUpSection({
   }, [
     canTypeFollowUp,
     selectedExecutor,
+    isInQuestionMode,
     conflictResolutionInstructions,
     reviewMarkdown,
     clickedMarkdown,
     localMessage,
   ]);
-  const isEditable = !isRetryActive && !hasPendingApproval;
+  // Allow editing during question mode
+  const isEditable = !isRetryActive && (!hasPendingApproval || isInQuestionMode);
 
   const hasAnyScript = true;
 
@@ -488,11 +525,24 @@ export function TaskFollowUpSection({
     saveToScratch,
   ]);
 
-  // Keyboard shortcut handler - send follow-up or queue depending on state
+  // Keyboard shortcut handler - send follow-up, queue, or submit question answer
   const handleSubmitShortcut = useCallback(
     (e?: KeyboardEvent) => {
       e?.preventDefault();
-      if (isAttemptRunning) {
+      if (isInQuestionMode && pendingQuestionInfo && localMessage.trim()) {
+        // Submit question answer
+        submitQuestionAnswer({
+          approvalId: pendingQuestionInfo.approvalId,
+          executionProcessId: pendingQuestionInfo.executionProcessId,
+          answers: [
+            {
+              question: pendingQuestionInfo.question,
+              answer: [localMessage.trim()],
+            },
+          ],
+        });
+        setLocalMessage('');
+      } else if (isAttemptRunning) {
         // When running, CMD+Enter queues the message (if not already queued)
         if (!isQueued) {
           handleQueueMessage();
@@ -501,7 +551,16 @@ export function TaskFollowUpSection({
         onSendFollowUp();
       }
     },
-    [isAttemptRunning, isQueued, handleQueueMessage, onSendFollowUp]
+    [
+      isAttemptRunning,
+      isQueued,
+      handleQueueMessage,
+      onSendFollowUp,
+      isInQuestionMode,
+      pendingQuestionInfo,
+      localMessage,
+      submitQuestionAnswer,
+    ]
   );
 
   // Ref to access setFollowUpMessage without adding it as a dependency
@@ -660,13 +719,14 @@ export function TaskFollowUpSection({
 
   // Memoize placeholder to avoid re-renders
   const hasExtraContext = !!(reviewMarkdown || conflictResolutionInstructions);
-  const editorPlaceholder = useMemo(
-    () =>
-      hasExtraContext
-        ? '(Optional) Add additional instructions... Type @ to insert tags or search files.'
-        : 'Continue working on this task attempt... Type @ to insert tags or search files.',
-    [hasExtraContext]
-  );
+  const editorPlaceholder = useMemo(() => {
+    if (isInQuestionMode) {
+      return 'Type a different answer...';
+    }
+    return hasExtraContext
+      ? '(Optional) Add additional instructions... Type @ to insert tags or search files.'
+      : 'Continue working on this task attempt... Type @ to insert tags or search files.';
+  }, [hasExtraContext, isInQuestionMode]);
 
   // Register keyboard shortcuts
   useKeySubmitFollowUp(handleSubmitShortcut, {
@@ -976,7 +1036,23 @@ export function TaskFollowUpSection({
                 </Button>
               )}
               <Button
-                onClick={onSendFollowUp}
+                onClick={() => {
+                  if (isInQuestionMode && pendingQuestionInfo && localMessage.trim()) {
+                    submitQuestionAnswer({
+                      approvalId: pendingQuestionInfo.approvalId,
+                      executionProcessId: pendingQuestionInfo.executionProcessId,
+                      answers: [
+                        {
+                          question: pendingQuestionInfo.question,
+                          answer: [localMessage.trim()],
+                        },
+                      ],
+                    });
+                    setLocalMessage('');
+                  } else {
+                    onSendFollowUp();
+                  }
+                }}
                 disabled={!canSendFollowUp || !isEditable}
                 size="sm"
               >
@@ -985,9 +1061,11 @@ export function TaskFollowUpSection({
                 ) : (
                   <>
                     <Send className="h-4 w-4 mr-2" />
-                    {conflictResolutionInstructions
-                      ? t('followUp.resolveConflicts')
-                      : t('followUp.send')}
+                    {isInQuestionMode
+                      ? 'Submit Answer'
+                      : conflictResolutionInstructions
+                        ? t('followUp.resolveConflicts')
+                        : t('followUp.send')}
                   </>
                 )}
               </Button>

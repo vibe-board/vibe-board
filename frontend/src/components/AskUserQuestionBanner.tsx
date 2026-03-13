@@ -30,6 +30,7 @@ export const AskUserQuestionBanner = forwardRef<
 ) {
   const { t } = useTranslation('common');
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
+  const [customInput, setCustomInput] = useState('');
 
   const toQuestionAnswers = useCallback(
     (rec: Record<string, string[]>): QuestionAnswer[] =>
@@ -118,6 +119,30 @@ export const AskUserQuestionBanner = forwardRef<
     toQuestionAnswers,
   ]);
 
+  const handleSubmitCustomInput = useCallback(() => {
+    if (disabled || !currentQuestion || !customInput.trim()) return;
+
+    const newAnswers = {
+      ...answers,
+      [currentQuestion.question]: [customInput.trim()],
+    };
+    setAnswers(newAnswers);
+    setCustomInput('');
+
+    if (currentIndex === questions.length - 1) {
+      onSubmitAnswers(toQuestionAnswers(newAnswers));
+    }
+  }, [
+    disabled,
+    currentQuestion,
+    customInput,
+    answers,
+    currentIndex,
+    questions.length,
+    onSubmitAnswers,
+    toQuestionAnswers,
+  ]);
+
   useImperativeHandle(
     ref,
     () => ({
@@ -176,41 +201,70 @@ export const AskUserQuestionBanner = forwardRef<
           <p className="text-sm font-medium text-normal mb-base">
             {currentQuestion.question}
           </p>
-          <div className="flex flex-wrap gap-base">
-            {currentQuestion.options.map((opt) => {
-              const isSelected =
-                currentQuestion.multiSelect && multiSelectLabels.has(opt.label);
-              return (
+          {currentQuestion.options.length > 0 ? (
+            <>
+              <div className="flex flex-wrap gap-base">
+                {currentQuestion.options.map((opt) => {
+                  const isSelected =
+                    currentQuestion.multiSelect && multiSelectLabels.has(opt.label);
+                  return (
+                    <button
+                      key={opt.label}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => handleSelectOption(opt.label)}
+                      className={`
+                        group relative rounded-md border px-2.5 py-1.5 text-xs transition-all
+                        ${
+                          isSelected
+                            ? 'border-brand bg-brand/10 text-normal'
+                            : 'border-border text-low hover:border-brand/40 hover:text-normal hover:bg-accent'
+                        }
+                        ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                      `}
+                      title={opt.description}
+                    >
+                      <span className="font-medium">{opt.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {currentQuestion.multiSelect && multiSelectLabels.size > 0 && (
                 <button
-                  key={opt.label}
                   type="button"
                   disabled={disabled}
-                  onClick={() => handleSelectOption(opt.label)}
-                  className={`
-                    group relative rounded-md border px-2.5 py-1.5 text-xs transition-all
-                    ${
-                      isSelected
-                        ? 'border-brand bg-brand/10 text-normal'
-                        : 'border-border text-low hover:border-brand/40 hover:text-normal hover:bg-accent'
-                    }
-                    ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-                  `}
-                  title={opt.description}
+                  onClick={handleConfirmMultiSelect}
+                  className="mt-2 rounded-md bg-brand px-3 py-1 text-xs font-medium text-white hover:bg-brand/90 transition-colors disabled:opacity-50"
                 >
-                  <span className="font-medium">{opt.label}</span>
+                  {t('askQuestion.confirmSelection')}
                 </button>
-              );
-            })}
-          </div>
-          {currentQuestion.multiSelect && multiSelectLabels.size > 0 && (
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={handleConfirmMultiSelect}
-              className="mt-2 rounded-md bg-brand px-3 py-1 text-xs font-medium text-white hover:bg-brand/90 transition-colors disabled:opacity-50"
-            >
-              {t('askQuestion.confirmSelection')}
-            </button>
+              )}
+            </>
+          ) : (
+            // Text input fallback when no predefined options are provided
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={customInput}
+                onChange={(e) => setCustomInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && customInput.trim()) {
+                    handleSubmitCustomInput();
+                  }
+                }}
+                disabled={disabled}
+                placeholder="Type your answer..."
+                className="flex-1 px-2 py-1.5 text-xs rounded-md border border-border bg-secondary text-normal placeholder:text-low focus:outline-none focus:ring-1 focus:ring-brand"
+              />
+              <button
+                type="button"
+                disabled={disabled || !customInput.trim()}
+                onClick={handleSubmitCustomInput}
+                className="rounded-md bg-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-brand/90 transition-colors disabled:opacity-50"
+              >
+                {t('askQuestion.submit', 'Submit')}
+              </button>
+            </div>
           )}
         </div>
       )}
