@@ -396,18 +396,25 @@ impl ClaudeCode {
         let approvals_clone = self.approvals_service.clone();
         let repo_context = env.repo_context.clone();
         let commit_reminder_prompt = env.commit_reminder_prompt.clone();
+        let commit_reminder = env.commit_reminder;
         let cancel_for_task = cancel.clone();
         tokio::spawn(async move {
             let log_writer = LogWriter::new(new_stdout);
-            let client = ClaudeAgentClient::new(
+            let (client, user_message_rx) = ClaudeAgentClient::new(
                 log_writer.clone(),
                 approvals_clone,
                 repo_context,
                 commit_reminder_prompt,
                 cancel_for_task.clone(),
             );
-            let protocol_peer =
-                ProtocolPeer::spawn(child_stdin, child_stdout, client.clone(), cancel_for_task);
+            let protocol_peer = ProtocolPeer::spawn(
+                child_stdin,
+                child_stdout,
+                client.clone(),
+                cancel_for_task.clone(),
+                commit_reminder,
+                user_message_rx,
+            );
 
             // Initialize control protocol
             if let Err(e) = protocol_peer.initialize(hooks).await {

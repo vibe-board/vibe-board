@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::{ChildStdin, ChildStdout},
-    sync::Mutex,
+    sync::{Mutex, mpsc},
 };
 use tokio_util::sync::CancellationToken;
 
@@ -13,7 +13,7 @@ use crate::{
     executors::{
         ExecutorError,
         claude::{
-            client::ClaudeAgentClient,
+            client::{ClaudeAgentClient, STOP_GIT_CHECK_CALLBACK_ID},
             types::{Message, PermissionMode, SDKControlRequest, SDKControlRequestType},
         },
     },
@@ -22,23 +22,32 @@ use crate::{
 /// Handles bidirectional control protocol communication
 #[derive(Clone)]
 pub struct ProtocolPeer {
-    stdin: Arc<Mutex<ChildStdin>>,
+    stdin: Arc<Mutex<Option<ChildStdin>>>,
 }
 
 impl ProtocolPeer {
+    /// Spawn the protocol peer. `expect_stop_hook` is true when we registered the Stop hook
+    /// (commit_reminder); then we keep reading after Result to handle the Stop hook and then
+    /// close stdin. When false we close stdin right after Result so the CLI can exit.
+    /// `user_message_rx` receives user messages (e.g., AskUserQuestion answers) to forward to CLI.
     pub fn spawn(
         stdin: ChildStdin,
         stdout: ChildStdout,
         client: Arc<ClaudeAgentClient>,
         cancel: CancellationToken,
+        expect_stop_hook: bool,
+        user_message_rx: mpsc::Receiver<String>,
     ) -> Self {
         let peer = Self {
-            stdin: Arc::new(Mutex::new(stdin)),
+            stdin: Arc::new(Mutex::new(Some(stdin))),
         };
 
         let reader_peer = peer.clone();
         tokio::spawn(async move {
-            if let Err(e) = reader_peer.read_loop(stdout, client, cancel).await {
+            if let Err(e) = reader_peer
+                .read_loop(stdout, client, cancel, expect_stop_hook, user_message_rx)
+                .await
+            {
                 tracing::error!("Protocol reader loop error: {}", e);
             }
         });
@@ -51,6 +60,8 @@ impl ProtocolPeer {
         stdout: ChildStdout,
         client: Arc<ClaudeAgentClient>,
         cancel: CancellationToken,
+        expect_stop_hook: bool,
+        mut user_message_rx: mpsc::Receiver<String>,
     ) -> Result<(), ExecutorError> {
         let mut reader = BufReader::new(stdout);
         let mut buffer = String::new();
@@ -67,6 +78,19 @@ impl ProtocolPeer {
                         tracing::warn!("Failed to send interrupt to Claude: {e}");
                     }
                     // Continue the loop to read Claude's response (it should send a result)
+                }
+                user_msg = user_message_rx.recv() => {
+                    match user_msg {
+                        Some(msg) => {
+                            tracing::info!("Sending user message to CLI: {msg}");
+                            if let Err(e) = self.send_user_message(msg).await {
+                                tracing::error!("Failed to send user message to CLI: {e}");
+                            }
+                        }
+                        None => {
+                            // Channel closed, no more user messages expected
+                        }
+                    }
                 }
                 line_result = reader.read_line(&mut buffer) => {
                     match line_result {
@@ -88,7 +112,10 @@ impl ProtocolPeer {
                                         .await;
                                 }
                                 Ok(CLIMessage::Result(_)) => {
-                                    break;
+                                    if !expect_stop_hook {
+                                        // We did not register the Stop hook; close stdin so the CLI exits.
+                                        self.close_stdin().await;
+                                    }
                                 }
                                 _ => {}
                             }
@@ -146,12 +173,17 @@ impl ProtocolPeer {
                 tool_use_id,
             } => {
                 match client
-                    .on_hook_callback(callback_id, input, tool_use_id)
+                    .on_hook_callback(callback_id.clone(), input, tool_use_id)
                     .await
                 {
                     Ok(hook_output) => {
                         if let Err(e) = self.send_hook_response(request_id, hook_output).await {
                             tracing::error!("Failed to send hook callback result: {e}");
+                        }
+                        // Close stdin after responding to Stop hook so the CLI can exit.
+                        // Otherwise the CLI may wait for stdin EOF and we wait for stdout EOF.
+                        if callback_id == STOP_GIT_CHECK_CALLBACK_ID {
+                            self.close_stdin().await;
                         }
                     }
                     Err(e) => {
@@ -186,9 +218,17 @@ impl ProtocolPeer {
         .await
     }
 
+    /// Close stdin so the CLI can exit; we will then get EOF on stdout.
+    async fn close_stdin(&self) {
+        let _ = self.stdin.lock().await.take();
+    }
+
     async fn send_json<T: serde::Serialize>(&self, message: &T) -> Result<(), ExecutorError> {
+        let mut guard = self.stdin.lock().await;
+        let Some(ref mut stdin) = *guard else {
+            return Ok(());
+        };
         let json = serde_json::to_string(message)?;
-        let mut stdin = self.stdin.lock().await;
         stdin.write_all(json.as_bytes()).await?;
         stdin.write_all(b"\n").await?;
         stdin.flush().await?;

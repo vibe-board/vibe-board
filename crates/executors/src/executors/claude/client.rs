@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use workspace_utils::approvals::{ApprovalStatus, QuestionStatus};
 
@@ -35,26 +36,32 @@ pub struct ClaudeAgentClient {
     repo_context: RepoContext,
     commit_reminder_prompt: String,
     cancel: CancellationToken,
+    /// Channel to send user messages back to the CLI (for AskUserQuestion answers)
+    user_message_tx: Option<mpsc::Sender<String>>,
 }
 
 impl ClaudeAgentClient {
-    /// Create a new client with optional approval service
+    /// Create a new client with optional approval service.
+    /// Returns (Arc<Self>, mpsc::Receiver<String>) so the protocol peer can listen for user messages.
     pub fn new(
         log_writer: LogWriter,
         approvals: Option<Arc<dyn ExecutorApprovalService>>,
         repo_context: RepoContext,
         commit_reminder_prompt: String,
         cancel: CancellationToken,
-    ) -> Arc<Self> {
+    ) -> (Arc<Self>, mpsc::Receiver<String>) {
         let auto_approve = approvals.is_none();
-        Arc::new(Self {
+        let (tx, rx) = mpsc::channel(32);
+        let client = Arc::new(Self {
             log_writer,
             approvals,
             auto_approve,
             repo_context,
             commit_reminder_prompt,
             cancel,
-        })
+            user_message_tx: Some(tx),
+        });
+        (client, rx)
     }
 
     async fn handle_approval(
@@ -324,7 +331,7 @@ impl ClaudeAgentClient {
         &self,
         callback_id: String,
         input: serde_json::Value,
-        _tool_use_id: Option<String>,
+        tool_use_id: Option<String>,
     ) -> Result<serde_json::Value, ExecutorError> {
         // Stop hook git check - uses `decision` (approve/block) and `reason` fields
         if callback_id == STOP_GIT_CHECK_CALLBACK_ID {
@@ -344,6 +351,45 @@ impl ClaudeAgentClient {
                     "reason": format!("{}\n{}", self.commit_reminder_prompt, status)
                 })
             });
+        }
+
+        // Handle AskUserQuestion directly in hook callback.
+        // The Claude CLI does not send CanUseTool for AskUserQuestion after hook callback
+        // returns "ask", so we handle it here by blocking until the user answers.
+        // The answer is returned via `updatedInput` in the hook response.
+        if callback_id != AUTO_APPROVE_CALLBACK_ID {
+            let tool_name = input.get("tool_name").and_then(|v| v.as_str());
+            if tool_name == Some(ASK_USER_QUESTION_NAME) {
+                // tool_use_id may come as a separate field or inside the input object
+                let effective_tool_use_id = tool_use_id
+                    .as_ref()
+                    .cloned()
+                    .or_else(|| {
+                        input
+                            .get("tool_use_id")
+                            .and_then(|v| v.as_str())
+                            .map(String::from)
+                    });
+                let tool_input = input.get("tool_input").cloned();
+                if let (Some(tid), Some(tool_input)) = (effective_tool_use_id, tool_input) {
+                    return self
+                        .handle_question_in_hook(tid, tool_input)
+                        .await;
+                }
+                // If we couldn't extract tool_use_id or tool_input, still return "allow"
+                // to avoid blocking the tool. The question won't be interactive but at
+                // least execution continues.
+                tracing::warn!(
+                    "AskUserQuestion detected in hook but missing tool_use_id or tool_input"
+                );
+                return Ok(serde_json::json!({
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "allow",
+                        "permissionDecisionReason": "AskUserQuestion allowed (missing tool_use_id)"
+                    }
+                }));
+            }
         }
 
         if self.auto_approve {
@@ -376,6 +422,118 @@ impl ClaudeAgentClient {
                     }))
                 }
             }
+        }
+    }
+
+    /// Handle AskUserQuestion in hook callback.
+    /// Blocks until the user answers, then returns "allow" with updatedInput containing answers.
+    /// This mirrors the behavior of `handle_question` in the CanUseTool path.
+    async fn handle_question_in_hook(
+        &self,
+        tool_use_id: String,
+        tool_input: serde_json::Value,
+    ) -> Result<serde_json::Value, ExecutorError> {
+        let approval_service = self.approvals.as_ref();
+        let Some(approval_service) = approval_service else {
+            return Ok(serde_json::json!({
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "allow",
+                    "permissionDecisionReason": "No approval service available"
+                }
+            }));
+        };
+
+        let tool_name = ASK_USER_QUESTION_NAME.to_string();
+        let question_count = tool_input
+            .get("questions")
+            .and_then(|q| q.as_array())
+            .map(|a| a.len())
+            .unwrap_or(1);
+
+        let approval_id = match approval_service
+            .create_question_approval(&tool_name, question_count)
+            .await
+        {
+            Ok(id) => id,
+            Err(err) => {
+                self.handle_question_error(&tool_use_id, &tool_name, &err)
+                    .await?;
+                return Ok(serde_json::json!({
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "allow",
+                        "permissionDecisionReason": format!("Approval service error: {err}")
+                    }
+                }));
+            }
+        };
+
+        let _ = self
+            .log_writer
+            .log_raw(&serde_json::to_string(&ClaudeJson::ApprovalRequested {
+                tool_call_id: tool_use_id.clone(),
+                tool_name: tool_name.clone(),
+                approval_id: approval_id.clone(),
+            })?)
+            .await;
+
+        // Block until the user answers (same pattern as handle_question in CanUseTool path)
+        let status = match approval_service
+            .wait_question_answer(&approval_id, self.cancel.clone())
+            .await
+        {
+            Ok(s) => s,
+            Err(err) => {
+                self.handle_question_error(&tool_use_id, &tool_name, &err)
+                    .await?;
+                return Err(err.into());
+            }
+        };
+
+        self.log_writer
+            .log_raw(&serde_json::to_string(&ClaudeJson::QuestionResponse {
+                tool_call_id: tool_use_id.clone(),
+                tool_name: tool_name.clone(),
+                question_status: status.clone(),
+            })?)
+            .await?;
+
+        match status {
+            QuestionStatus::Answered { answers } => {
+                // Inject answers into the tool input via updatedInput
+                let answers_map: serde_json::Map<String, serde_json::Value> = answers
+                    .iter()
+                    .map(|qa| {
+                        (
+                            qa.question.clone(),
+                            serde_json::Value::String(qa.answer.join(", ")),
+                        )
+                    })
+                    .collect();
+                let mut updated = tool_input.clone();
+                if let Some(obj) = updated.as_object_mut() {
+                    obj.insert(
+                        "answers".to_string(),
+                        serde_json::Value::Object(answers_map),
+                    );
+                }
+                Ok(serde_json::json!({
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "allow",
+                        "updatedInput": updated,
+                        "permissionDecisionReason": "Question answered by user"
+                    }
+                }))
+            }
+            QuestionStatus::TimedOut => Ok(serde_json::json!({
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": "Question request timed out"
+                }
+            })),
         }
     }
 
