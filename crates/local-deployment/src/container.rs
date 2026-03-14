@@ -1357,6 +1357,19 @@ impl ContainerService for LocalContainerService {
         env.insert("VK_WORKSPACE_BRANCH", &workspace.branch);
         env.insert("VK_SESSION_ID", execution_process.session_id.to_string());
 
+        // Share Cargo build cache across worktrees for Rust projects.
+        // Point CARGO_TARGET_DIR to the source repo's target/ directory so all
+        // worktrees reuse the same build artifacts instead of each having its own.
+        for repo in &repos {
+            if repo.path.join("Cargo.toml").exists() {
+                env.insert(
+                    "CARGO_TARGET_DIR",
+                    repo.path.join("target").display().to_string(),
+                );
+                break;
+            }
+        }
+
         // Create the child and stream, add to execution tracker with timeout
         let mut spawned = tokio::time::timeout(
             Duration::from_secs(30),
