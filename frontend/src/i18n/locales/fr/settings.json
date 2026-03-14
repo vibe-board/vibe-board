@@ -168,6 +168,18 @@
           "helper": "Prompt personnalisé pour l'agent IA lors de la génération des descriptions de PR. Utilisez {pr_number} et {pr_url} comme variables."
         }
       },
+      "commitMessage": {
+        "title": "Messages de commit",
+        "description": "Configurez l'agent utilisé pour générer les messages de commit lors de la fusion.",
+        "useCustom": {
+          "label": "Utiliser un agent personnalisé pour les messages de commit",
+          "helper": "Lorsque activé, un profil d'agent différent est utilisé pour générer les messages de commit. Utile si l'agent de tâches est lent et provoque des dépassements de délai."
+        },
+        "agent": {
+          "label": "Agent de messages de commit",
+          "helper": "Sélectionnez le profil d'agent pour générer les messages de commit. Un modèle plus rapide est recommandé."
+        }
+      },
       "commits": {
         "title": "Commits",
         "description": "Configurez le comportement de commit pour les tentatives de tâches",

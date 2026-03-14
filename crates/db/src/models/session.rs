@@ -66,7 +66,7 @@ impl Session {
                LEFT JOIN (
                    SELECT ep.session_id, MAX(ep.created_at) as last_used
                    FROM execution_processes ep
-                   WHERE ep.run_reason != 'devserver' AND ep.dropped = FALSE
+                   WHERE ep.run_reason NOT IN ('devserver', 'commitmessage') AND ep.dropped = FALSE
                    GROUP BY ep.session_id
                ) latest_ep ON s.id = latest_ep.session_id
                WHERE s.workspace_id = $1
@@ -95,7 +95,7 @@ impl Session {
                LEFT JOIN (
                    SELECT ep.session_id, MAX(ep.created_at) as last_used
                    FROM execution_processes ep
-                   WHERE ep.run_reason != 'devserver' AND ep.dropped = FALSE
+                   WHERE ep.run_reason NOT IN ('devserver', 'commitmessage') AND ep.dropped = FALSE
                    GROUP BY ep.session_id
                ) latest_ep ON s.id = latest_ep.session_id
                WHERE s.workspace_id = $1

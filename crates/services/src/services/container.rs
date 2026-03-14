@@ -189,10 +189,10 @@ pub trait ContainerService {
     /// - Never when a setup script has no next_action (parallel mode)
     /// - The next action is None (no follow-up actions)
     fn should_finalize(&self, ctx: &ExecutionContext) -> bool {
-        // Never finalize DevServer processes
+        // Never finalize DevServer or CommitMessage processes
         if matches!(
             ctx.execution_process.run_reason,
-            ExecutionProcessRunReason::DevServer
+            ExecutionProcessRunReason::DevServer | ExecutionProcessRunReason::CommitMessage
         ) {
             return false;
         }
@@ -1277,6 +1277,7 @@ pub trait ContainerService {
             .ok_or(SqlxError::RowNotFound)?;
         if task.status != TaskStatus::InProgress
             && run_reason != &ExecutionProcessRunReason::DevServer
+            && run_reason != &ExecutionProcessRunReason::CommitMessage
         {
             Task::update_status(&self.db().pool, task.id, TaskStatus::InProgress).await?;
         }
@@ -1320,7 +1321,9 @@ pub trait ContainerService {
             &repo_states,
         )
         .await?;
-        if *run_reason != ExecutionProcessRunReason::ArchiveScript {
+        if *run_reason != ExecutionProcessRunReason::ArchiveScript
+            && *run_reason != ExecutionProcessRunReason::CommitMessage
+        {
             Workspace::set_archived(&self.db().pool, workspace.id, false).await?;
         }
 

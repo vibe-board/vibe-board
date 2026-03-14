@@ -294,7 +294,8 @@ impl LocalContainerService {
     /// Get the commit message based on the execution run reason.
     async fn get_commit_message(&self, ctx: &ExecutionContext) -> String {
         match ctx.execution_process.run_reason {
-            ExecutionProcessRunReason::CodingAgent => {
+            ExecutionProcessRunReason::CodingAgent
+            | ExecutionProcessRunReason::CommitMessage => {
                 // Try to retrieve the task summary from the coding agent turn
                 // otherwise fallback to default message
                 match CodingAgentTurn::find_by_execution_process_id(
@@ -1454,7 +1455,7 @@ impl ContainerService for LocalContainerService {
         if let Ok(ctx) = ExecutionProcess::load_context(&self.db.pool, execution_process.id).await
             && !matches!(
                 ctx.execution_process.run_reason,
-                ExecutionProcessRunReason::DevServer
+                ExecutionProcessRunReason::DevServer | ExecutionProcessRunReason::CommitMessage
             )
             && let Err(e) =
                 Task::update_status(&self.db.pool, ctx.task.id, TaskStatus::InReview).await

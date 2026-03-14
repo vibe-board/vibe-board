@@ -168,6 +168,18 @@
           "helper": "生成PR描述时AI代理使用的自定义提示。使用{pr_number}和{pr_url}作为占位符。"
         }
       },
+      "commitMessage": {
+        "title": "提交消息",
+        "description": "配置合并时用于生成提交消息的代理。",
+        "useCustom": {
+          "label": "使用自定义代理生成提交消息",
+          "helper": "启用后，将使用不同的代理配置来生成提交消息。适用于任务代理速度较慢导致超时的情况。"
+        },
+        "agent": {
+          "label": "提交消息代理",
+          "helper": "选择用于生成提交消息的代理配置。建议使用更快的模型。"
+        }
+      },
       "commits": {
         "title": "提交",
         "description": "配置任务尝试的提交行为",

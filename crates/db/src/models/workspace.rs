@@ -636,7 +636,7 @@ impl Workspace {
                     JOIN execution_processes ep ON ep.session_id = s.id
                     WHERE s.workspace_id = w.id
                       AND ep.status = 'running'
-                      AND ep.run_reason IN ('setupscript','cleanupscript','codingagent')
+                      AND ep.run_reason IN ('setupscript','cleanupscript','codingagent','commitmessage')
                     LIMIT 1
                 ) THEN 1 ELSE 0 END AS "is_running!: i64",
 
@@ -739,7 +739,7 @@ impl Workspace {
                     JOIN execution_processes ep ON ep.session_id = s.id
                     WHERE s.workspace_id = w.id
                       AND ep.status = 'running'
-                      AND ep.run_reason IN ('setupscript','cleanupscript','codingagent')
+                      AND ep.run_reason IN ('setupscript','cleanupscript','codingagent','commitmessage')
                     LIMIT 1
                 ) THEN 1 ELSE 0 END AS "is_running!: i64",
 

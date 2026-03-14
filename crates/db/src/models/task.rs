@@ -135,7 +135,7 @@ impl Task {
       JOIN execution_processes ep ON ep.session_id = s.id
      WHERE w.task_id       = t.id
        AND ep.status        = 'running'
-       AND ep.run_reason IN ('setupscript','cleanupscript','codingagent')
+       AND ep.run_reason IN ('setupscript','cleanupscript','codingagent','commitmessage')
      LIMIT 1
   ) THEN 1 ELSE 0 END            AS "has_in_progress_attempt!: i64",
 

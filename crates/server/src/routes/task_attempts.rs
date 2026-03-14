@@ -36,7 +36,6 @@ use deployment::Deployment;
 use executors::{
     actions::{
         ExecutorAction, ExecutorActionType,
-        coding_agent_follow_up::CodingAgentFollowUpRequest,
         coding_agent_initial::CodingAgentInitialRequest,
         script::{ScriptContext, ScriptRequest, ScriptRequestLanguage},
     },
@@ -508,15 +507,13 @@ fn legacy_commit_message(task: &Task) -> String {
 }
 
 /// Run the workspace's coding agent to generate a conventional commit message.
-/// Uses the given session and executor (same as task page "send" would use).
+/// Always uses an isolated session to avoid polluting the task session's context.
 /// Tells the agent current and target branch; the agent can run git diff etc. itself.
 /// Returns None if agent fails or timeout.
 async fn generate_commit_message_via_agent(
     deployment: &DeploymentImpl,
     workspace: &Workspace,
-    session: &Session,
     executor_profile_id: &ExecutorProfileId,
-    session_executor_profile_id: &ExecutorProfileId,
     current_branch: &str,
     target_branch: &str,
 ) -> Option<String> {
@@ -524,10 +521,6 @@ async fn generate_commit_message_via_agent(
 
     let pool = &deployment.db().pool;
 
-    let latest_session_info = CodingAgentTurn::find_latest_session_info(pool, session.id)
-        .await
-        .ok()
-        .flatten();
     let working_dir = workspace
         .agent_working_dir
         .as_ref()
@@ -556,28 +549,28 @@ async fn generate_commit_message_via_agent(
         current_branch, target_branch
     );
 
-    // If the commit message executor differs from the session executor,
-    // always use InitialRequest (a new session) since we can't follow up
-    // with a different executor on the same session.
-    let executor_differs = executor_profile_id.executor != session_executor_profile_id.executor;
+    // Always create a new DB Session so the commit message agent's
+    // ExecutionProcess and CodingAgentTurn records don't pollute the
+    // task session's conversation history.
+    let commit_session = {
+        let create = CreateSession {
+            executor: Some(executor_profile_id.executor.to_string()),
+        };
+        match Session::create(pool, &create, Uuid::new_v4(), workspace.id).await {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!("Failed to create session for commit message agent: {}", e);
+                return None;
+            }
+        }
+    };
 
-    let action_type = if let Some(info) = latest_session_info
-        && !executor_differs
-    {
-        ExecutorActionType::CodingAgentFollowUpRequest(CodingAgentFollowUpRequest {
-            prompt: prompt.clone(),
-            session_id: info.session_id,
-            reset_to_message_id: None,
-            executor_profile_id: (*executor_profile_id).clone(),
-            working_dir: working_dir.clone(),
-        })
-    } else {
+    let action_type =
         ExecutorActionType::CodingAgentInitialRequest(CodingAgentInitialRequest {
             prompt,
             executor_profile_id: (*executor_profile_id).clone(),
             working_dir,
-        })
-    };
+        });
 
     let action = ExecutorAction::new(action_type, None);
 
@@ -585,9 +578,9 @@ async fn generate_commit_message_via_agent(
         .container()
         .start_execution(
             workspace,
-            session,
+            &commit_session,
             &action,
-            &ExecutionProcessRunReason::CodingAgent,
+            &ExecutionProcessRunReason::CommitMessage,
         )
         .await
         .ok()?;
@@ -840,9 +833,7 @@ pub async fn merge_task_attempt(
     let commit_message = generate_commit_message_via_agent(
         &deployment,
         &workspace,
-        &session,
         commit_message_profile,
-        &request.executor_profile_id,
         &workspace.branch,
         &workspace_repo.target_branch,
     )
