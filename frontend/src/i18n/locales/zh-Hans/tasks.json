@@ -579,7 +579,10 @@
       "description": "您有未保存的更改。您确定要放弃它们吗？",
       "continueEditing": "继续编辑",
       "discardChanges": "放弃更改"
-    }
+    },
+    "workspaceMode": "模式：",
+    "workspaceModeWorktree": "工作树（隔离）",
+    "workspaceModeDirect": "直接（原地）"
   },
   "terminal": {
     "selectWorkspace": "选择一个工作区以打开终端"

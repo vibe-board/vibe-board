@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "INSERT INTO workspaces (id, task_id, container_ref, branch, agent_working_dir, setup_completed_at)\n               VALUES ($1, $2, $3, $4, $5, $6)\n               RETURNING id as \"id!: Uuid\", task_id as \"task_id!: Uuid\", container_ref, branch, agent_working_dir, setup_completed_at as \"setup_completed_at: DateTime<Utc>\", created_at as \"created_at!: DateTime<Utc>\", updated_at as \"updated_at!: DateTime<Utc>\", archived as \"archived!: bool\", pinned as \"pinned!: bool\", name",
+  "query": "SELECT  w.id                AS \"id!: Uuid\",\n                       w.task_id           AS \"task_id!: Uuid\",\n                       w.container_ref,\n                       w.branch,\n                       w.agent_working_dir,\n                       w.setup_completed_at AS \"setup_completed_at: DateTime<Utc>\",\n                       w.created_at        AS \"created_at!: DateTime<Utc>\",\n                       w.updated_at        AS \"updated_at!: DateTime<Utc>\",\n                       w.archived          AS \"archived!: bool\",\n                       w.pinned            AS \"pinned!: bool\",\n                       w.name,\n                       w.mode              AS \"mode!: WorkspaceMode\"\n               FROM    workspaces w\n               JOIN    tasks t ON w.task_id = t.id\n               JOIN    projects p ON t.project_id = p.id\n               WHERE   w.id = $1 AND t.id = $2 AND p.id = $3",
   "describe": {
     "columns": [
       {
@@ -57,10 +57,15 @@
         "name": "name",
         "ordinal": 10,
         "type_info": "Text"
+      },
+      {
+        "name": "mode!: WorkspaceMode",
+        "ordinal": 11,
+        "type_info": "Text"
       }
     ],
     "parameters": {
-      "Right": 6
+      "Right": 3
     },
     "nullable": [
       true,
@@ -73,8 +78,9 @@
       false,
       false,
       false,
-      true
+      true,
+      false
     ]
   },
-  "hash": "59567b3422999cd8cf5eccc8eb2a19e58a00712239ea078f01450491b4e6d159"
+  "hash": "652d138a1dba0d779eb5e9f6b41e34892743b2ad28e91490fecaf605ae278bb0"
 }

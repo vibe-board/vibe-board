@@ -1,0 +1,1 @@
+ALTER TABLE workspaces ADD COLUMN mode TEXT NOT NULL DEFAULT 'worktree';

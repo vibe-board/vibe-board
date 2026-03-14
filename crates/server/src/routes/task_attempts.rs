@@ -29,7 +29,7 @@ use db::models::{
     repo::{Repo, RepoError},
     session::{CreateSession, Session, SessionError},
     task::{Task, TaskRelationships, TaskStatus},
-    workspace::{CreateWorkspace, Workspace, WorkspaceError},
+    workspace::{CreateWorkspace, Workspace, WorkspaceError, WorkspaceMode},
     workspace_repo::{CreateWorkspaceRepo, RepoWithTargetBranch, WorkspaceRepo},
 };
 use deployment::Deployment;
@@ -128,6 +128,17 @@ pub struct LinkWorkspaceRequest {
     pub issue_id: Uuid,
 }
 
+/// Get the filesystem path for a repo within a workspace.
+/// For Direct single-repo mode, the workspace root IS the repo path.
+/// For Worktree mode (or Direct multi-repo), repos are subdirectories.
+fn repo_worktree_path(workspace_root: &Path, workspace: &Workspace, repo: &Repo) -> PathBuf {
+    if workspace.mode == WorkspaceMode::Direct {
+        workspace_root.to_path_buf()
+    } else {
+        workspace_root.join(&repo.name)
+    }
+}
+
 pub async fn get_task_attempts(
     State(deployment): State<DeploymentImpl>,
     Query(query): Query<TaskAttemptQuery>,
@@ -204,6 +215,8 @@ pub struct CreateTaskAttemptBody {
     pub task_id: Uuid,
     pub executor_profile_id: ExecutorProfileId,
     pub repos: Vec<WorkspaceRepoInput>,
+    #[ts(optional)]
+    pub workspace_mode: Option<WorkspaceMode>,
 }
 
 #[derive(Debug, Serialize, Deserialize, ts_rs::TS)]
@@ -238,19 +251,40 @@ pub async fn create_task_attempt(
         .await?
         .ok_or(SqlxError::RowNotFound)?;
 
-    // Compute agent_working_dir based on repo count:
-    // - Single repo: join repo name with default_working_dir (if set), or just repo name
+    let workspace_mode = payload.workspace_mode.unwrap_or(WorkspaceMode::Worktree);
+
+    // Check for direct mode conflict: only one direct task per project at a time
+    if workspace_mode == WorkspaceMode::Direct {
+        let has_active_direct =
+            Workspace::has_active_direct_workspace(pool, task.project_id).await?;
+        if has_active_direct {
+            return Err(ApiError::Conflict(
+                "A direct-mode task is already running for this project".to_string(),
+            ));
+        }
+    }
+
+    // Compute agent_working_dir based on repo count and workspace mode:
+    // - Single repo, worktree mode: join repo name with default_working_dir (if set), or just repo name
+    // - Single repo, direct mode: use default_working_dir only (container_ref is already the repo path)
     // - Multiple repos: use None (agent runs in workspace root)
     let agent_working_dir = if payload.repos.len() == 1 {
         let repo = Repo::find_by_id(pool, payload.repos[0].repo_id)
             .await?
             .ok_or(RepoError::NotFound)?;
-        match repo.default_working_dir {
-            Some(subdir) => {
-                let path = PathBuf::from(&repo.name).join(&subdir);
-                Some(path.to_string_lossy().to_string())
+        if workspace_mode == WorkspaceMode::Direct {
+            // In direct mode, container_ref is the repo path itself,
+            // so we only need the subdirectory offset if specified
+            repo.default_working_dir
+        } else {
+            // In worktree mode, repo is cloned into workspace_dir/repo.name
+            match repo.default_working_dir {
+                Some(subdir) => {
+                    let path = PathBuf::from(&repo.name).join(&subdir);
+                    Some(path.to_string_lossy().to_string())
+                }
+                None => Some(repo.name),
             }
-            None => Some(repo.name),
         }
     } else {
         None
@@ -267,6 +301,7 @@ pub async fn create_task_attempt(
         &CreateWorkspace {
             branch: git_branch_name.clone(),
             agent_working_dir,
+            mode: Some(workspace_mode),
         },
         attempt_id,
         payload.task_id,
@@ -770,7 +805,7 @@ pub async fn merge_task_attempt(
         .ensure_container_exists(&workspace)
         .await?;
     let workspace_path = Path::new(&container_ref);
-    let worktree_path = workspace_path.join(repo.name);
+    let worktree_path = repo_worktree_path(workspace_path, &workspace, &repo);
 
     let task = workspace
         .parent_task(pool)
@@ -876,7 +911,7 @@ pub async fn push_task_attempt_branch(
         .ensure_container_exists(&workspace)
         .await?;
     let workspace_path = Path::new(&container_ref);
-    let worktree_path = workspace_path.join(&repo.name);
+    let worktree_path = repo_worktree_path(workspace_path, &workspace, &repo);
 
     match deployment
         .git()
@@ -911,7 +946,7 @@ pub async fn force_push_task_attempt_branch(
         .ensure_container_exists(&workspace)
         .await?;
     let workspace_path = Path::new(&container_ref);
-    let worktree_path = workspace_path.join(&repo.name);
+    let worktree_path = repo_worktree_path(workspace_path, &workspace, &repo);
 
     deployment
         .git()
@@ -954,11 +989,16 @@ pub async fn open_task_attempt_in_editor(
     // For single-repo projects, open from the repo directory
     let workspace_repos =
         WorkspaceRepo::find_repos_for_workspace(&deployment.db().pool, workspace.id).await?;
-    let workspace_path = if workspace_repos.len() == 1 && payload.file_path.is_none() {
-        workspace_path.join(&workspace_repos[0].name)
-    } else {
-        workspace_path.to_path_buf()
-    };
+    let workspace_path =
+        if workspace_repos.len() == 1 && payload.file_path.is_none() {
+            if workspace.mode == WorkspaceMode::Direct {
+                workspace_path.to_path_buf()
+            } else {
+                workspace_path.join(&workspace_repos[0].name)
+            }
+        } else {
+            workspace_path.to_path_buf()
+        };
 
     // If a specific file path is provided, use it; otherwise use the base path
     let path = if let Some(file_path) = payload.file_path.as_ref() {
@@ -1465,7 +1505,7 @@ pub async fn rebase_task_attempt(
         .ensure_container_exists(&workspace)
         .await?;
     let workspace_path = Path::new(&container_ref);
-    let worktree_path = workspace_path.join(&repo.name);
+    let worktree_path = repo_worktree_path(workspace_path, &workspace, &repo);
 
     let result = deployment.git().rebase_branch(
         &repo.path,
@@ -1529,7 +1569,7 @@ pub async fn abort_conflicts_task_attempt(
         .ensure_container_exists(&workspace)
         .await?;
     let workspace_path = Path::new(&container_ref);
-    let worktree_path = workspace_path.join(&repo.name);
+    let worktree_path = repo_worktree_path(workspace_path, &workspace, &repo);
 
     deployment.git().abort_conflicts(&worktree_path)?;
 
@@ -1553,7 +1593,7 @@ pub async fn continue_rebase_task_attempt(
         .ensure_container_exists(&workspace)
         .await?;
     let workspace_path = Path::new(&container_ref);
-    let worktree_path = workspace_path.join(&repo.name);
+    let worktree_path = repo_worktree_path(workspace_path, &workspace, &repo);
 
     deployment.git().continue_rebase(&worktree_path)?;
 

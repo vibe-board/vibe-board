@@ -843,7 +843,9 @@ export function ProjectTasks() {
                 <BreadcrumbSeparator />
                 <BreadcrumbItem>
                   <BreadcrumbPage>
-                    {attempt?.branch || 'Task Attempt'}
+                    {attempt?.mode === 'direct'
+                      ? branchStatus?.[0]?.target_branch_name || 'Direct'
+                      : attempt?.branch || 'Task Attempt'}
                   </BreadcrumbPage>
                 </BreadcrumbItem>
               </>

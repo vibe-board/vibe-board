@@ -49,6 +49,7 @@ import type {
   TaskStatus,
   ExecutorProfileId,
   ImageResponse,
+  WorkspaceMode,
 } from 'shared/types';
 
 interface Task {
@@ -81,6 +82,7 @@ type TaskFormValues = {
   executorProfileId: ExecutorProfileId | null;
   repoBranches: RepoBranch[];
   autoStart: boolean;
+  workspaceMode: WorkspaceMode;
 };
 
 const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
@@ -136,6 +138,7 @@ const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
           executorProfileId: baseProfile,
           repoBranches: defaultRepoBranches,
           autoStart: false,
+          workspaceMode: 'worktree' as WorkspaceMode,
         };
 
       case 'duplicate':
@@ -146,6 +149,7 @@ const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
           executorProfileId: baseProfile,
           repoBranches: defaultRepoBranches,
           autoStart: true,
+          workspaceMode: 'worktree' as WorkspaceMode,
         };
 
       case 'subtask':
@@ -158,6 +162,7 @@ const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
           executorProfileId: baseProfile,
           repoBranches: defaultRepoBranches,
           autoStart: true,
+          workspaceMode: 'worktree' as WorkspaceMode,
         };
     }
   }, [mode, props, system.config?.executor_profile, defaultRepoBranches]);
@@ -202,6 +207,7 @@ const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
             task,
             executor_profile_id: value.executorProfileId!,
             repos,
+            workspace_mode: value.workspaceMode,
           },
           { onSuccess: () => modal.remove() }
         );
@@ -603,6 +609,49 @@ const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
                   </div>
                 );
               }}
+            </form.Field>
+          )}
+
+          {/* Workspace mode selector */}
+          {!editMode && (
+            <form.Field name="autoStart">
+              {(autoStartField) => (
+                <form.Field name="workspaceMode">
+                  {(field) => (
+                    <div
+                      className={cn(
+                        'flex items-center gap-2 transition-opacity duration-200',
+                        autoStartField.state.value
+                          ? 'opacity-100'
+                          : 'opacity-0 pointer-events-none'
+                      )}
+                    >
+                      <Label className="text-sm text-low shrink-0">
+                        {t('taskFormDialog.workspaceMode')}
+                      </Label>
+                      <Select
+                        value={field.state.value}
+                        onValueChange={(value) =>
+                          field.handleChange(value as WorkspaceMode)
+                        }
+                        disabled={isSubmitting || !autoStartField.state.value}
+                      >
+                        <SelectTrigger className="h-8 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="worktree">
+                            {t('taskFormDialog.workspaceModeWorktree')}
+                          </SelectItem>
+                          <SelectItem value="direct">
+                            {t('taskFormDialog.workspaceModeDirect')}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </form.Field>
+              )}
             </form.Field>
           )}
 

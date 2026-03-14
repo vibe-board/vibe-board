@@ -690,6 +690,7 @@ pub async fn create_workspace_from_pr(
         &CreateWorkspace {
             branch: target_branch_ref.clone(),
             agent_working_dir,
+            mode: None, // PR workspaces use default worktree mode
         },
         workspace_id,
         task.id,

@@ -302,6 +302,8 @@ function GitOperations({
     });
   };
 
+  const isDirectMode = selectedAttempt.mode === 'direct';
+
   const isVertical = layout === 'vertical';
 
   const containerClasses = isVertical
@@ -406,22 +408,26 @@ function GitOperations({
 
   const branchChips = (
     <>
-      {/* Task branch chip */}
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="hidden sm:inline-flex items-center gap-1.5 max-w-[280px] px-2 py-0.5 rounded-full bg-muted text-xs font-medium min-w-0">
-              <GitBranchIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <span className="truncate">{selectedAttempt.branch}</span>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            {t('git.labels.taskBranch')}
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      {/* Task branch chip - hidden in direct mode */}
+      {!isDirectMode && (
+        <>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="hidden sm:inline-flex items-center gap-1.5 max-w-[280px] px-2 py-0.5 rounded-full bg-muted text-xs font-medium min-w-0">
+                  <GitBranchIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="truncate">{selectedAttempt.branch}</span>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {t('git.labels.taskBranch')}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
 
-      <ArrowRight className="hidden sm:inline h-4 w-4 text-muted-foreground" />
+          <ArrowRight className="hidden sm:inline h-4 w-4 text-muted-foreground" />
+        </>
+      )}
 
       {/* Target branch chip + change button */}
       <div className="flex items-center gap-1 min-w-0">
@@ -443,25 +449,27 @@ function GitOperations({
           </Tooltip>
         </TooltipProvider>
 
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={handleChangeTargetBranchDialogOpen}
-                disabled={isAttemptRunning || hasConflictsCalculated}
-                className={settingsBtnClasses}
-                aria-label={t('branches.changeTarget.dialog.title')}
-              >
-                <Settings className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {t('branches.changeTarget.dialog.title')}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        {!isDirectMode && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={handleChangeTargetBranchDialogOpen}
+                  disabled={isAttemptRunning || hasConflictsCalculated}
+                  className={settingsBtnClasses}
+                  aria-label={t('branches.changeTarget.dialog.title')}
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {t('branches.changeTarget.dialog.title')}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </div>
     </>
   );
@@ -506,13 +514,13 @@ function GitOperations({
           </>
         )}
 
-        {/* Right: Actions */}
-        {branchStatusError && !selectedRepoStatus ? (
+        {/* Right: Actions - hidden in direct mode */}
+        {!isDirectMode && branchStatusError && !selectedRepoStatus ? (
           <div className="flex items-center gap-2 text-xs text-destructive">
             <AlertTriangle className="h-3.5 w-3.5" />
             <span>{t('git.errors.branchStatusUnavailable')}</span>
           </div>
-        ) : selectedRepoStatus ? (
+        ) : !isDirectMode && selectedRepoStatus ? (
           <div className={actionsClasses}>
             <Button
               onClick={handleMergeClick}

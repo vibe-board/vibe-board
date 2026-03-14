@@ -1,3 +1,6 @@
+use std::fmt;
+use std::str::FromStr;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
@@ -14,6 +17,63 @@ use super::{
     workspace_repo::{RepoWithTargetBranch, WorkspaceRepo},
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(rename_all = "lowercase")]
+pub enum WorkspaceMode {
+    Worktree,
+    Direct,
+}
+
+impl fmt::Display for WorkspaceMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            WorkspaceMode::Worktree => write!(f, "worktree"),
+            WorkspaceMode::Direct => write!(f, "direct"),
+        }
+    }
+}
+
+impl FromStr for WorkspaceMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "worktree" => Ok(WorkspaceMode::Worktree),
+            "direct" => Ok(WorkspaceMode::Direct),
+            _ => Err(format!("Unknown workspace mode: {}", s)),
+        }
+    }
+}
+
+// SQLx encode/decode for SQLite (stores as TEXT)
+impl sqlx::Type<sqlx::Sqlite> for WorkspaceMode {
+    fn type_info() -> <sqlx::Sqlite as sqlx::Database>::TypeInfo {
+        <str as sqlx::Type<sqlx::Sqlite>>::type_info()
+    }
+}
+
+impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for WorkspaceMode {
+    fn encode_by_ref(
+        &self,
+        args: &mut Vec<sqlx::sqlite::SqliteArgumentValue<'q>>,
+    ) -> Result<sqlx::encode::IsNull, Box<dyn std::error::Error + Send + Sync>> {
+        args.push(sqlx::sqlite::SqliteArgumentValue::Text(
+            std::borrow::Cow::Owned(self.to_string()),
+        ));
+        Ok(sqlx::encode::IsNull::No)
+    }
+}
+
+impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for WorkspaceMode {
+    fn decode(
+        value: <sqlx::Sqlite as sqlx::database::Database>::ValueRef<'r>,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let s = <&str as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;
+        WorkspaceMode::from_str(s).map_err(|e| e.into())
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum WorkspaceError {
     #[error(transparent)]
@@ -26,6 +86,8 @@ pub enum WorkspaceError {
     ValidationError(String),
     #[error("Branch not found: {0}")]
     BranchNotFound(String),
+    #[error("A direct-mode workspace is already running for this project")]
+    DirectModeConflict,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -48,6 +110,7 @@ pub struct Workspace {
     pub archived: bool,
     pub pinned: bool,
     pub name: Option<String>,
+    pub mode: WorkspaceMode,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -101,6 +164,8 @@ pub struct WorkspaceContext {
 pub struct CreateWorkspace {
     pub branch: String,
     pub agent_working_dir: Option<String>,
+    #[ts(optional)]
+    pub mode: Option<WorkspaceMode>,
 }
 
 impl Workspace {
@@ -126,7 +191,8 @@ impl Workspace {
                               updated_at AS "updated_at!: DateTime<Utc>",
                               archived AS "archived!: bool",
                               pinned AS "pinned!: bool",
-                              name
+                              name,
+                              mode AS "mode!: WorkspaceMode"
                        FROM workspaces
                        WHERE task_id = $1
                        ORDER BY created_at DESC"#,
@@ -147,7 +213,8 @@ impl Workspace {
                               updated_at AS "updated_at!: DateTime<Utc>",
                               archived AS "archived!: bool",
                               pinned AS "pinned!: bool",
-                              name
+                              name,
+                              mode AS "mode!: WorkspaceMode"
                        FROM workspaces
                        ORDER BY created_at DESC"#
             )
@@ -178,7 +245,8 @@ impl Workspace {
                        w.updated_at        AS "updated_at!: DateTime<Utc>",
                        w.archived          AS "archived!: bool",
                        w.pinned            AS "pinned!: bool",
-                       w.name
+                       w.name,
+                       w.mode              AS "mode!: WorkspaceMode"
                FROM    workspaces w
                JOIN    tasks t ON w.task_id = t.id
                JOIN    projects p ON t.project_id = p.id
@@ -267,7 +335,8 @@ impl Workspace {
                        updated_at        AS "updated_at!: DateTime<Utc>",
                        archived          AS "archived!: bool",
                        pinned            AS "pinned!: bool",
-                       name
+                       name,
+                       mode              AS "mode!: WorkspaceMode"
                FROM    workspaces
                WHERE   id = $1"#,
             id
@@ -289,7 +358,8 @@ impl Workspace {
                        updated_at        AS "updated_at!: DateTime<Utc>",
                        archived          AS "archived!: bool",
                        pinned            AS "pinned!: bool",
-                       name
+                       name,
+                       mode              AS "mode!: WorkspaceMode"
                FROM    workspaces
                WHERE   rowid = $1"#,
             rowid
@@ -332,7 +402,8 @@ impl Workspace {
                 w.updated_at as "updated_at!: DateTime<Utc>",
                 w.archived as "archived!: bool",
                 w.pinned as "pinned!: bool",
-                w.name
+                w.name,
+                w.mode as "mode!: WorkspaceMode"
             FROM workspaces w
             JOIN tasks t ON w.task_id = t.id
             LEFT JOIN sessions s ON w.id = s.workspace_id
@@ -377,17 +448,19 @@ impl Workspace {
         id: Uuid,
         task_id: Uuid,
     ) -> Result<Self, WorkspaceError> {
+        let mode = data.mode.unwrap_or(WorkspaceMode::Worktree);
         Ok(sqlx::query_as!(
             Workspace,
-            r#"INSERT INTO workspaces (id, task_id, container_ref, branch, agent_working_dir, setup_completed_at)
-               VALUES ($1, $2, $3, $4, $5, $6)
-               RETURNING id as "id!: Uuid", task_id as "task_id!: Uuid", container_ref, branch, agent_working_dir, setup_completed_at as "setup_completed_at: DateTime<Utc>", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>", archived as "archived!: bool", pinned as "pinned!: bool", name"#,
+            r#"INSERT INTO workspaces (id, task_id, container_ref, branch, agent_working_dir, setup_completed_at, mode)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)
+               RETURNING id as "id!: Uuid", task_id as "task_id!: Uuid", container_ref, branch, agent_working_dir, setup_completed_at as "setup_completed_at: DateTime<Utc>", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>", archived as "archived!: bool", pinned as "pinned!: bool", name, mode as "mode!: WorkspaceMode""#,
             id,
             task_id,
             Option::<String>::None,
             data.branch,
             data.agent_working_dir,
-            Option::<DateTime<Utc>>::None
+            Option::<DateTime<Utc>>::None,
+            mode
         )
         .fetch_one(pool)
         .await?)
@@ -555,6 +628,7 @@ impl Workspace {
                 w.archived AS "archived!: bool",
                 w.pinned AS "pinned!: bool",
                 w.name,
+                w.mode AS "mode!: WorkspaceMode",
 
                 CASE WHEN EXISTS (
                     SELECT 1
@@ -597,6 +671,7 @@ impl Workspace {
                     archived: rec.archived,
                     pinned: rec.pinned,
                     name: rec.name,
+                    mode: rec.mode,
                 },
                 is_running: rec.is_running != 0,
                 is_errored: rec.is_errored != 0,
@@ -656,6 +731,7 @@ impl Workspace {
                 w.archived AS "archived!: bool",
                 w.pinned AS "pinned!: bool",
                 w.name,
+                w.mode AS "mode!: WorkspaceMode",
 
                 CASE WHEN EXISTS (
                     SELECT 1
@@ -701,6 +777,7 @@ impl Workspace {
                 archived: rec.archived,
                 pinned: rec.pinned,
                 name: rec.name,
+                mode: rec.mode,
             },
             is_running: rec.is_running != 0,
             is_errored: rec.is_errored != 0,
@@ -715,5 +792,29 @@ impl Workspace {
         }
 
         Ok(Some(ws))
+    }
+
+    /// Check if a project already has an active direct-mode workspace.
+    /// An active direct workspace is one with mode='direct' that has a running execution process.
+    pub async fn has_active_direct_workspace(
+        pool: &SqlitePool,
+        project_id: Uuid,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query!(
+            r#"SELECT EXISTS(
+                SELECT 1 FROM workspaces w
+                JOIN tasks t ON w.task_id = t.id
+                JOIN sessions s ON w.id = s.workspace_id
+                JOIN execution_processes ep ON s.id = ep.session_id
+                WHERE t.project_id = $1
+                  AND w.mode = 'direct'
+                  AND ep.status = 'running'
+            ) as "exists!: bool""#,
+            project_id
+        )
+        .fetch_one(pool)
+        .await?;
+
+        Ok(result.exists)
     }
 }

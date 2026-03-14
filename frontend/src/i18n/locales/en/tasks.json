@@ -656,7 +656,10 @@
       "description": "You have unsaved changes. Are you sure you want to discard them?",
       "continueEditing": "Continue Editing",
       "discardChanges": "Discard Changes"
-    }
+    },
+    "workspaceMode": "Mode:",
+    "workspaceModeWorktree": "Worktree (isolated)",
+    "workspaceModeDirect": "Direct (in-place)"
   },
   "terminal": {
     "selectWorkspace": "Select a workspace to open terminal"

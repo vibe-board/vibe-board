@@ -270,6 +270,12 @@ impl IntoResponse for ApiError {
             ApiError::Workspace(WorkspaceError::BranchNotFound(branch)) => {
                 ErrorInfo::not_found("WorkspaceError", format!("Branch '{}' not found.", branch))
             }
+            ApiError::Workspace(WorkspaceError::DirectModeConflict) => {
+                ErrorInfo::conflict(
+                    "WorkspaceError",
+                    "A direct-mode task is already running for this project.",
+                )
+            }
 
             ApiError::Session(SessionError::Database(_)) => ErrorInfo::internal("SessionError"),
             ApiError::Session(SessionError::NotFound) => {

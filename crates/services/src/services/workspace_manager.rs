@@ -137,6 +137,89 @@ impl WorkspaceManager {
         })
     }
 
+    /// Create a workspace with worktrees for direct mode (no new branches created).
+    /// Worktrees are created from existing branches without isolation.
+    pub async fn create_workspace_direct(
+        workspace_dir: &Path,
+        repos: &[RepoWorkspaceInput],
+    ) -> Result<WorktreeContainer, WorkspaceError> {
+        if repos.is_empty() {
+            return Err(WorkspaceError::NoRepositories);
+        }
+
+        info!(
+            "Creating direct-mode workspace at {} with {} repositories",
+            workspace_dir.display(),
+            repos.len()
+        );
+
+        tokio::fs::create_dir_all(workspace_dir).await?;
+
+        let mut created_worktrees: Vec<RepoWorktree> = Vec::new();
+
+        for input in repos {
+            let worktree_path = workspace_dir.join(&input.repo.name);
+
+            debug!(
+                "Creating direct worktree for repo '{}' at {} on branch '{}'",
+                input.repo.name,
+                worktree_path.display(),
+                input.target_branch
+            );
+
+            match WorktreeManager::create_worktree(
+                &input.repo.path,
+                &input.target_branch, // Use target branch as the branch name
+                &worktree_path,
+                &input.target_branch,
+                false, // Don't create a new branch
+            )
+            .await
+            {
+                Ok(()) => {
+                    created_worktrees.push(RepoWorktree {
+                        repo_id: input.repo.id,
+                        repo_name: input.repo.name.clone(),
+                        source_repo_path: input.repo.path.clone(),
+                        worktree_path,
+                    });
+                }
+                Err(e) => {
+                    error!(
+                        "Failed to create direct worktree for repo '{}': {}. Rolling back...",
+                        input.repo.name, e
+                    );
+
+                    // Rollback: cleanup all worktrees we've created so far
+                    Self::cleanup_created_worktrees(&created_worktrees).await;
+
+                    // Also remove the workspace directory if it's empty
+                    if let Err(cleanup_err) = tokio::fs::remove_dir(workspace_dir).await {
+                        debug!(
+                            "Could not remove workspace dir during rollback: {}",
+                            cleanup_err
+                        );
+                    }
+
+                    return Err(WorkspaceError::PartialCreation(format!(
+                        "Failed to create direct worktree for repo '{}': {}",
+                        input.repo.name, e
+                    )));
+                }
+            }
+        }
+
+        info!(
+            "Successfully created direct-mode workspace with {} worktrees",
+            created_worktrees.len()
+        );
+
+        Ok(WorktreeContainer {
+            workspace_dir: workspace_dir.to_path_buf(),
+            worktrees: created_worktrees,
+        })
+    }
+
     /// Ensure all worktrees in a workspace exist (for cold restart scenarios)
     pub async fn ensure_workspace_exists(
         workspace_dir: &Path,

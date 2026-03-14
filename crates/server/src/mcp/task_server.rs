@@ -897,6 +897,7 @@ impl TaskServer {
             task_id,
             executor_profile_id,
             repos: workspace_repos,
+            workspace_mode: None, // MCP uses default worktree mode
         };
 
         let url = self.url("/api/task-attempts");

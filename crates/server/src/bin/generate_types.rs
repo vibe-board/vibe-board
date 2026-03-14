@@ -48,6 +48,7 @@ fn generate_types_content() -> String {
         db::models::scratch::UpdateScratch::decl(),
         db::models::image::Image::decl(),
         db::models::image::CreateImage::decl(),
+        db::models::workspace::WorkspaceMode::decl(),
         db::models::workspace::Workspace::decl(),
         db::models::workspace::WorkspaceWithStatus::decl(),
         db::models::session::Session::decl(),

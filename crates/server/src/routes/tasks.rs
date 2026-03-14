@@ -16,7 +16,7 @@ use db::models::{
     image::TaskImage,
     repo::{Repo, RepoError},
     task::{CreateTask, Task, TaskWithAttemptStatus, UpdateTask},
-    workspace::{CreateWorkspace, Workspace},
+    workspace::{CreateWorkspace, Workspace, WorkspaceMode},
     workspace_repo::{CreateWorkspaceRepo, WorkspaceRepo},
 };
 use deployment::Deployment;
@@ -142,6 +142,8 @@ pub struct CreateAndStartTaskRequest {
     pub task: CreateTask,
     pub executor_profile_id: ExecutorProfileId,
     pub repos: Vec<WorkspaceRepoInput>,
+    #[ts(optional)]
+    pub workspace_mode: Option<WorkspaceMode>,
 }
 
 pub async fn create_task_and_start(
@@ -155,6 +157,18 @@ pub async fn create_task_and_start(
     }
 
     let pool = &deployment.db().pool;
+    let workspace_mode = payload.workspace_mode.unwrap_or(WorkspaceMode::Worktree);
+
+    // Check for direct mode conflict: only one direct task per project at a time
+    if workspace_mode == WorkspaceMode::Direct {
+        let has_active_direct =
+            Workspace::has_active_direct_workspace(pool, payload.task.project_id).await?;
+        if has_active_direct {
+            return Err(ApiError::Conflict(
+                "A direct-mode task is already running for this project".to_string(),
+            ));
+        }
+    }
 
     let task_id = Uuid::new_v4();
     let task = Task::create(pool, &payload.task, task_id).await?;
@@ -181,19 +195,27 @@ pub async fn create_task_and_start(
         .git_branch_from_workspace(&attempt_id, &task.title)
         .await;
 
-    // Compute agent_working_dir based on repo count:
-    // - Single repo: join repo name with default_working_dir (if set), or just repo name
+    // Compute agent_working_dir based on repo count and workspace mode:
+    // - Single repo, worktree mode: join repo name with default_working_dir (if set), or just repo name
+    // - Single repo, direct mode: use default_working_dir only (container_ref is already the repo path)
     // - Multiple repos: use None (agent runs in workspace root)
     let agent_working_dir = if payload.repos.len() == 1 {
         let repo = Repo::find_by_id(pool, payload.repos[0].repo_id)
             .await?
             .ok_or(RepoError::NotFound)?;
-        match repo.default_working_dir {
-            Some(subdir) => {
-                let path = PathBuf::from(&repo.name).join(&subdir);
-                Some(path.to_string_lossy().to_string())
+        if workspace_mode == WorkspaceMode::Direct {
+            // In direct mode, container_ref is the repo path itself,
+            // so we only need the subdirectory offset if specified
+            repo.default_working_dir
+        } else {
+            // In worktree mode, repo is cloned into workspace_dir/repo.name
+            match repo.default_working_dir {
+                Some(subdir) => {
+                    let path = PathBuf::from(&repo.name).join(&subdir);
+                    Some(path.to_string_lossy().to_string())
+                }
+                None => Some(repo.name),
             }
-            None => Some(repo.name),
         }
     } else {
         None
@@ -204,6 +226,7 @@ pub async fn create_task_and_start(
         &CreateWorkspace {
             branch: git_branch_name,
             agent_working_dir,
+            mode: Some(workspace_mode),
         },
         attempt_id,
         task.id,
@@ -309,10 +332,15 @@ pub async fn delete_task(
 
     let repositories = WorkspaceRepo::find_unique_repos_for_task(pool, task.id).await?;
 
-    // Collect workspace directories that need cleanup
-    let workspace_dirs: Vec<PathBuf> = attempts
+    // Collect workspace directories that need cleanup with their modes
+    let workspace_cleanup_info: Vec<(PathBuf, WorkspaceMode)> = attempts
         .iter()
-        .filter_map(|attempt| attempt.container_ref.as_ref().map(PathBuf::from))
+        .filter_map(|attempt| {
+            attempt
+                .container_ref
+                .as_ref()
+                .map(|cr| (PathBuf::from(cr), attempt.mode))
+        })
         .collect();
 
     // Use a transaction to ensure atomicity: either all operations succeed or all are rolled back
@@ -362,11 +390,20 @@ pub async fn delete_task(
         tracing::info!(
             "Starting background cleanup for task {} ({} workspaces, {} repos)",
             task_id,
-            workspace_dirs.len(),
+            workspace_cleanup_info.len(),
             repositories.len()
         );
 
-        for workspace_dir in &workspace_dirs {
+        for (workspace_dir, mode) in &workspace_cleanup_info {
+            // Skip cleanup for direct-mode single-repo workspaces
+            if *mode == WorkspaceMode::Direct && repositories.len() == 1 {
+                tracing::info!(
+                    "Skipping cleanup for direct-mode single-repo workspace at {}",
+                    workspace_dir.display()
+                );
+                continue;
+            }
+
             if let Err(e) = WorkspaceManager::cleanup_workspace(workspace_dir, &repositories).await
             {
                 tracing::error!(
