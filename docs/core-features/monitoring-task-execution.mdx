@@ -70,9 +70,41 @@ After every agent turn, your cleanup script runs (if configured). This is useful
 
 ### 6. Commit Messages
 
-When you **merge** a feature branch into the target branch, the app uses the task’s **coding agent** to generate a [Conventional Commits](https://www.conventionalcommits.org/)-style commit message from the diff between the two branches. If the agent is unavailable or returns nothing, a simple fallback message is used.
+When you **merge** a feature branch into the target branch, the app generates a [Conventional Commits](https://www.conventionalcommits.org/)-style commit message from the diff between the two branches. The commit message generation runs in a dedicated agent session, isolated from the main task conversation.
+
+<Note>
+You can configure a specific agent profile for commit message generation in **Settings → General → Commit Message Agent**. This allows you to use a different (potentially faster or cheaper) agent for commit messages than the one used for the main task.
+</Note>
+
+### 7. Task Duration Statistics
+
+After each coding agent turn, Vibe Kanban displays task duration statistics showing how long the agent spent working. This helps you understand agent performance and identify slow operations.
+
+### 8. Agent Info Display
+
+When a task is running, the task panel displays the executor and agent information (e.g., which agent is running and which variant is being used). The agent and variant selectors are hidden while the task is executing to prevent accidental changes.
 
 ## Interacting During Execution
+
+### AskUserQuestion
+
+When an agent needs your input during execution, it can ask structured questions using the `AskUserQuestion` feature. You'll see a question banner appear in the task conversation with:
+
+- **Single-select**: Choose one option from a list
+- **Multi-select**: Select multiple options with a confirmation button
+- **Text input**: Type a freeform answer (also available as a fallback when options are empty)
+
+<Frame>
+<img src="/images/vk-ask-user-question.png" alt="AskUserQuestion banner showing a question with multiple choice options" />
+</Frame>
+
+<Note>
+AskUserQuestion is supported by Claude Code and other ACP-compatible agents.
+</Note>
+
+### Message Queuing
+
+If you send a follow-up message while an agent is still running, the message is automatically queued and will be delivered to the agent once it finishes its current turn. You can see the queue status in the follow-up section and cancel queued messages if needed.
 
 ### Keyboard Shortcuts
 
@@ -128,6 +160,27 @@ Each process displays its status and execution timeline. Click any process to vi
 <Tip>
 For development server logs, the recommended way to view them is through [Testing Your Application](/core-features/testing-your-application) where you can see logs alongside the live preview.
 </Tip>
+
+## Token Usage
+
+After each agent turn, the conversation view displays token usage information including:
+- Input tokens consumed
+- Output tokens generated
+- Total token count for the conversation
+
+This helps you understand agent costs and optimise your task descriptions.
+
+## Conversation History
+
+Vibe Kanban loads conversation history with progressive pagination for long conversations:
+
+- Initial load shows the most recent messages
+- Scroll up to load older messages automatically
+- Conversation entries are cached locally for faster subsequent loads
+
+<Info>
+Long conversations with many turns load efficiently thanks to paginated loading with IndexedDB caching.
+</Info>
 
 ## Related Documentation
 

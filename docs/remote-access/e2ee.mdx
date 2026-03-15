@@ -1,0 +1,158 @@
+---
+title: "End-to-End Encryption (E2EE)"
+description: "Securely access your Vibe Kanban instance from any browser with end-to-end encrypted remote access"
+---
+
+Vibe Kanban supports end-to-end encrypted remote access, allowing you to securely use the WebUI from any browser to manage tasks running on a remote machine. The gateway server acts as a message router but **never** has access to your data — all content is encrypted between your browser and the machine running `vibe-kanban`.
+
+<Info>
+E2EE remote access is currently in <Badge color="orange">Beta</Badge>. The gateway can be self-hosted on any infrastructure you control.
+</Info>
+
+## Architecture
+
+```
+┌──────────────┐                              ┌──────────────────────┐
+│  Machine A   │◄── Encrypted messages ──────►│                      │
+│  (vibe-kanban│                              │     Gateway          │
+│   server)    │                              │     (e2ee-gateway)   │
+├──────────────┤                              │                      │
+│  Machine B   │◄── Encrypted messages ──────►│  - User accounts     │
+│  (vibe-kanban│                              │  - Device keys       │
+│   server)    │                              │  - Message routing   │
+└──────────────┘                              └──────────┬───────────┘
+                                                         │
+┌──────────────┐                                         │
+│  Browser     │◄── Encrypted messages ─────────────────►┘
+│  (WebUI)     │
+└──────────────┘
+```
+
+**Key properties:**
+- The gateway cannot decrypt any content — it only routes encrypted messages
+- Multiple machines can register to the same gateway
+- The browser derives the same encryption keys from a shared master secret
+- All operations are scoped per-user — users cannot access each other's machines
+
+## Quick Start
+
+<Steps>
+<Step title="Start the Gateway">
+The E2EE gateway is bundled with the `vibe-kanban` CLI. Start it on your server:
+
+```bash
+vibe-kanban gateway start
+```
+
+Or run it on a custom port:
+
+```bash
+GATEWAY_PORT=9090 vibe-kanban gateway start
+```
+
+The first user to sign up automatically becomes the admin. Subsequent registrations are disabled.
+
+**Gateway environment variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GATEWAY_HOST` | `0.0.0.0` | Bind address |
+| `GATEWAY_PORT` | `9090` | Listen port |
+| `GATEWAY_DATABASE_URL` | `sqlite:gateway.db?mode=rwc` | SQLite database path |
+| `GATEWAY_ALLOWED_ORIGINS` | *(none)* | CORS allowed origins (comma-separated) |
+| `GATEWAY_SESSION_TTL_HOURS` | `168` (7 days) | Session token lifetime |
+</Step>
+
+<Step title="Register Your Account">
+The first user to sign up becomes the admin. You can do this from the WebUI's E2EE settings dialog.
+
+<Note>
+Only one admin account is permitted. Subsequent sign-ups are disabled after the first registration.
+</Note>
+</Step>
+
+<Step title="Login the Local Machine">
+On the machine running `vibe-kanban`, authenticate with the gateway:
+
+```bash
+vibe-kanban login --gateway https://your-gateway.example.com
+```
+
+This generates a device keypair and registers your device with the gateway. The daemon maintains a persistent WebSocket connection to the gateway.
+
+<Note>
+Your device private key is stored locally and never leaves your machine.
+</Note>
+</Step>
+
+<Step title="Access from Browser">
+Open the WebUI, go to **Settings → E2EE**, and enter:
+1. Gateway URL
+2. Your credentials
+
+The browser will derive encryption keys from your master secret (password + email) and establish an encrypted connection to all your registered machines.
+</Step>
+</Steps>
+
+## Cryptography
+
+The E2EE system uses industry-standard cryptographic primitives:
+
+### Key Derivation
+
+1. **Master Secret**: Derived from your password and email using BLAKE2b-512
+2. **Device Keypairs**: Master Secret is used to derive:
+   - Ed25519 keypair for authentication
+   - X25519 keypair for content encryption
+
+### Data Encryption
+
+1. **Key Agreement**: X25519 Diffie-Hellman between sender and recipient
+2. **Key Derivation**: HKDF to derive a Data Encryption Key (DEK)
+3. **Encryption**: XChaCha20-Poly1305 AEAD for authenticated encryption
+
+### User Identity
+
+- Your user identity is a SHA-256 hash of your public key
+- Displayed as a 12-character base62 thumbprint
+- Used to verify device pairing via QR codes
+
+## CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `vibe-kanban gateway start` | Start the E2EE gateway server |
+| `vibe-kanban login` | Authenticate with a gateway and register device |
+| `vibe-kanban logout` | Remove device registration from gateway |
+| `vibe-kanban status` | Show current E2EE connection status |
+
+## Security Considerations
+
+<Warning>
+- The gateway **never** has access to decrypted content — all encryption happens on your devices
+- If you lose your password, your data cannot be recovered — there is no key escrow
+- Device pairing uses QR codes to verify identity out-of-band
+- Always deploy the gateway over HTTPS in production
+</Warning>
+
+## Troubleshooting
+
+<AccordionGroup>
+<Accordion title="Connection issues">
+  - Verify the gateway URL is correct and accessible
+  - Check that the gateway is running and accepting connections
+  - Ensure your device is registered with `vibe-kanban status`
+</Accordion>
+
+<Accordion title="Authentication failures">
+  - Verify your credentials are correct
+  - Try logging out and back in: `vibe-kanban logout` then `vibe-kanban login`
+  - Check the gateway logs for error messages
+</Accordion>
+
+<Accordion title="Encryption errors">
+  - Ensure all devices are using the same master secret (password + email)
+  - Verify device fingerprints match expected values
+  - Re-register the device if key corruption is suspected
+</Accordion>
+</AccordionGroup>

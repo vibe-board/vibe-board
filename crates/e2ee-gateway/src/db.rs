@@ -103,6 +103,7 @@ pub async fn get_session_user_id(
     Ok(row.map(|r| r.0))
 }
 
+#[allow(dead_code)]
 pub async fn delete_session(pool: &SqlitePool, token: &str) -> Result<(), sqlx::Error> {
     sqlx::query("DELETE FROM sessions WHERE token = ?")
         .bind(token)

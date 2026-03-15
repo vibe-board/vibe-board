@@ -3,9 +3,23 @@ title: "Supported Coding Agents"
 description: "Complete guide to all coding agents supported by Vibe Kanban, including installation and authentication instructions"
 ---
 
-Vibe Kanban integrates with a variety of coding agents. Each agent requires installation and authentication before use. Select your preferred agent when creating task attempts.
+Vibe Kanban integrates with a wide variety of coding agents. Each agent requires installation and authentication before use. Select your preferred agent when creating task attempts.
 
-## Available Agents
+## Agent Categories
+
+Vibe Kanban supports two categories of agents:
+
+<CardGroup cols={2}>
+<Card title="Native Agents" icon="microchip">
+  Agents with first-class, direct CLI integration including Claude Code, Codex, Gemini CLI, and more.
+</Card>
+
+<Card title="ACP Agents" icon="network-wired">
+  Agents that use the Agent Communication Protocol (ACP) for standardised integration, including 19 additional agents.
+</Card>
+</CardGroup>
+
+## Native Agents
 
 <CardGroup cols={2}>
 <Card title="Claude Code" icon="https://www.vibekanban.com/images/logos/claude.svg" href="/agents/claude-code">
@@ -29,7 +43,7 @@ Amp Code
 </Card>
 
 <Card title="Cursor Agent CLI" icon="https://www.vibekanban.com/images/logos/cursor-logo-light.png" href="/agents/cursor-cli">
-Cursor Agent CLI 
+Cursor Agent CLI
 </Card>
 
 <Card title="OpenCode" icon="https://www.vibekanban.com/images/logos/opencode-light.svg" href="/agents/opencode">
@@ -48,3 +62,118 @@ Claude Code Router - orchestrate multiple models
 Qwen Code CLI
 </Card>
 </CardGroup>
+
+## ACP Agents
+
+The following agents are available via the Agent Communication Protocol. These agents support session forking, allowing you to create new task attempts that continue from an existing conversation context.
+
+<CardGroup cols={3}>
+<Card title="Auggie" icon="robot">
+Auggie CLI
+</Card>
+
+<Card title="Autohand" icon="hand">
+Autohand Agent
+</Card>
+
+<Card title="ByteDance Code" icon="code">
+ByteDance Code Agent
+</Card>
+
+<Card title="Cline" icon="terminal">
+Cline CLI
+</Card>
+
+<Card title="Copilot" icon="github">
+GitHub Copilot ACP
+</Card>
+
+<Card title="Crush" icon="bolt">
+Crush Agent
+</Card>
+
+<Card title="Custom Agent" icon="sliders">
+Custom Agent Config
+</Card>
+
+<Card title="Gemini CLI" icon="google">
+Gemini CLI ACP
+</Card>
+
+<Card title="Goose" icon="feather">
+Goose CLI
+</Card>
+
+<Card title="Junie" icon="code">
+JetBrains Junie
+</Card>
+
+<Card title="OpenCode" icon="terminal">
+OpenCode ACP
+</Card>
+
+<Card title="Qoder" icon="robot">
+Qoder Agent
+</Card>
+
+<Card title="Sourcegraph" icon="magnifying-glass">
+Sourcegraph Agent
+</Card>
+
+<Card title="Sparc" icon="fire">
+Sparc Agent
+</Card>
+
+<Card title="SpecStory" icon="book">
+SpecStory Agent
+</Card>
+
+<Card title="Warp" icon="terminal">
+Warp Agent
+</Card>
+
+<Card title="Windsurf" icon="wind">
+Windsurf Agent
+</Card>
+
+<Card title="Zencoder" icon="code">
+Zencoder Agent
+</Card>
+</CardGroup>
+
+<Info>
+ACP agents are identified with an `(ACP)` suffix in the agent selector. You can enable or disable individual agents in **Settings → Agents**.
+</Info>
+
+## Managing Agents
+
+### Enabling and Disabling Agents
+
+You can control which agents appear in the agent selector:
+
+1. Go to **Settings → Agents**
+2. Toggle the checkbox next to each agent to enable or disable it
+3. Only enabled agents will appear when creating task attempts
+
+### Agent Ordering
+
+Customise the order in which agents appear in selectors:
+
+1. Go to **Settings → Agents**
+2. Use the drag handle to reorder agents
+3. Your preferred agents can be moved to the top for quick access
+
+<Note>
+Agent ordering and enable/disable settings are stored in your configuration and persist across sessions.
+</Note>
+
+## Agent Capabilities
+
+Different agents support different capabilities:
+
+| Capability | Description | Supported Agents |
+|-----------|-------------|-----------------|
+| **Session Fork** | Continue from an existing conversation | All ACP agents |
+| **AskUserQuestion** | Ask structured questions during execution | Claude Code, ACP agents |
+| **Message Editing** | Edit previous messages to redirect the agent | Claude Code, Amp, Codex, Gemini, Qwen |
+| **Action Approvals** | Require human approval for certain actions | Codex |

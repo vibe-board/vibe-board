@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use workspace_utils::approvals::{ApprovalStatus, QuestionStatus};
 
@@ -36,32 +35,26 @@ pub struct ClaudeAgentClient {
     repo_context: RepoContext,
     commit_reminder_prompt: String,
     cancel: CancellationToken,
-    /// Channel to send user messages back to the CLI (for AskUserQuestion answers)
-    user_message_tx: Option<mpsc::Sender<String>>,
 }
 
 impl ClaudeAgentClient {
     /// Create a new client with optional approval service.
-    /// Returns (Arc<Self>, mpsc::Receiver<String>) so the protocol peer can listen for user messages.
     pub fn new(
         log_writer: LogWriter,
         approvals: Option<Arc<dyn ExecutorApprovalService>>,
         repo_context: RepoContext,
         commit_reminder_prompt: String,
         cancel: CancellationToken,
-    ) -> (Arc<Self>, mpsc::Receiver<String>) {
+    ) -> Arc<Self> {
         let auto_approve = approvals.is_none();
-        let (tx, rx) = mpsc::channel(32);
-        let client = Arc::new(Self {
+        Arc::new(Self {
             log_writer,
             approvals,
             auto_approve,
             repo_context,
             commit_reminder_prompt,
             cancel,
-            user_message_tx: Some(tx),
-        });
-        (client, rx)
+        })
     }
 
     async fn handle_approval(

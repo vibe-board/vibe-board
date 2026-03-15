@@ -92,17 +92,16 @@ export const useConversationHistoryPaginated = ({
     );
   }, [executionProcessesRaw]);
 
-  const patchWithKey = (
-    patch: PatchType,
-    executionProcessId: string,
-    index: number | 'user'
-  ) => {
-    return {
-      ...patch,
-      patchKey: `${executionProcessId}:${index}`,
-      executionProcessId,
-    };
-  };
+  const patchWithKey = useCallback(
+    (patch: PatchType, executionProcessId: string, index: number | 'user') => {
+      return {
+        ...patch,
+        patchKey: `${executionProcessId}:${index}`,
+        executionProcessId,
+      };
+    },
+    []
+  );
 
   const getLiveExecutionProcess = (
     executionProcessId: string
@@ -125,98 +124,102 @@ export const useConversationHistoryPaginated = ({
   /**
    * Load a page of entries from the REST API
    */
-  const loadEntriesPage = async (
-    executionProcessId: string,
-    offset: number,
-    limit: number
-  ): Promise<PatchTypeWithKey[]> => {
-    try {
-      const response = await executionProcessesApi.getEntries(
-        executionProcessId,
-        offset,
-        limit
-      );
-
-      return response.entries.map((record) => {
-        const parsedPatch: PatchType = JSON.parse(record.entry_json);
-        return patchWithKey(
-          parsedPatch,
+  const loadEntriesPage = useCallback(
+    async (
+      executionProcessId: string,
+      offset: number,
+      limit: number
+    ): Promise<PatchTypeWithKey[]> => {
+      try {
+        const response = await executionProcessesApi.getEntries(
           executionProcessId,
-          record.entry_index
+          offset,
+          limit
         );
-      });
-    } catch (error) {
-      console.error(
-        `Failed to load entries for ${executionProcessId}:`,
-        error
-      );
-      return [];
-    }
-  };
+
+        return response.entries.map((record) => {
+          const parsedPatch: PatchType = JSON.parse(record.entry_json);
+          return patchWithKey(
+            parsedPatch,
+            executionProcessId,
+            record.entry_index
+          );
+        });
+      } catch (error) {
+        console.error(
+          `Failed to load entries for ${executionProcessId}:`,
+          error
+        );
+        return [];
+      }
+    },
+    [patchWithKey]
+  );
 
   /**
    * Load initial entries (most recent) for an execution process
    * Uses IndexedDB cache when available
    */
-  const loadInitialEntriesPaginated = async (
-    executionProcess: ExecutionProcess
-  ): Promise<PatchTypeWithKey[]> => {
-    const attemptId = attempt.id;
-    const processId = executionProcess.id;
+  const loadInitialEntriesPaginated = useCallback(
+    async (executionProcess: ExecutionProcess): Promise<PatchTypeWithKey[]> => {
+      const attemptId = attempt.id;
+      const processId = executionProcess.id;
 
-    // Check cache first
-    const cached = await getCachedProcessEntries(attemptId, processId);
-    if (cached && !isCacheStale(cached.cachedAt)) {
-      // Use cached data immediately
-      const entries = cached.entries;
+      // Check cache first
+      const cached = await getCachedProcessEntries(attemptId, processId);
+      if (cached && !isCacheStale(cached.cachedAt)) {
+        // Use cached data immediately
+        const entries = cached.entries;
 
-      // Initialize paginated state from cache
+        // Initialize paginated state from cache
+        paginatedState.current[processId] = {
+          entries,
+          totalCount: cached.totalCount,
+          loadedRanges: [{ start: 0, end: entries.length }],
+          isLoading: false,
+          hasMore: entries.length < cached.totalCount,
+        };
+
+        return entries;
+      }
+
+      // Cache miss or stale - fetch from server
+      // First get the total count
+      const countResponse = await executionProcessesApi.getEntries(
+        processId,
+        0,
+        1
+      );
+      const totalCount = countResponse.total_count;
+
+      if (totalCount === 0) {
+        return [];
+      }
+
+      // Load the last PAGE_SIZE entries
+      const startOffset = Math.max(0, totalCount - PAGE_SIZE);
+      const entries = await loadEntriesPage(
+        processId,
+        startOffset,
+        PAGE_SIZE
+      );
+
+      // Initialize paginated state
       paginatedState.current[processId] = {
         entries,
-        totalCount: cached.totalCount,
-        loadedRanges: [{ start: 0, end: entries.length }],
+        totalCount,
+        loadedRanges: [{ start: startOffset, end: totalCount }],
         isLoading: false,
-        hasMore: entries.length < cached.totalCount,
+        hasMore: startOffset > 0,
       };
 
+      // Cache the entries (fire and forget)
+      setCachedProcessEntries(attemptId, processId, entries, totalCount);
+
       return entries;
-    }
-
-    // Cache miss or stale - fetch from server
-    // First get the total count
-    const countResponse = await executionProcessesApi.getEntries(
-      processId,
-      0,
-      1
-    );
-    const totalCount = countResponse.total_count;
-
-    if (totalCount === 0) {
-      return [];
-    }
-
-    // Load the last PAGE_SIZE entries
-    const startOffset = Math.max(0, totalCount - PAGE_SIZE);
-    const entries = await loadEntriesPage(
-      processId,
-      startOffset,
-      PAGE_SIZE
-    );
-
-    // Initialize paginated state
-    paginatedState.current[processId] = {
-      entries,
-      totalCount,
-      loadedRanges: [{ start: startOffset, end: totalCount }],
-      isLoading: false,
-      hasMore: startOffset > 0,
-    };
-
-    // Cache the entries (fire and forget)
-    setCachedProcessEntries(attemptId, processId, entries, totalCount);
-
-    return entries;
-  };
+    },
+    [attempt.id, loadEntriesPage]
+  );
 
   /**
    * Merge new entries into the paginated state
@@ -344,49 +347,50 @@ export const useConversationHistoryPaginated = ({
     }
   };
 
-  const loadEntriesForHistoricExecutionProcess = async (
-    executionProcess: ExecutionProcess
-  ): Promise<PatchTypeWithKey[]> => {
-    // Use paginated loading for normal execution processes
-    if (
-      executionProcess.executor_action.typ.type ===
-        'CodingAgentInitialRequest' ||
-      executionProcess.executor_action.typ.type ===
-        'CodingAgentFollowUpRequest' ||
-      executionProcess.executor_action.typ.type === 'ReviewRequest'
-    ) {
-      return loadInitialEntriesPaginated(executionProcess);
-    }
+  const loadEntriesForHistoricExecutionProcess = useCallback(
+    async (executionProcess: ExecutionProcess): Promise<PatchTypeWithKey[]> => {
+      // Use paginated loading for normal execution processes
+      if (
+        executionProcess.executor_action.typ.type ===
+          'CodingAgentInitialRequest' ||
+        executionProcess.executor_action.typ.type ===
+          'CodingAgentFollowUpRequest' ||
+        executionProcess.executor_action.typ.type === 'ReviewRequest'
+      ) {
+        return loadInitialEntriesPaginated(executionProcess);
+      }
 
-    // Fallback to streaming for script requests
-    let url = '';
-    if (executionProcess.executor_action.typ.type === 'ScriptRequest') {
-      url = `/api/execution-processes/${executionProcess.id}/raw-logs/ws`;
-    } else {
-      url = `/api/execution-processes/${executionProcess.id}/normalized-logs/ws`;
-    }
+      // Fallback to streaming for script requests
+      let url = '';
+      if (executionProcess.executor_action.typ.type === 'ScriptRequest') {
+        url = `/api/execution-processes/${executionProcess.id}/raw-logs/ws`;
+      } else {
+        url = `/api/execution-processes/${executionProcess.id}/normalized-logs/ws`;
+      }
 
-    return new Promise<PatchTypeWithKey[]>((resolve) => {
-      const controller = streamJsonPatchEntries<PatchType>(url, {
-        onFinished: (allEntries) => {
-          controller.close();
-          resolve(
-            allEntries.map((entry, idx) =>
-              patchWithKey(entry, executionProcess.id, idx)
-            )
-          );
-        },
-        onError: (err) => {
-          console.warn(
-            `Error loading entries for historic execution process ${executionProcess.id}`,
-            err
-          );
-          controller.close();
-          resolve([]);
-        },
+      return new Promise<PatchTypeWithKey[]>((resolve) => {
+        const controller = streamJsonPatchEntries<PatchType>(url, {
+          onFinished: (allEntries) => {
+            controller.close();
+            resolve(
+              allEntries.map((entry, idx) =>
+                patchWithKey(entry, executionProcess.id, idx)
+              )
+            );
+          },
+          onError: (err) => {
+            console.warn(
+              `Error loading entries for historic execution process ${executionProcess.id}`,
+              err
+            );
+            controller.close();
+            resolve([]);
+          },
+        });
       });
-    });
-  };
+    },
+    [loadInitialEntriesPaginated, patchWithKey]
+  );
 
   const flattenEntries = (
     executionProcessState: ExecutionProcessStateStore
@@ -643,7 +647,7 @@ export const useConversationHistoryPaginated = ({
 
       return allEntries;
     },
-    []
+    [patchWithKey]
   );
 
   const emitEntries = useCallback(
@@ -707,7 +711,7 @@ export const useConversationHistoryPaginated = ({
         });
       });
     },
-    [emitEntries]
+    [emitEntries, patchWithKey]
   );
 
   // Sometimes it can take a few seconds for the stream to start, wrap the loadRunningAndEmit method
@@ -780,7 +784,7 @@ export const useConversationHistoryPaginated = ({
       }
 
       return localDisplayedExecutionProcesses;
-    }, [executionProcesses]);
+    }, [executionProcesses, loadEntriesForHistoricExecutionProcess]);
 
   const loadRemainingEntriesInBatches = useCallback(
     async (batchSize: number): Promise<boolean> => {
@@ -817,7 +821,7 @@ export const useConversationHistoryPaginated = ({
       }
       return anyUpdated;
     },
-    [executionProcesses]
+    [executionProcesses, loadEntriesForHistoricExecutionProcess]
   );
 
   // Initial load when attempt changes

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::{ChildStdin, ChildStdout},
-    sync::{Mutex, mpsc},
+    sync::Mutex,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -29,14 +29,12 @@ impl ProtocolPeer {
     /// Spawn the protocol peer. `expect_stop_hook` is true when we registered the Stop hook
     /// (commit_reminder); then we keep reading after Result to handle the Stop hook and then
     /// close stdin. When false we close stdin right after Result so the CLI can exit.
-    /// `user_message_rx` receives user messages (e.g., AskUserQuestion answers) to forward to CLI.
     pub fn spawn(
         stdin: ChildStdin,
         stdout: ChildStdout,
         client: Arc<ClaudeAgentClient>,
         cancel: CancellationToken,
         expect_stop_hook: bool,
-        user_message_rx: mpsc::Receiver<String>,
     ) -> Self {
         let peer = Self {
             stdin: Arc::new(Mutex::new(Some(stdin))),
@@ -45,7 +43,7 @@ impl ProtocolPeer {
         let reader_peer = peer.clone();
         tokio::spawn(async move {
             if let Err(e) = reader_peer
-                .read_loop(stdout, client, cancel, expect_stop_hook, user_message_rx)
+                .read_loop(stdout, client, cancel, expect_stop_hook)
                 .await
             {
                 tracing::error!("Protocol reader loop error: {}", e);
@@ -61,7 +59,6 @@ impl ProtocolPeer {
         client: Arc<ClaudeAgentClient>,
         cancel: CancellationToken,
         expect_stop_hook: bool,
-        mut user_message_rx: mpsc::Receiver<String>,
     ) -> Result<(), ExecutorError> {
         let mut reader = BufReader::new(stdout);
         let mut buffer = String::new();
@@ -78,19 +75,6 @@ impl ProtocolPeer {
                         tracing::warn!("Failed to send interrupt to Claude: {e}");
                     }
                     // Continue the loop to read Claude's response (it should send a result)
-                }
-                user_msg = user_message_rx.recv() => {
-                    match user_msg {
-                        Some(msg) => {
-                            tracing::info!("Sending user message to CLI: {msg}");
-                            if let Err(e) = self.send_user_message(msg).await {
-                                tracing::error!("Failed to send user message to CLI: {e}");
-                            }
-                        }
-                        None => {
-                            // Channel closed, no more user messages expected
-                        }
-                    }
                 }
                 line_result = reader.read_line(&mut buffer) => {
                     match line_result {

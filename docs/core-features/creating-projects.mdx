@@ -15,6 +15,18 @@ Click the **Create Project** button to choose from two options:
 - **Create blank project**: Generate a new git repository from scratch
 Each project represents a git repository. After creation, you can configure it with setup scripts, dev server scripts, and other settings.
 
+## Reordering Projects
+
+You can customise the order in which projects appear on your kanban board:
+
+1. Click the drag handle on a project card
+2. Drag and drop to the desired position
+3. Your preferred order is saved automatically
+
+<Note>
+Project ordering is stored in your configuration and persists across sessions.
+</Note>
+
 
 <Note>
 After creating a project, you need to press the settings button in the top right to configure project scripts and settings.
@@ -48,5 +60,30 @@ Comma-separated list of files to copy from the original project directory to the
 <Warning>
 Make sure these files are gitignored or they could get committed!
 </Warning>
+
+### Workspace Mode
+
+Vibe Kanban supports two workspace modes for running coding agents:
+
+<CardGroup cols={2}>
+<Card title="Worktree Mode (Default)" icon="code-branch">
+  Each task attempt runs in an isolated Git worktree. This prevents task attempts from interfering with each other or your main working directory.
+</Card>
+
+<Card title="Direct Mode" icon="folder">
+  Task attempts run directly in the project's main directory. Useful for simple projects where worktree isolation isn't needed.
+</Card>
+</CardGroup>
+
+<Info>
+Direct mode is available for projects that don't require worktree isolation. Most projects should use the default worktree mode.
+</Info>
+
+## Build Optimisation
+
+For Rust projects with multiple task attempts, you can improve build performance:
+
+- **CARGO_TARGET_DIR**: Vibe Kanban automatically sets `CARGO_TARGET_DIR` to share build artifacts across worktrees
+- **sccache**: Configure sccache as a compiler cache to further speed up Rust builds across worktrees
 
 

@@ -5,9 +5,7 @@
  *   ├── KDF(subkey=1, "vkauth__") → Ed25519 seed (not used on frontend)
  *   └── KDF(subkey=2, "vkcont__") → X25519 Content KeyPair
  */
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — @noble/hashes exports require .js extension
-import { blake2b } from '@noble/hashes/blake2b.js';
+import { blake2b } from '@noble/hashes/blake2.js';
 import nacl from 'tweetnacl';
 
 export interface ContentKeyPair {

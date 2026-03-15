@@ -400,7 +400,7 @@ impl ClaudeCode {
         let cancel_for_task = cancel.clone();
         tokio::spawn(async move {
             let log_writer = LogWriter::new(new_stdout);
-            let (client, user_message_rx) = ClaudeAgentClient::new(
+            let client = ClaudeAgentClient::new(
                 log_writer.clone(),
                 approvals_clone,
                 repo_context,
@@ -413,7 +413,6 @@ impl ClaudeCode {
                 client.clone(),
                 cancel_for_task.clone(),
                 commit_reminder,
-                user_message_rx,
             );
 
             // Initialize control protocol

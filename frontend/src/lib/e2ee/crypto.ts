@@ -2,12 +2,8 @@
  * E2EE Crypto primitives — XChaCha20-Poly1305 + X25519 + BLAKE2b
  * Matches the Rust e2ee-core implementation exactly.
  */
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — @noble/ciphers exports require .js extension
 import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — @noble/hashes exports require .js extension
-import { blake2b } from '@noble/hashes/blake2b.js';
+import { blake2b } from '@noble/hashes/blake2.js';
 import nacl from 'tweetnacl';
 
 /** Generate cryptographically secure random bytes */

@@ -12,8 +12,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useE2EE } from '@/hooks/use-e2ee';
-import { useGatewayAuth } from '@/hooks/use-gateway-auth';
+import { useE2EE } from '@/hooks/useE2ee';
+import { useGatewayAuth } from '@/hooks/useGatewayAuth';
 
 export interface E2EESettingsDialogProps {}
 

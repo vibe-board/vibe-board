@@ -82,6 +82,12 @@
         ]
       },
       {
+        "group": "Remote Access (Beta)",
+        "pages": [
+          "remote-access/e2ee"
+        ]
+      },
+      {
         "group": "Cloud (Beta)",
         "pages": [
           "cloud/index",
