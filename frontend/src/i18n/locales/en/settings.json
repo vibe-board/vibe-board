@@ -171,6 +171,10 @@
       "commitMessage": {
         "title": "Commit Messages",
         "description": "Configure the agent used for generating commit messages during merge.",
+        "enabled": {
+          "label": "Enable AI-generated commit messages",
+          "helper": "When disabled, commit messages will use the task title and description instead of AI generation."
+        },
         "useCustom": {
           "label": "Use custom agent for commit messages",
           "helper": "When enabled, a different agent profile is used for generating commit messages. Useful if your task agent is slow and causes timeouts."

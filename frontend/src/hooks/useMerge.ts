@@ -12,6 +12,8 @@ export type MergeParams = {
   executorProfileId: ExecutorProfileId;
   /** Optional override executor profile for commit message generation. */
   commitMessageExecutorProfileId?: ExecutorProfileId | null;
+  /** Whether to use AI to generate commit messages. Defaults to true. */
+  commitMessageEnabled?: boolean;
 };
 
 export function useMerge(
@@ -30,6 +32,7 @@ export function useMerge(
         executor_profile_id: params.executorProfileId,
         commit_message_executor_profile_id:
           params.commitMessageExecutorProfileId ?? null,
+        commit_message_enabled: params.commitMessageEnabled ?? true,
       });
     },
     onSuccess: () => {

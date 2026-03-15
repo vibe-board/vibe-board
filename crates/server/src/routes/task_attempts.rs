@@ -747,6 +747,12 @@ pub struct MergeTaskAttemptRequest {
     pub executor_profile_id: ExecutorProfileId,
     #[serde(default)]
     pub commit_message_executor_profile_id: Option<ExecutorProfileId>,
+    #[serde(default = "default_commit_message_enabled")]
+    pub commit_message_enabled: bool,
+}
+
+fn default_commit_message_enabled() -> bool {
+    true
 }
 
 #[derive(Debug, Deserialize, Serialize, TS)]
@@ -830,20 +836,25 @@ pub async fn merge_task_attempt(
         .as_ref()
         .unwrap_or(&request.executor_profile_id);
 
-    let commit_message = generate_commit_message_via_agent(
-        &deployment,
-        &workspace,
-        commit_message_profile,
-        &workspace.branch,
-        &workspace_repo.target_branch,
-    )
-    .await
-    .unwrap_or_else(|| {
-        tracing::debug!(
-            "Agent did not return commit message, using legacy (task title + description)"
-        );
+    let commit_message = if request.commit_message_enabled {
+        generate_commit_message_via_agent(
+            &deployment,
+            &workspace,
+            commit_message_profile,
+            &workspace.branch,
+            &workspace_repo.target_branch,
+        )
+        .await
+        .unwrap_or_else(|| {
+            tracing::debug!(
+                "Agent did not return commit message, using legacy (task title + description)"
+            );
+            legacy_commit_message(&task)
+        })
+    } else {
+        tracing::debug!("Commit message generation disabled, using legacy (task title + description)");
         legacy_commit_message(&task)
-    });
+    };
 
     let merge_commit_id = deployment.git().merge_changes(
         &repo.path,

@@ -21,6 +21,10 @@ fn default_commit_reminder_enabled() -> bool {
     true
 }
 
+fn default_commit_message_enabled() -> bool {
+    true
+}
+
 /// Default enabled agents: the original 9 reliable agents
 fn default_agent_enabled() -> Vec<BaseCodingAgent> {
     vec![
@@ -78,6 +82,8 @@ pub struct Config {
     pub agent_enabled: Vec<BaseCodingAgent>,
     #[serde(default)]
     pub commit_message_executor_profile: Option<ExecutorProfileId>,
+    #[serde(default = "default_commit_message_enabled")]
+    pub commit_message_enabled: bool,
 }
 
 impl Config {
@@ -109,6 +115,7 @@ impl Config {
             project_order: old_config.project_order,
             agent_enabled: default_agent_enabled(),
             commit_message_executor_profile: None,
+            commit_message_enabled: default_commit_message_enabled(),
         }
     }
 
@@ -168,6 +175,7 @@ impl Default for Config {
             project_order: Vec::new(),
             agent_enabled: default_agent_enabled(),
             commit_message_executor_profile: None,
+            commit_message_enabled: default_commit_message_enabled(),
         }
     }
 }

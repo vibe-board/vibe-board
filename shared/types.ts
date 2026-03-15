@@ -299,7 +299,7 @@ export type ChangeTargetBranchRequest = { repo_id: string, new_target_branch: st
 
 export type ChangeTargetBranchResponse = { repo_id: string, new_target_branch: string, status: [number, number], };
 
-export type MergeTaskAttemptRequest = { repo_id: string, session_id: string, executor_profile_id: ExecutorProfileId, commit_message_executor_profile_id: ExecutorProfileId | null, };
+export type MergeTaskAttemptRequest = { repo_id: string, session_id: string, executor_profile_id: ExecutorProfileId, commit_message_executor_profile_id: ExecutorProfileId | null, commit_message_enabled: boolean, };
 
 export type PushTaskAttemptRequest = { repo_id: string, };
 
@@ -447,7 +447,7 @@ export type DirectoryListResponse = { entries: Array<DirectoryEntry>, current_pa
 
 export type SearchMode = "taskform" | "settings";
 
-export type Config = { config_version: string, theme: ThemeMode, executor_profile: ExecutorProfileId, disclaimer_acknowledged: boolean, onboarding_acknowledged: boolean, notifications: NotificationConfig, editor: EditorConfig, github: GitHubConfig, analytics_enabled: boolean, workspace_dir: string | null, last_app_version: string | null, show_release_notes: boolean, language: UiLanguage, git_branch_prefix: string, showcases: ShowcaseState, pr_auto_description_enabled: boolean, pr_auto_description_prompt: string | null, beta_workspaces: boolean, beta_workspaces_invitation_sent: boolean, commit_reminder_enabled: boolean, commit_reminder_prompt: string | null, send_message_shortcut: SendMessageShortcut, agent_order: Array<BaseCodingAgent>, project_order: Array<string>, agent_enabled: Array<BaseCodingAgent>, commit_message_executor_profile: ExecutorProfileId | null, };
+export type Config = { config_version: string, theme: ThemeMode, executor_profile: ExecutorProfileId, disclaimer_acknowledged: boolean, onboarding_acknowledged: boolean, notifications: NotificationConfig, editor: EditorConfig, github: GitHubConfig, analytics_enabled: boolean, workspace_dir: string | null, last_app_version: string | null, show_release_notes: boolean, language: UiLanguage, git_branch_prefix: string, showcases: ShowcaseState, pr_auto_description_enabled: boolean, pr_auto_description_prompt: string | null, beta_workspaces: boolean, beta_workspaces_invitation_sent: boolean, commit_reminder_enabled: boolean, commit_reminder_prompt: string | null, send_message_shortcut: SendMessageShortcut, agent_order: Array<BaseCodingAgent>, project_order: Array<string>, agent_enabled: Array<BaseCodingAgent>, commit_message_executor_profile: ExecutorProfileId | null, commit_message_enabled: boolean, };
 
 export type NotificationConfig = { sound_enabled: boolean, push_enabled: boolean, sound_file: SoundFile, };
 
