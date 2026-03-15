@@ -1,8 +1,7 @@
 use axum::{extract::State, http::StatusCode, Json};
 use serde::Serialize;
 
-use crate::routes::auth_routes::extract_user_id;
-use crate::AppState;
+use crate::{routes::auth_routes::extract_user_id, AppState};
 
 #[derive(Serialize)]
 pub struct MachineInfo {

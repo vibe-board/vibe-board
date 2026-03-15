@@ -10,11 +10,9 @@ use workspace_utils::msg_store::MsgStore;
 pub use super::acp::AcpAgentHarness;
 use crate::{
     approvals::ExecutorApprovalService,
-    command::{apply_overrides, CmdOverrides, CommandBuildError, CommandBuilder},
+    command::{CmdOverrides, CommandBuildError, CommandBuilder, apply_overrides},
     env::ExecutionEnv,
-    executors::{
-        AppendPrompt, ExecutorError, SpawnedChild, StandardCodingAgentExecutor,
-    },
+    executors::{AppendPrompt, ExecutorError, SpawnedChild, StandardCodingAgentExecutor},
 };
 
 #[derive(Derivative, Clone, Serialize, Deserialize, TS, JsonSchema)]
@@ -34,8 +32,7 @@ pub struct MinionCode {
 
 impl MinionCode {
     fn build_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
-        let builder =
-            CommandBuilder::new("uvx minion-code@0.1.42").extend_params(["acp"]);
+        let builder = CommandBuilder::new("uvx minion-code@0.1.42").extend_params(["acp"]);
         apply_overrides(builder, &self.cmd)
     }
 }

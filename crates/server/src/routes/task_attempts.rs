@@ -565,12 +565,11 @@ async fn generate_commit_message_via_agent(
         }
     };
 
-    let action_type =
-        ExecutorActionType::CodingAgentInitialRequest(CodingAgentInitialRequest {
-            prompt,
-            executor_profile_id: (*executor_profile_id).clone(),
-            working_dir,
-        });
+    let action_type = ExecutorActionType::CodingAgentInitialRequest(CodingAgentInitialRequest {
+        prompt,
+        executor_profile_id: (*executor_profile_id).clone(),
+        working_dir,
+    });
 
     let action = ExecutorAction::new(action_type, None);
 
@@ -852,7 +851,9 @@ pub async fn merge_task_attempt(
             legacy_commit_message(&task)
         })
     } else {
-        tracing::debug!("Commit message generation disabled, using legacy (task title + description)");
+        tracing::debug!(
+            "Commit message generation disabled, using legacy (task title + description)"
+        );
         legacy_commit_message(&task)
     };
 
@@ -991,16 +992,15 @@ pub async fn open_task_attempt_in_editor(
     // For single-repo projects, open from the repo directory
     let workspace_repos =
         WorkspaceRepo::find_repos_for_workspace(&deployment.db().pool, workspace.id).await?;
-    let workspace_path =
-        if workspace_repos.len() == 1 && payload.file_path.is_none() {
-            if workspace.mode == WorkspaceMode::Direct {
-                workspace_path.to_path_buf()
-            } else {
-                workspace_path.join(&workspace_repos[0].name)
-            }
-        } else {
+    let workspace_path = if workspace_repos.len() == 1 && payload.file_path.is_none() {
+        if workspace.mode == WorkspaceMode::Direct {
             workspace_path.to_path_buf()
-        };
+        } else {
+            workspace_path.join(&workspace_repos[0].name)
+        }
+    } else {
+        workspace_path.to_path_buf()
+    };
 
     // If a specific file path is provided, use it; otherwise use the base path
     let path = if let Some(file_path) = payload.file_path.as_ref() {

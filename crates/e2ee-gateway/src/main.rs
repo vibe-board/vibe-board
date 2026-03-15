@@ -5,15 +5,16 @@ mod routes;
 mod services;
 mod socket;
 
-use axum::{routing::get, routing::post, Router};
+use axum::{
+    routing::{get, post},
+    Router,
+};
 use sqlx::SqlitePool;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-use crate::config::GatewayConfig;
-use crate::services::CliRegistry;
-use crate::socket::WebUIRegistry;
+use crate::{config::GatewayConfig, services::CliRegistry, socket::WebUIRegistry};
 
 /// Shared application state
 #[derive(Clone)]
@@ -107,7 +108,5 @@ async fn main() {
 
     info!("Gateway listening on {}", config.listen_addr);
 
-    axum::serve(listener, app)
-        .await
-        .expect("Server error");
+    axum::serve(listener, app).await.expect("Server error");
 }

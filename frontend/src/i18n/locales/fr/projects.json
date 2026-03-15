@@ -22,5 +22,14 @@
   "projectNotFound": "Le projet que vous recherchez n'existe pas ou a été supprimé.",
   "viewProject": "Voir le projet",
   "openInIDE": "Ouvrir dans l'IDE",
-  "createdDate": "Créé le {{date}}"
+  "createdDate": "Créé le {{date}}",
+  "view": {
+    "grid": "Vue grille",
+    "order": "Ordonner les projets"
+  },
+  "order": {
+    "title": "Ordre des projets",
+    "description": "Glissez-déposez les projets pour modifier leur ordre d'affichage",
+    "saveError": "Échec de l'enregistrement de l'ordre des projets"
+  }
 }

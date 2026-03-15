@@ -1,6 +1,6 @@
+use std::{collections::HashSet, sync::Arc};
+
 use dashmap::DashMap;
-use std::collections::HashSet;
-use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::warn;
 
@@ -51,10 +51,7 @@ impl WebUIRegistry {
                 subscriptions: HashSet::new(),
             },
         );
-        self.by_user
-            .entry(user_id)
-            .or_default()
-            .insert(client_id);
+        self.by_user.entry(user_id).or_default().insert(client_id);
     }
 
     pub fn unregister(&self, client_id: &str) {
@@ -110,12 +107,7 @@ impl WebUIRegistry {
     }
 
     /// Forward an encrypted payload from a daemon to all WebUI clients subscribed to that machine
-    pub fn forward_to_webui(
-        &self,
-        machine_id: &str,
-        user_id: &str,
-        payload: serde_json::Value,
-    ) {
+    pub fn forward_to_webui(&self, machine_id: &str, user_id: &str, payload: serde_json::Value) {
         let msg = serde_json::to_string(&GatewayToWebUI::Forward {
             machine_id: machine_id.to_string(),
             payload,

@@ -21,13 +21,12 @@ use crate::{
     command::CommandBuildError,
     env::ExecutionEnv,
     executors::{
-        amp::Amp, autohand::Autohand, auggie::Auggie, claude::ClaudeCode, cline::Cline,
+        amp::Amp, auggie::Auggie, autohand::Autohand, claude::ClaudeCode, cline::Cline,
         codebuddy_code::CodebuddyCode, codex::Codex, copilot::Copilot, corust_agent::CorustAgent,
         crow_cli::CrowCli, cursor::CursorAgent, deepagents::Deepagents, dimcode::Dimcode,
-        droid::Droid, fast_agent::FastAgent, gemini::Gemini,
-        goose::Goose, junie::Junie, kilo::Kilo, kimi::Kimi, minion_code::MinionCode,
-        mistral_vibe::MistralVibe, nova::Nova, opencode::Opencode, pi_acp::PiAcp,
-        qoder::Qoder, qwen::QwenCode, stakpak::Stakpak,
+        droid::Droid, fast_agent::FastAgent, gemini::Gemini, goose::Goose, junie::Junie,
+        kilo::Kilo, kimi::Kimi, minion_code::MinionCode, mistral_vibe::MistralVibe, nova::Nova,
+        opencode::Opencode, pi_acp::PiAcp, qoder::Qoder, qwen::QwenCode, stakpak::Stakpak,
     },
     logs::utils::patch,
     mcp_config::McpConfig,
@@ -35,8 +34,8 @@ use crate::{
 
 pub mod acp;
 pub mod amp;
-pub mod autohand;
 pub mod auggie;
+pub mod autohand;
 pub mod claude;
 pub mod cline;
 pub mod codebuddy_code;

@@ -375,20 +375,15 @@ impl ClaudeAgentClient {
             let tool_name = input.get("tool_name").and_then(|v| v.as_str());
             if tool_name == Some(ASK_USER_QUESTION_NAME) {
                 // tool_use_id may come as a separate field or inside the input object
-                let effective_tool_use_id = tool_use_id
-                    .as_ref()
-                    .cloned()
-                    .or_else(|| {
-                        input
-                            .get("tool_use_id")
-                            .and_then(|v| v.as_str())
-                            .map(String::from)
-                    });
+                let effective_tool_use_id = tool_use_id.as_ref().cloned().or_else(|| {
+                    input
+                        .get("tool_use_id")
+                        .and_then(|v| v.as_str())
+                        .map(String::from)
+                });
                 let tool_input = input.get("tool_input").cloned();
                 if let (Some(tid), Some(tool_input)) = (effective_tool_use_id, tool_input) {
-                    return self
-                        .handle_question_in_hook(tid, tool_input)
-                        .await;
+                    return self.handle_question_in_hook(tid, tool_input).await;
                 }
                 // If we couldn't extract tool_use_id or tool_input, still return "allow"
                 // to avoid blocking the tool. The question won't be interactive but at

@@ -118,7 +118,10 @@ mod tests {
         assert!(json.contains("\"method\":\"GET\""));
 
         let parsed: BridgeRequest = serde_json::from_str(&json).unwrap();
-        if let BridgeRequest::HttpRequest { id, method, path, .. } = parsed {
+        if let BridgeRequest::HttpRequest {
+            id, method, path, ..
+        } = parsed
+        {
             assert_eq!(id, 1);
             assert_eq!(method, "GET");
             assert_eq!(path, "/api/projects");

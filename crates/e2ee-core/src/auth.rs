@@ -31,12 +31,13 @@ pub struct SignedAuthToken {
 /// Gateway verifies: valid signature + timestamp < 5 min old + public_key in device_keys table.
 pub fn create_signed_token(secret_key: &[u8; 64]) -> Result<SignedAuthToken> {
     // Reconstruct signing key from the 64-byte keypair bytes
-    let seed: [u8; 32] = secret_key[..32]
-        .try_into()
-        .map_err(|_| E2EEError::InvalidSignatureLength {
-            expected: 32,
-            actual: 0,
-        })?;
+    let seed: [u8; 32] =
+        secret_key[..32]
+            .try_into()
+            .map_err(|_| E2EEError::InvalidSignatureLength {
+                expected: 32,
+                actual: 0,
+            })?;
     let signing_key = SigningKey::from_bytes(&seed);
     let verifying_key = signing_key.verifying_key();
 
@@ -75,8 +76,8 @@ pub fn verify_signed_token(token: &SignedAuthToken) -> Result<[u8; 32]> {
     let mut pk_array = [0u8; 32];
     pk_array.copy_from_slice(&pub_key_bytes);
 
-    let verifying_key = VerifyingKey::from_bytes(&pk_array)
-        .map_err(|_| E2EEError::SignatureVerificationFailed)?;
+    let verifying_key =
+        VerifyingKey::from_bytes(&pk_array).map_err(|_| E2EEError::SignatureVerificationFailed)?;
 
     // Decode signature
     let sig_bytes = BASE64.decode(&token.signature)?;

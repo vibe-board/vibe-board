@@ -2,9 +2,10 @@ use axum::{extract::State, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::auth::{generate_session_token, hash_password, verify_password};
-use crate::db;
-use crate::AppState;
+use crate::{
+    auth::{generate_session_token, hash_password, verify_password},
+    db, AppState,
+};
 
 #[derive(Deserialize)]
 pub struct SignupRequest {
@@ -30,10 +31,7 @@ pub async fn signup(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if user_count > 0 {
-        return Err((
-            StatusCode::FORBIDDEN,
-            "Registration is closed".to_string(),
-        ));
+        return Err((StatusCode::FORBIDDEN, "Registration is closed".to_string()));
     }
 
     // Check if email already exists (defensive)
@@ -46,8 +44,8 @@ pub async fn signup(
     }
 
     let user_id = Uuid::new_v4().to_string();
-    let password_hash =
-        hash_password(&req.password).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let password_hash = hash_password(&req.password)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // First user is admin
     db::create_user(
@@ -66,10 +64,7 @@ pub async fn signup(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    Ok(Json(AuthResponse {
-        token,
-        user_id,
-    }))
+    Ok(Json(AuthResponse { token, user_id }))
 }
 
 /// GET /api/auth/registration-status
@@ -157,7 +152,10 @@ pub async fn register_device(
     .await
     .map_err(|e| {
         if e.to_string().contains("UNIQUE") {
-            (StatusCode::CONFLICT, "Device key already registered".to_string())
+            (
+                StatusCode::CONFLICT,
+                "Device key already registered".to_string(),
+            )
         } else {
             (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
         }
@@ -174,14 +172,27 @@ pub async fn extract_user_id(
     let auth_header = headers
         .get("authorization")
         .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| (StatusCode::UNAUTHORIZED, "Missing Authorization header".to_string()))?;
+        .ok_or_else(|| {
+            (
+                StatusCode::UNAUTHORIZED,
+                "Missing Authorization header".to_string(),
+            )
+        })?;
 
-    let token = auth_header
-        .strip_prefix("Bearer ")
-        .ok_or_else(|| (StatusCode::UNAUTHORIZED, "Invalid Authorization format".to_string()))?;
+    let token = auth_header.strip_prefix("Bearer ").ok_or_else(|| {
+        (
+            StatusCode::UNAUTHORIZED,
+            "Invalid Authorization format".to_string(),
+        )
+    })?;
 
     db::get_session_user_id(&state.db, token)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or_else(|| (StatusCode::UNAUTHORIZED, "Invalid or expired session".to_string()))
+        .ok_or_else(|| {
+            (
+                StatusCode::UNAUTHORIZED,
+                "Invalid or expired session".to_string(),
+            )
+        })
 }

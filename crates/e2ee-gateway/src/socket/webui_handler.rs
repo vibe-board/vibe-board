@@ -121,7 +121,11 @@ async fn handle_webui_socket(socket: WebSocket, state: AppState, query: WebUICon
         .collect();
 
     let machines_msg = serde_json::to_string(&GatewayToWebUI::Machines { machines }).unwrap();
-    if sender.send(Message::Text(machines_msg.into())).await.is_err() {
+    if sender
+        .send(Message::Text(machines_msg.into()))
+        .await
+        .is_err()
+    {
         return;
     }
 
@@ -181,11 +185,11 @@ async fn handle_webui_socket(socket: WebSocket, state: AppState, query: WebUICon
                     "type": "forward",
                     "payload": payload
                 });
-                if let Err(e) = state.cli_registry.send_to_daemon(
-                    &machine_id,
-                    &user_id,
-                    fwd_msg.to_string(),
-                ) {
+                if let Err(e) =
+                    state
+                        .cli_registry
+                        .send_to_daemon(&machine_id, &user_id, fwd_msg.to_string())
+                {
                     warn!("Failed to forward to daemon {machine_id}: {e}");
                 }
             }

@@ -1,8 +1,10 @@
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::{Deserialize, Serialize};
 
-use crate::cipher;
-use crate::error::{E2EEError, Result};
+use crate::{
+    cipher,
+    error::{E2EEError, Result},
+};
 
 /// Encrypted payload envelope format.
 /// JSON: { "t": "encrypted", "c": "<base64(nonce || ciphertext)>" }

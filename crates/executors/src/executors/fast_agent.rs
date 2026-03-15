@@ -10,11 +10,9 @@ use workspace_utils::msg_store::MsgStore;
 pub use super::acp::AcpAgentHarness;
 use crate::{
     approvals::ExecutorApprovalService,
-    command::{apply_overrides, CmdOverrides, CommandBuildError, CommandBuilder},
+    command::{CmdOverrides, CommandBuildError, CommandBuilder, apply_overrides},
     env::ExecutionEnv,
-    executors::{
-        AppendPrompt, ExecutorError, SpawnedChild, StandardCodingAgentExecutor,
-    },
+    executors::{AppendPrompt, ExecutorError, SpawnedChild, StandardCodingAgentExecutor},
 };
 
 #[derive(Derivative, Clone, Serialize, Deserialize, TS, JsonSchema)]
@@ -34,8 +32,7 @@ pub struct FastAgent {
 
 impl FastAgent {
     fn build_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
-        let builder =
-            CommandBuilder::new("uvx fast-agent-acp==0.5.11").extend_params(["-x"]);
+        let builder = CommandBuilder::new("uvx fast-agent-acp==0.5.11").extend_params(["-x"]);
         apply_overrides(builder, &self.cmd)
     }
 }

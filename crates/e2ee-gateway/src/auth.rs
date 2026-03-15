@@ -35,7 +35,8 @@ pub async fn verify_daemon_token(
     token: &e2ee_core::SignedAuthToken,
 ) -> Result<String, String> {
     // Verify crypto (signature + timestamp)
-    let pub_key_bytes = verify_signed_token(token).map_err(|e| format!("Token verification failed: {e}"))?;
+    let pub_key_bytes =
+        verify_signed_token(token).map_err(|e| format!("Token verification failed: {e}"))?;
 
     let pub_key_b64 = BASE64.encode(pub_key_bytes);
 

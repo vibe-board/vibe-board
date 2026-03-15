@@ -295,8 +295,7 @@ impl LocalContainerService {
     /// Get the commit message based on the execution run reason.
     async fn get_commit_message(&self, ctx: &ExecutionContext) -> String {
         match ctx.execution_process.run_reason {
-            ExecutionProcessRunReason::CodingAgent
-            | ExecutionProcessRunReason::CommitMessage => {
+            ExecutionProcessRunReason::CodingAgent | ExecutionProcessRunReason::CommitMessage => {
                 // Try to retrieve the task summary from the coding agent turn
                 // otherwise fallback to default message
                 match CodingAgentTurn::find_by_execution_process_id(
@@ -385,8 +384,7 @@ impl LocalContainerService {
         .await?;
 
         for repo in &ctx.repos {
-            let repo_path =
-                repo_worktree_path(&workspace_root, &ctx.workspace, &ctx.repos, repo);
+            let repo_path = repo_worktree_path(&workspace_root, &ctx.workspace, &ctx.repos, repo);
             let current_head = self.git().get_head_info(&repo_path).ok().map(|h| h.oid);
 
             let before_head = repo_states
@@ -1128,12 +1126,7 @@ impl ContainerService for LocalContainerService {
 
             Self::create_workspace_config_files(&repo.path, &repositories).await?;
 
-            Workspace::update_container_ref(
-                &self.db.pool,
-                workspace.id,
-                &repo_path_str,
-            )
-            .await?;
+            Workspace::update_container_ref(&self.db.pool, workspace.id, &repo_path_str).await?;
 
             return Ok(repo_path_str);
         }
@@ -1161,12 +1154,8 @@ impl ContainerService for LocalContainerService {
             WorkspaceManager::create_workspace_direct(&workspace_dir, &workspace_inputs).await?
         } else {
             // For worktree mode: create worktrees with new isolated branches
-            WorkspaceManager::create_workspace(
-                &workspace_dir,
-                &workspace_inputs,
-                &workspace.branch,
-            )
-            .await?
+            WorkspaceManager::create_workspace(&workspace_dir, &workspace_inputs, &workspace.branch)
+                .await?
         };
 
         // Copy project files and images to workspace
@@ -1220,12 +1209,8 @@ impl ContainerService for LocalContainerService {
             Self::create_workspace_config_files(&repo.path, &repositories).await?;
 
             if workspace.container_ref.is_none() {
-                Workspace::update_container_ref(
-                    &self.db.pool,
-                    workspace.id,
-                    &repo_path_str,
-                )
-                .await?;
+                Workspace::update_container_ref(&self.db.pool, workspace.id, &repo_path_str)
+                    .await?;
             }
 
             return Ok(repo_path_str);
@@ -1279,8 +1264,7 @@ impl ContainerService for LocalContainerService {
             WorkspaceRepo::find_repos_for_workspace(&self.db.pool, workspace.id).await?;
 
         for repo in &repositories {
-            let worktree_path =
-                repo_worktree_path(&workspace_dir, workspace, &repositories, repo);
+            let worktree_path = repo_worktree_path(&workspace_dir, workspace, &repositories, repo);
             if worktree_path.exists() && !self.git().is_worktree_clean(&worktree_path)? {
                 return Ok(false);
             }
@@ -1362,10 +1346,7 @@ impl ContainerService for LocalContainerService {
             if repo.path.join("Cargo.toml").exists() {
                 if let Some(sccache_path) = shell::resolve_executable_path_blocking("sccache") {
                     // sccache available: use it as compiler cache wrapper
-                    env.insert(
-                        "RUSTC_WRAPPER",
-                        sccache_path.display().to_string(),
-                    );
+                    env.insert("RUSTC_WRAPPER", sccache_path.display().to_string());
                     // Enable cross-worktree cache hits via SCCACHE_BASEDIRS
                     let mut basedirs = Vec::new();
                     if let Some(parent) = repo.path.parent() {

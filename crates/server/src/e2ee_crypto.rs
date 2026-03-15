@@ -1,7 +1,6 @@
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-use e2ee_core::{derive_auth_keypair, derive_content_keypair, AuthKeyPair, ContentKeyPair};
-
 use anyhow::{Context, Result};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
+use e2ee_core::{AuthKeyPair, ContentKeyPair, derive_auth_keypair, derive_content_keypair};
 
 /// Crypto service for the bridge.
 /// Manages key derivation from master secret.
@@ -18,10 +17,7 @@ impl BridgeCryptoService {
             .context("Invalid base64 master secret")?;
 
         if master_bytes.len() != 32 {
-            anyhow::bail!(
-                "Master secret must be 32 bytes, got {}",
-                master_bytes.len()
-            );
+            anyhow::bail!("Master secret must be 32 bytes, got {}", master_bytes.len());
         }
 
         let mut master = [0u8; 32];

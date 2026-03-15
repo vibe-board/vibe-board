@@ -580,7 +580,10 @@
       "description": "저장하지 않은 변경사항이 있습니다. 정말 버리시겠습니까?",
       "continueEditing": "계속 수정",
       "discardChanges": "변경사항 버리기"
-    }
+    },
+    "workspaceMode": "모드:",
+    "workspaceModeWorktree": "Worktree (격리됨)",
+    "workspaceModeDirect": "직접 (제자리)"
   },
   "terminal": {
     "selectWorkspace": "터미널을 열려면 작업 공간을 선택하세요"

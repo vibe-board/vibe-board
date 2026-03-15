@@ -55,7 +55,11 @@ pub fn wrap_dek(dek: &[u8; 32], recipient_public: &[u8; 32]) -> Result<Vec<u8>> 
 /// Unwrap (decrypt) a DEK using the recipient's X25519 secret key.
 ///
 /// Input format: ephemeral_public (32) || nonce (24) || ciphertext
-pub fn unwrap_dek(wrapped: &[u8], recipient_secret: &[u8; 32], recipient_public: &[u8; 32]) -> Result<[u8; 32]> {
+pub fn unwrap_dek(
+    wrapped: &[u8],
+    recipient_secret: &[u8; 32],
+    recipient_public: &[u8; 32],
+) -> Result<[u8; 32]> {
     // Minimum size: 32 (ephemeral pub) + 24 (nonce) + 32 (dek) + 16 (tag)
     if wrapped.len() < 32 + 24 + 48 {
         return Err(E2EEError::SealedBoxOpenFailed);
@@ -112,7 +116,8 @@ mod tests {
         let dek = generate_dek();
 
         let wrapped = wrap_dek(&dek, &content_kp.public_key).unwrap();
-        let unwrapped = unwrap_dek(&wrapped, &content_kp.secret_key, &content_kp.public_key).unwrap();
+        let unwrapped =
+            unwrap_dek(&wrapped, &content_kp.secret_key, &content_kp.public_key).unwrap();
 
         assert_eq!(dek, unwrapped);
     }

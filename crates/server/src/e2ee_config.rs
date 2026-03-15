@@ -1,6 +1,7 @@
+use std::path::PathBuf;
+
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 
 /// Stored credentials for the bridge
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,8 +35,7 @@ pub fn load_credentials() -> Result<Credentials> {
     let path = credentials_path();
     let data = std::fs::read_to_string(&path)
         .with_context(|| format!("Failed to read credentials from {}", path.display()))?;
-    let creds: Credentials =
-        serde_json::from_str(&data).context("Failed to parse credentials")?;
+    let creds: Credentials = serde_json::from_str(&data).context("Failed to parse credentials")?;
     Ok(creds)
 }
 

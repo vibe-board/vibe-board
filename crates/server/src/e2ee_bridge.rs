@@ -1,13 +1,12 @@
 use anyhow::{Context, Result};
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use tokio::sync::mpsc;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{error, info, warn};
 
-use crate::e2ee_config::Credentials;
-use crate::e2ee_crypto::BridgeCryptoService;
+use crate::{e2ee_config::Credentials, e2ee_crypto::BridgeCryptoService};
 
 /// Messages from gateway → daemon
 #[derive(Deserialize)]
@@ -110,9 +109,7 @@ pub async fn run_bridge(creds: &Credentials, local_port: u16) -> Result<()> {
     let local_base = format!("http://127.0.0.1:{local_port}");
     let http_client = reqwest::Client::new();
 
-    info!(
-        "Bridge active — proxying to {local_base}, waiting for WebUI connections..."
-    );
+    info!("Bridge active — proxying to {local_base}, waiting for WebUI connections...");
 
     // Process incoming messages
     while let Some(msg) = ws_receiver.next().await {
@@ -124,8 +121,7 @@ pub async fn run_bridge(creds: &Credentials, local_port: u16) -> Result<()> {
             }
             Ok(Message::Ping(_)) => {
                 let _ = tx.send(
-                    serde_json::to_string(&serde_json::json!({"type": "pong"}))
-                        .unwrap_or_default(),
+                    serde_json::to_string(&serde_json::json!({"type": "pong"})).unwrap_or_default(),
                 );
                 continue;
             }
@@ -153,8 +149,15 @@ pub async fn run_bridge(creds: &Credentials, local_port: u16) -> Result<()> {
                 let crypto_content_sk = crypto.content_keypair.secret_key;
 
                 tokio::spawn(async move {
-                    if let Err(e) =
-                        handle_forward(payload, &client, &base, &crypto_content_pk, &crypto_content_sk, &tx).await
+                    if let Err(e) = handle_forward(
+                        payload,
+                        &client,
+                        &base,
+                        &crypto_content_pk,
+                        &crypto_content_sk,
+                        &tx,
+                    )
+                    .await
                     {
                         warn!("Forward handling error: {e}");
                     }
@@ -189,8 +192,8 @@ async fn handle_forward(
     if e2ee_core::is_encrypted_payload(&payload) {
         warn!("Received encrypted payload — proxy not yet fully implemented");
     } else {
-        let request: e2ee_core::BridgeRequest = serde_json::from_value(payload)
-            .context("Failed to parse BridgeRequest")?;
+        let request: e2ee_core::BridgeRequest =
+            serde_json::from_value(payload).context("Failed to parse BridgeRequest")?;
 
         match request {
             e2ee_core::BridgeRequest::HttpRequest {
@@ -258,8 +261,10 @@ fn get_machine_id() -> String {
         .map(|h| h.to_string_lossy().to_string())
         .unwrap_or_else(|_| "unknown".to_string());
     let username = whoami::username();
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
+    use std::{
+        collections::hash_map::DefaultHasher,
+        hash::{Hash, Hasher},
+    };
     let mut hasher = DefaultHasher::new();
     hostname.hash(&mut hasher);
     username.hash(&mut hasher);

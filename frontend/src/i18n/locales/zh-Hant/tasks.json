@@ -580,7 +580,10 @@
       "description": "您有未儲存的變更。確定要放棄嗎？",
       "continueEditing": "繼續編輯",
       "discardChanges": "放棄變更"
-    }
+    },
+    "workspaceMode": "模式：",
+    "workspaceModeWorktree": "Worktree（隔離）",
+    "workspaceModeDirect": "直接（原地）"
   },
   "terminal": {
     "selectWorkspace": "選擇一個工作區以開啟終端機"

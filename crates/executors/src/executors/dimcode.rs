@@ -10,7 +10,7 @@ use workspace_utils::msg_store::MsgStore;
 pub use super::acp::AcpAgentHarness;
 use crate::{
     approvals::ExecutorApprovalService,
-    command::{apply_overrides, CmdOverrides, CommandBuildError, CommandBuilder},
+    command::{CmdOverrides, CommandBuildError, CommandBuilder, apply_overrides},
     env::ExecutionEnv,
     executors::{
         AppendPrompt, AvailabilityInfo, ExecutorError, SpawnedChild, StandardCodingAgentExecutor,
@@ -34,8 +34,7 @@ pub struct Dimcode {
 
 impl Dimcode {
     fn build_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
-        let builder =
-            CommandBuilder::new("npx -y dimcode@0.0.17").extend_params(["acp"]);
+        let builder = CommandBuilder::new("npx -y dimcode@0.0.17").extend_params(["acp"]);
         apply_overrides(builder, &self.cmd)
     }
 }

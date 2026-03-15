@@ -3,7 +3,7 @@ mod e2ee_config;
 mod e2ee_crypto;
 
 use anyhow::{self, Error as AnyhowError};
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use clap::{Parser, Subcommand};
 use deployment::{Deployment, DeploymentError};
 use server::{DeploymentImpl, routes};
@@ -67,12 +67,8 @@ async fn main() -> Result<(), VibeKanbanError> {
             init_tracing_simple();
             cmd_login(&gateway).await.map_err(VibeKanbanError::Other)
         }
-        Some(Commands::Logout) => {
-            cmd_logout().map_err(VibeKanbanError::Other)
-        }
-        Some(Commands::Status) => {
-            cmd_status().map_err(VibeKanbanError::Other)
-        }
+        Some(Commands::Logout) => cmd_logout().map_err(VibeKanbanError::Other),
+        Some(Commands::Status) => cmd_status().map_err(VibeKanbanError::Other),
     }
 }
 
@@ -80,8 +76,7 @@ async fn main() -> Result<(), VibeKanbanError> {
 fn init_tracing_simple() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("info")),
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
         .try_init();
 }
@@ -299,7 +294,10 @@ async fn cmd_login(gateway_url: &str) -> anyhow::Result<()> {
         user_id: auth.user_id,
     };
     e2ee_config::save_credentials(&creds)?;
-    tracing::info!("Credentials saved to {}", e2ee_config::credentials_path().display());
+    tracing::info!(
+        "Credentials saved to {}",
+        e2ee_config::credentials_path().display()
+    );
 
     println!();
     println!("Login successful!");
@@ -318,7 +316,10 @@ fn cmd_status() -> anyhow::Result<()> {
             println!("Status: Configured");
             println!("  Gateway: {}", creds.gateway_url);
             println!("  User ID: {}", creds.user_id);
-            println!("  Credentials: {}", e2ee_config::credentials_path().display());
+            println!(
+                "  Credentials: {}",
+                e2ee_config::credentials_path().display()
+            );
         }
         Err(_) => {
             println!("Status: Not configured");

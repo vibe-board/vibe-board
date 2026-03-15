@@ -1,6 +1,6 @@
+use std::{collections::HashSet, sync::Arc};
+
 use dashmap::DashMap;
-use std::collections::HashSet;
-use std::sync::Arc;
 use tokio::sync::mpsc;
 
 /// A message that can be sent to a connected daemon
@@ -109,7 +109,10 @@ impl Default for CliRegistry {
 mod tests {
     use super::*;
 
-    fn make_record(machine_id: &str, user_id: &str) -> (CliRecord, mpsc::UnboundedReceiver<String>) {
+    fn make_record(
+        machine_id: &str,
+        user_id: &str,
+    ) -> (CliRecord, mpsc::UnboundedReceiver<String>) {
         let (tx, rx) = mpsc::unbounded_channel();
         let record = CliRecord {
             machine_id: machine_id.to_string(),

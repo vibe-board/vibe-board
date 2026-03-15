@@ -9,8 +9,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, warn};
 
-use crate::services::cli_registry::CliRecord;
-use crate::AppState;
+use crate::{services::cli_registry::CliRecord, AppState};
 
 #[derive(Deserialize)]
 pub struct DaemonConnectQuery {
@@ -73,8 +72,8 @@ async fn handle_daemon_socket(socket: WebSocket, state: AppState, query: DaemonC
             match crate::auth::verify_daemon_token(&state.db, &token).await {
                 Ok(uid) => {
                     user_id = Some(uid.clone());
-                    let msg = serde_json::to_string(&GatewayToDaemon::AuthOk { user_id: uid })
-                        .unwrap();
+                    let msg =
+                        serde_json::to_string(&GatewayToDaemon::AuthOk { user_id: uid }).unwrap();
                     let _ = sender.send(Message::Text(msg.into())).await;
                 }
                 Err(e) => {
@@ -128,17 +127,14 @@ async fn handle_daemon_socket(socket: WebSocket, state: AppState, query: DaemonC
                 match crate::auth::verify_daemon_token(&state.db, &token).await {
                     Ok(uid) => {
                         user_id = Some(uid.clone());
-                        let resp = serde_json::to_string(&GatewayToDaemon::AuthOk {
-                            user_id: uid,
-                        })
-                        .unwrap();
+                        let resp = serde_json::to_string(&GatewayToDaemon::AuthOk { user_id: uid })
+                            .unwrap();
                         let _ = tx.send(resp);
                     }
                     Err(e) => {
-                        let resp = serde_json::to_string(&GatewayToDaemon::AuthError {
-                            message: e,
-                        })
-                        .unwrap();
+                        let resp =
+                            serde_json::to_string(&GatewayToDaemon::AuthError { message: e })
+                                .unwrap();
                         let _ = tx.send(resp);
                         break; // Disconnect on auth failure
                     }
@@ -180,9 +176,8 @@ async fn handle_daemon_socket(socket: WebSocket, state: AppState, query: DaemonC
                 machine_id = Some(mid.clone());
                 info!("Daemon registered: machine_id={mid}, user_id={uid}");
 
-                let resp =
-                    serde_json::to_string(&GatewayToDaemon::Registered { machine_id: mid })
-                        .unwrap();
+                let resp = serde_json::to_string(&GatewayToDaemon::Registered { machine_id: mid })
+                    .unwrap();
                 let _ = tx.send(resp);
 
                 // Notify any subscribed WebUI clients
@@ -206,10 +201,9 @@ async fn handle_daemon_socket(socket: WebSocket, state: AppState, query: DaemonC
     if let Some(ref mid) = machine_id {
         info!("Daemon disconnected: machine_id={mid}");
         state.cli_registry.unregister(mid);
-        state.webui_registry.notify_machine_offline(
-            mid,
-            user_id.as_deref().unwrap_or_default(),
-        );
+        state
+            .webui_registry
+            .notify_machine_offline(mid, user_id.as_deref().unwrap_or_default());
     }
 
     send_task.abort();

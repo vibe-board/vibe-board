@@ -580,7 +580,10 @@
       "description": "Tienes cambios sin guardar. ¿Estás seguro de que deseas descartarlos?",
       "continueEditing": "Continuar Editando",
       "discardChanges": "Descartar Cambios"
-    }
+    },
+    "workspaceMode": "Modo:",
+    "workspaceModeWorktree": "Worktree (aislado)",
+    "workspaceModeDirect": "Directo (en sitio)"
   },
   "terminal": {
     "selectWorkspace": "Selecciona un espacio de trabajo para abrir terminal"

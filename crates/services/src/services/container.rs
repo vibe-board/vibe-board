@@ -37,8 +37,10 @@ use executors::{
         script::{ScriptContext, ScriptRequest, ScriptRequestLanguage},
     },
     executors::{ExecutorError, StandardCodingAgentExecutor},
-    logs::{NormalizedEntry, NormalizedEntryError, NormalizedEntryType, utils::ConversationPatch},
-    logs::utils::extract_normalized_entry_from_patch,
+    logs::{
+        NormalizedEntry, NormalizedEntryError, NormalizedEntryType,
+        utils::{ConversationPatch, extract_normalized_entry_from_patch},
+    },
     profile::ExecutorProfileId,
 };
 use futures::{StreamExt, future, stream::BoxStream};
@@ -1134,12 +1136,11 @@ pub trait ContainerService {
             .iter()
             .filter_map(|msg| {
                 if let LogMsg::JsonPatch(patch) = msg {
-                    extract_normalized_entry_from_patch(patch)
-                        .and_then(|(index, entry)| {
-                            serde_json::to_string(&entry)
-                                .map(|json| (index as i64, json))
-                                .ok()
-                        })
+                    extract_normalized_entry_from_patch(patch).and_then(|(index, entry)| {
+                        serde_json::to_string(&entry)
+                            .map(|json| (index as i64, json))
+                            .ok()
+                    })
                 } else {
                     None
                 }
@@ -1160,9 +1161,7 @@ pub trait ContainerService {
             execution_id
         );
 
-        if let Err(e) =
-            DbNormalizedEntry::insert_batch(&db_pool, execution_id, &entries).await
-        {
+        if let Err(e) = DbNormalizedEntry::insert_batch(&db_pool, execution_id, &entries).await {
             tracing::error!(
                 "Failed to persist normalized entries for execution {}: {}",
                 execution_id,

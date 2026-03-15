@@ -1,5 +1,6 @@
-use sqlx::{sqlite::SqliteConnectOptions, FromRow, SqlitePool};
 use std::str::FromStr;
+
+use sqlx::{sqlite::SqliteConnectOptions, FromRow, SqlitePool};
 use tracing::info;
 
 /// Initialize the SQLite database and run migrations
@@ -58,12 +59,11 @@ pub async fn get_user_by_email(
     pool: &SqlitePool,
     email: &str,
 ) -> Result<Option<UserRow>, sqlx::Error> {
-    let row: Option<UserRow> = sqlx::query_as(
-        "SELECT id, email, password_hash, name, role FROM users WHERE email = ?",
-    )
-    .bind(email)
-    .fetch_optional(pool)
-    .await?;
+    let row: Option<UserRow> =
+        sqlx::query_as("SELECT id, email, password_hash, name, role FROM users WHERE email = ?")
+            .bind(email)
+            .fetch_optional(pool)
+            .await?;
     Ok(row)
 }
 
