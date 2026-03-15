@@ -575,6 +575,12 @@ export const useConversationHistoryOld = ({
 
     setIsLoadingMore(true);
 
+    // Yield to let React render the loading state before we proceed.
+    // Without this, React 18 batches the setIsLoadingMore(true) and
+    // setIsLoadingMore(false) calls synchronously, so the loading
+    // spinner never appears in the preloaded path.
+    await new Promise((r) => setTimeout(r, 0));
+
     // First, use any preloaded entries
     const preloaded = Array.from(preloadedEntries.current.values());
     if (preloaded.length > 0) {
@@ -777,6 +783,6 @@ export const useConversationHistoryOld = ({
   return {
     loadMore,
     hasMore,
-    isLoadingMore: isLoadingMore || isPreloading,
+    isLoadingMore,
   };
 };

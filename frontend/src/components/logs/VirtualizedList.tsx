@@ -50,6 +50,8 @@ const ItemContent: VirtuosoMessageListProps<
   const attempt = context?.attempt;
   const task = context?.task;
 
+  if (!data) return null;
+
   if (data.type === 'STDOUT') {
     return <p>{data.content}</p>;
   }
@@ -81,24 +83,23 @@ const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
     useState<DataWithScrollModifier<PatchTypeWithKey> | null>(null);
   // initialLoading: full-screen overlay for first load of a new attempt
   const [initialLoading, setInitialLoading] = useState(true);
-  // pagingLoading: thin top bar for loading additional history batches
-  const [pagingLoading, setPagingLoading] = useState(false);
   const { setEntries, reset } = useEntries();
   // Track previous data length for scroll position preservation
   const prevDataLengthRef = useRef(0);
+  // Track whether we've received real conversation data (not just synthetic patches)
+  const hasReceivedRealData = useRef(false);
 
   useEffect(() => {
     setInitialLoading(true);
-    setPagingLoading(false);
     setChannelData(null);
     prevDataLengthRef.current = 0;
+    hasReceivedRealData.current = false;
     reset();
   }, [attempt.id, reset]);
 
   const onEntriesUpdated = (
     newEntries: PatchTypeWithKey[],
-    addType: AddEntryType,
-    newLoading: boolean
+    addType: AddEntryType
   ) => {
     // For historic batch loading, use data.replace() with anchor to preserve scroll position
     if (addType === 'historic') {
@@ -118,7 +119,6 @@ const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
         });
       }
       setEntries(newEntries);
-      setPagingLoading(newLoading);
       prevDataLengthRef.current = newEntries.length;
       return;
     }
@@ -133,14 +133,21 @@ const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
     setEntries(newEntries);
     prevDataLengthRef.current = newEntries.length;
 
-    if (initialLoading && addType === 'initial') {
-      // First batch arrived — dismiss full-screen overlay
-      setInitialLoading(false);
-    }
-
-    // Show paging indicator while initial batches are loading
-    if (addType === 'initial') {
-      setPagingLoading(newLoading);
+    // Dismiss full-screen overlay only when we receive real conversation data.
+    // The reset emit sends a synthetic next_action patch with addType='initial',
+    // which we must ignore to keep the overlay visible until real data arrives.
+    if (initialLoading && addType === 'initial' && !hasReceivedRealData.current) {
+      // The reset emit produces only a synthetic next_action entry.
+      // Dismiss the overlay once we see anything other than that.
+      const onlySynthetic = newEntries.every(
+        (e) =>
+          e.type === 'NORMALIZED_ENTRY' &&
+          e.content?.entry_type?.type === 'next_action'
+      );
+      if (!onlySynthetic && newEntries.length > 0) {
+        hasReceivedRealData.current = true;
+        setInitialLoading(false);
+      }
     }
   };
 
@@ -154,43 +161,74 @@ const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
     () => ({ attempt, task }),
     [attempt, task]
   );
-  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
+  // Use refs so the IntersectionObserver callback always sees the latest values
+  // without needing to re-create the observer (which would lose the DOM node).
+  const loadMoreRef = useRef(loadMore);
+  const hasMoreRef = useRef(hasMore);
+  const isLoadingMoreRef = useRef(isLoadingMore);
+  loadMoreRef.current = loadMore;
+  hasMoreRef.current = hasMore;
+  isLoadingMoreRef.current = isLoadingMore;
+
+  // Callback ref: whenever the sentinel DOM node is (re-)attached, set up a
+  // fresh IntersectionObserver.  Because the callback captures no stale state
+  // (it reads from refs), we never need to tear-down-and-recreate when
+  // hasMore / loadMore change — the same observer just works.
+  //
+  // We use Virtuoso's own scroll container (the sentinel's nearest scrollable
+  // ancestor) as the observer root.  This avoids ancestor overflow:hidden
+  // (e.g. the resizable Panel when the diff view is open) from clipping the
+  // sentinel's intersection rect and preventing the observer from firing.
+  // Whether the sentinel (top of list) is currently visible in the viewport.
+  // Used to only show the loading spinner when the user has scrolled to the top.
   const [sentinelVisible, setSentinelVisible] = useState(false);
 
-  // Handle scroll to top - trigger loadMore using IntersectionObserver
-  useEffect(() => {
-    if (!hasMore || !loadMore) return;
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const sentinelCallbackRef = useCallback((node: HTMLDivElement | null) => {
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
+    if (!node) return;
 
-    const sentinel = loadMoreSentinelRef.current;
-    if (!sentinel) return;
+    // Walk up to find Virtuoso's scroll container (first ancestor with
+    // overflow auto/scroll).  This is always just 1-2 levels up from the
+    // sentinel, well before any global scrollable element.
+    let root: HTMLElement | null = node.parentElement;
+    while (root) {
+      const { overflow, overflowY } = getComputedStyle(root);
+      if (/auto|scroll/.test(overflow + overflowY)) break;
+      root = root.parentElement;
+    }
 
     const observer = new IntersectionObserver(
       (entries) => {
         const isIntersecting = entries[0]?.isIntersecting ?? false;
         setSentinelVisible(isIntersecting);
-        if (isIntersecting && hasMore && !isLoadingMore) {
-          loadMore();
+        if (
+          isIntersecting &&
+          hasMoreRef.current &&
+          !isLoadingMoreRef.current &&
+          loadMoreRef.current
+        ) {
+          loadMoreRef.current();
         }
       },
-      { threshold: 0.1 }
+      { root, threshold: 0.1 }
     );
+    observer.observe(node);
+    observerRef.current = observer;
+  }, []);
 
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [hasMore, isLoadingMore, loadMore]);
+  // Clean up on unmount
+  useEffect(() => () => observerRef.current?.disconnect(), []);
 
-  // Sentinel component for detecting scroll to top
+  // Stable sentinel-only Header for Virtuoso. Must NEVER change reference so
+  // Virtuoso doesn't unmount/remount the DOM node that hosts the
+  // IntersectionObserver.  The loading spinner is rendered outside Virtuoso.
   const LoadMoreHeader = useCallback(() => {
-    return (
-      <div ref={loadMoreSentinelRef} className="h-2">
-        {sentinelVisible && (hasMore || isLoadingMore) && (
-          <div className="w-full flex items-center justify-center py-2">
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-          </div>
-        )}
-      </div>
-    );
-  }, [hasMore, isLoadingMore, sentinelVisible]);
+    return <div ref={sentinelCallbackRef} className="h-2" />;
+  }, [sentinelCallbackRef]);
 
   return (
     <ApprovalFormProvider>
@@ -200,8 +238,9 @@ const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
           <p>Loading History</p>
         </div>
       )}
-      {pagingLoading && (
-        <div className="w-full flex items-center justify-center gap-2 py-2 text-sm text-muted-foreground">
+      {/* Loading spinner — absolute so it doesn't shift layout and cause flicker */}
+      {!initialLoading && sentinelVisible && isLoadingMore && (
+        <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-center gap-2 py-2 text-sm text-muted-foreground bg-background/80 backdrop-blur-sm">
           <Loader2 className="h-4 w-4 animate-spin" />
           <span>Loading more...</span>
         </div>

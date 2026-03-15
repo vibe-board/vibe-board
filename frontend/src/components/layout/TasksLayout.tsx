@@ -71,6 +71,8 @@ function RightWorkArea({
     setIsAttemptCollapsed(size.asPercentage === COLLAPSED_SIZE);
   };
 
+  const hasAux = mode !== null;
+
   return (
     <div className="h-full min-h-0 flex flex-col">
       {rightHeader && (
@@ -79,69 +81,75 @@ function RightWorkArea({
         </div>
       )}
       <div className="flex-1 min-h-0">
-        {mode === null ? (
-          attempt
-        ) : (
-          <Group
-            orientation="horizontal"
-            className="h-full min-h-0"
-            defaultLayout={defaultLayout}
-            onLayoutChange={onLayoutChange}
+        <Group
+          orientation="horizontal"
+          className="h-full min-h-0"
+          defaultLayout={defaultLayout}
+          onLayoutChange={onLayoutChange}
+        >
+          <Panel
+            id="attempt"
+            defaultSize={hasAux ? 34 : 100}
+            minSize={hasAux ? MIN_PANEL_SIZE : 100}
+            collapsible={hasAux}
+            collapsedSize={COLLAPSED_SIZE}
+            onResize={handleAttemptResize}
+            className="min-w-0 min-h-0 overflow-hidden"
+            role="region"
+            aria-label="Details"
           >
-            <Panel
-              id="attempt"
-              defaultSize={34}
-              minSize={MIN_PANEL_SIZE}
-              collapsible
-              collapsedSize={COLLAPSED_SIZE}
-              onResize={handleAttemptResize}
-              className="min-w-0 min-h-0 overflow-hidden"
-              role="region"
-              aria-label="Details"
-            >
-              {attempt}
-            </Panel>
+            {attempt}
+          </Panel>
 
-            <Separator
-              id="handle-aa"
-              className={cn(
-                'relative z-30 bg-border cursor-col-resize group touch-none',
-                'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
-                'focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-                'transition-all',
-                isAttemptCollapsed ? 'w-6' : 'w-1'
-              )}
-              aria-label="Resize panels"
-            >
-              <div className="pointer-events-none absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-border" />
-              <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1 bg-muted/90 border border-border rounded-full px-1.5 py-3 opacity-70 group-hover:opacity-100 group-focus:opacity-100 transition-opacity shadow-sm">
-                <span className="w-1 h-1 rounded-full bg-muted-foreground" />
-                <span className="w-1 h-1 rounded-full bg-muted-foreground" />
-                <span className="w-1 h-1 rounded-full bg-muted-foreground" />
-              </div>
-            </Separator>
+          {hasAux && (
+            <>
+              <Separator
+                id="handle-aa"
+                className={cn(
+                  'relative z-30 bg-border cursor-col-resize group touch-none',
+                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
+                  'focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+                  'transition-all',
+                  isAttemptCollapsed ? 'w-6' : 'w-1'
+                )}
+                aria-label="Resize panels"
+              >
+                <div className="pointer-events-none absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-border" />
+                <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1 bg-muted/90 border border-border rounded-full px-1.5 py-3 opacity-70 group-hover:opacity-100 group-focus:opacity-100 transition-opacity shadow-sm">
+                  <span className="w-1 h-1 rounded-full bg-muted-foreground" />
+                  <span className="w-1 h-1 rounded-full bg-muted-foreground" />
+                  <span className="w-1 h-1 rounded-full bg-muted-foreground" />
+                </div>
+              </Separator>
 
-            <Panel
-              id="aux"
-              defaultSize={66}
-              minSize={MIN_PANEL_SIZE}
-              className="min-w-0 min-h-0 overflow-hidden"
-              role="region"
-              aria-label={mode === 'preview' ? 'Preview' : 'Diffs'}
-            >
-              <AuxRouter mode={mode} aux={aux} />
-            </Panel>
-          </Group>
-        )}
+              <Panel
+                id="aux"
+                defaultSize={66}
+                minSize={MIN_PANEL_SIZE}
+                className="min-w-0 min-h-0 overflow-hidden"
+                role="region"
+                aria-label={mode === 'preview' ? 'Preview' : 'Diffs'}
+              >
+                <AuxRouter mode={mode} aux={aux} />
+              </Panel>
+            </>
+          )}
+        </Group>
       </div>
     </div>
   );
 }
 
 /**
- * DesktopSimple - Conditionally renders layout based on mode.
- * When mode === null: Shows Kanban | Attempt
- * When mode !== null: Hides Kanban, shows only RightWorkArea with Attempt | Aux
+ * DesktopSimple - Renders Kanban + RightWorkArea in a stable tree structure.
+ * When mode === null: Shows Kanban | Attempt (kanban visible with resizable split)
+ * When mode !== null: Hides Kanban via CSS, RightWorkArea fills 100%
+ *
+ * IMPORTANT: RightWorkArea must always be at the same position in the React
+ * tree so that VirtualizedList (and its IntersectionObserver / scroll state)
+ * is never unmounted when the user toggles the diff panel.  We use CSS
+ * display:none to hide the kanban rather than conditional rendering to
+ * guarantee a stable component tree.
  */
 function DesktopSimple({
   kanban,
@@ -156,83 +164,38 @@ function DesktopSimple({
   mode: LayoutMode;
   rightHeader?: ReactNode;
 }) {
-  const { defaultLayout, onLayoutChange } = useDefaultLayout({
-    groupId: 'tasksLayout-kanbanAttempt',
-    storage: localStorage,
-  });
-  const [isKanbanCollapsed, setIsKanbanCollapsed] = useState(false);
+  const hasAux = mode !== null;
 
-  const handleKanbanResize = (size: PanelSize) => {
-    setIsKanbanCollapsed(size.asPercentage === COLLAPSED_SIZE);
-  };
-
-  // When preview/diffs is open, hide Kanban entirely and render only RightWorkArea
-  if (mode !== null) {
-    return (
-      <RightWorkArea
-        attempt={attempt}
-        aux={aux}
-        mode={mode}
-        rightHeader={rightHeader}
-      />
-    );
-  }
-
-  // When only viewing attempt logs, show Kanban | Attempt (no aux)
+  // When aux (diff/preview) is open, hide kanban and show only RightWorkArea.
+  // We always render RightWorkArea at the SAME tree position (second child)
+  // so VirtualizedList is never unmounted on mode change.
   return (
-    <Group
-      orientation="horizontal"
-      className="h-full min-h-0"
-      defaultLayout={defaultLayout}
-      onLayoutChange={onLayoutChange}
-    >
-      <Panel
-        id="kanban"
-        defaultSize={66}
-        minSize={MIN_PANEL_SIZE}
-        collapsible
-        collapsedSize={COLLAPSED_SIZE}
-        onResize={handleKanbanResize}
-        className="min-w-0 min-h-0 overflow-hidden"
+    <div className="h-full min-h-0 flex flex-row">
+      {/* Kanban area — hidden via CSS when aux panel is open so tree stays stable */}
+      <div
+        className={cn(
+          'min-h-0',
+          hasAux ? 'hidden' : 'flex-[2_1_0%] min-w-0 overflow-hidden'
+        )}
         role="region"
         aria-label="Kanban board"
       >
         {kanban}
-      </Panel>
+      </div>
 
-      <Separator
-        id="handle-kr"
-        className={cn(
-          'relative z-30 bg-border cursor-col-resize group touch-none',
-          'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
-          'focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-          'transition-all',
-          isKanbanCollapsed ? 'w-6' : 'w-1'
-        )}
-        aria-label="Resize panels"
-      >
-        <div className="pointer-events-none absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-border" />
-        <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1 bg-muted/90 border border-border rounded-full px-1.5 py-3 opacity-70 group-hover:opacity-100 group-focus:opacity-100 transition-opacity shadow-sm">
-          <span className="w-1 h-1 rounded-full bg-muted-foreground" />
-          <span className="w-1 h-1 rounded-full bg-muted-foreground" />
-          <span className="w-1 h-1 rounded-full bg-muted-foreground" />
-        </div>
-      </Separator>
+      {/* Separator — hidden when aux is open */}
+      <div className={cn('shrink-0 bg-border', hasAux ? 'hidden' : 'w-1')} />
 
-      <Panel
-        id="right"
-        defaultSize={34}
-        minSize={MIN_PANEL_SIZE}
-        className="min-w-0 min-h-0 overflow-hidden"
-      >
+      {/* RightWorkArea — always rendered at this stable tree position */}
+      <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
         <RightWorkArea
           attempt={attempt}
           aux={aux}
           mode={mode}
           rightHeader={rightHeader}
         />
-      </Panel>
-    </Group>
+      </div>
+    </div>
   );
 }
 

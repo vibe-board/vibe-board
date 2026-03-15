@@ -43,7 +43,7 @@ export function FullAttemptLogsPage() {
                   <TaskAttemptPanel attempt={attempt} task={task}>
                     {({ logs, followUp }) => (
                       <div className="h-full min-h-0 flex flex-col">
-                        <div className="flex-1 min-h-0 flex flex-col">
+                        <div className="relative flex-1 min-h-0 flex flex-col">
                           {logs}
                         </div>
                         <div className="min-h-0 max-h-[50%] border-t overflow-hidden">

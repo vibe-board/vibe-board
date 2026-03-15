@@ -866,7 +866,7 @@ export function ProjectTasks() {
             <>
               <GitErrorBanner />
               <div className="flex-1 min-h-0 flex flex-col">
-                <div className="flex-1 min-h-0 flex flex-col">{logs}</div>
+                <div className="relative flex-1 min-h-0 flex flex-col">{logs}</div>
 
                 <div className="shrink-0 border-t">
                   <div className="mx-auto w-full max-w-[50rem]">
