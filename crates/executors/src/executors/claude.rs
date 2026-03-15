@@ -146,14 +146,13 @@ impl ClaudeCode {
         if plan && approvals {
             tracing::warn!("Both plan and approvals are enabled. Plan will take precedence.");
         }
-        if plan || approvals {
-            // Enable bypass at startup, otherwise we cannot change to it after exiting plan mode
-            builder = builder.extend_params(["--permission-prompt-tool=stdio"]);
-            builder = builder.extend_params([format!(
-                "--permission-mode={}",
-                PermissionMode::BypassPermissions
-            )]);
-        }
+        // Use stdio permission prompt so we can intercept AskUserQuestion and hooks.
+        // Start with bypassPermissions; plan/approvals will switch via set_permission_mode.
+        builder = builder.extend_params(["--permission-prompt-tool=stdio"]);
+        builder = builder.extend_params([format!(
+            "--permission-mode={}",
+            PermissionMode::BypassPermissions
+        )]);
         if self.dangerously_skip_permissions.unwrap_or(false) {
             builder = builder.extend_params(["--dangerously-skip-permissions"]);
         }
@@ -174,13 +173,16 @@ impl ClaudeCode {
         apply_overrides(builder, &self.cmd)
     }
 
-    pub fn permission_mode(&self) -> PermissionMode {
+    /// Returns the permission mode to switch to after initialization.
+    /// Only needed for plan/approvals which start with bypassPermissions and switch later.
+    /// In default mode, bypassPermissions is already correct.
+    pub fn permission_mode(&self) -> Option<PermissionMode> {
         if self.plan.unwrap_or(false) {
-            PermissionMode::Plan
+            Some(PermissionMode::Plan)
         } else if self.approvals.unwrap_or(false) {
-            PermissionMode::Default
+            Some(PermissionMode::Default)
         } else {
-            PermissionMode::BypassPermissions
+            None
         }
     }
 
@@ -424,8 +426,10 @@ impl ClaudeCode {
                 return;
             }
 
-            if let Err(e) = protocol_peer.set_permission_mode(permission_mode).await {
-                tracing::warn!("Failed to set permission mode to {permission_mode}: {e}");
+            if let Some(mode) = permission_mode {
+                if let Err(e) = protocol_peer.set_permission_mode(mode).await {
+                    tracing::warn!("Failed to set permission mode to {mode}: {e}");
+                }
             }
 
             // Send user message
