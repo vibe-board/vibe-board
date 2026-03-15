@@ -260,7 +260,8 @@
       "mergeChanges": "変更のマージに失敗しました",
       "pushChanges": "変更のプッシュに失敗しました",
       "rebaseBranch": "ブランチのリベースに失敗しました",
-      "branchStatusUnavailable": "ブランチのステータスを取得できません。ターゲットブランチの変更は引き続き可能です。"
+      "branchStatusUnavailable": "ブランチのステータスを取得できません。ターゲットブランチの変更は引き続き可能です。",
+      "sessionRequired": "マージにはセッションとエグゼキュータが必要です。セッションを作成し、設定でエグゼキュータを設定してください。"
     },
     "labels": {
       "taskBranch": "タスクブランチ"

@@ -408,7 +408,8 @@
       "pushChanges": "Failed to push changes",
       "mergeChanges": "Failed to merge changes",
       "rebaseBranch": "Failed to rebase branch",
-      "branchStatusUnavailable": "Unable to fetch branch status. You can still change the target branch."
+      "branchStatusUnavailable": "Unable to fetch branch status. You can still change the target branch.",
+      "sessionRequired": "A session and executor are required to merge. Create a session and set an executor in settings."
     },
     "pr": {
       "open": "Open PR #{{number}}",

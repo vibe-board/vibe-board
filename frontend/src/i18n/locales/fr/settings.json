@@ -171,6 +171,10 @@
       "commitMessage": {
         "title": "Messages de commit",
         "description": "Configurez l'agent utilisé pour générer les messages de commit lors de la fusion.",
+        "enabled": {
+          "label": "Activer les messages de commit générés par IA",
+          "helper": "Lorsque désactivé, les messages de commit utiliseront le titre et la description de la tâche au lieu de la génération IA."
+        },
         "useCustom": {
           "label": "Utiliser un agent personnalisé pour les messages de commit",
           "helper": "Lorsque activé, un profil d'agent différent est utilisé pour générer les messages de commit. Utile si l'agent de tâches est lent et provoque des dépassements de délai."

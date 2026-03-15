@@ -224,9 +224,7 @@ function GitOperations({
     const repoId = getSelectedRepoId();
     if (!repoId) return;
     if (!mergeSessionId || !mergeExecutorProfileId) {
-      setError(
-        'A session and executor are required to merge. Create a session and set an executor in settings.'
-      );
+      setError(t('git.errors.sessionRequired'));
       return;
     }
     try {

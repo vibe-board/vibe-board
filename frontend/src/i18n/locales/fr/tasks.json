@@ -408,7 +408,8 @@
       "pushChanges": "Échec du push des modifications",
       "mergeChanges": "Échec de la fusion des modifications",
       "rebaseBranch": "Échec du rebasage de la branche",
-      "branchStatusUnavailable": "Impossible de récupérer le statut de la branche. Vous pouvez toujours changer la branche cible."
+      "branchStatusUnavailable": "Impossible de récupérer le statut de la branche. Vous pouvez toujours changer la branche cible.",
+      "sessionRequired": "Une session et un exécuteur sont nécessaires pour fusionner. Créez une session et définissez un exécuteur dans les paramètres."
     },
     "pr": {
       "open": "Ouvrir la PR #{{number}}",

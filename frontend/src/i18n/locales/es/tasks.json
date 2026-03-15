@@ -260,7 +260,8 @@
       "mergeChanges": "Error al fusionar cambios",
       "pushChanges": "Error al enviar cambios",
       "rebaseBranch": "Error al hacer rebase de la rama",
-      "branchStatusUnavailable": "No se puede obtener el estado de la rama. Aún puedes cambiar la rama de destino."
+      "branchStatusUnavailable": "No se puede obtener el estado de la rama. Aún puedes cambiar la rama de destino.",
+      "sessionRequired": "Se requiere una sesión y un ejecutor para fusionar. Crea una sesión y configura un ejecutor en los ajustes."
     },
     "labels": {
       "taskBranch": "Rama de tarea"
