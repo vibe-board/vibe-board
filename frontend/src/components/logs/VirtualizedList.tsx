@@ -74,7 +74,7 @@ const ItemContent: VirtuosoMessageListProps<
 const computeItemKey: VirtuosoMessageListProps<
   PatchTypeWithKey,
   MessageListContext
->['computeItemKey'] = ({ data }) => `l-${data.patchKey}`;
+>['computeItemKey'] = ({ data }) => `l-${data?.patchKey ?? 'unknown'}`;
 
 const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
   const [channelData, setChannelData] =
