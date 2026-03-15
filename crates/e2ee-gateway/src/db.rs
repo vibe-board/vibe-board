@@ -1,20 +1,16 @@
-use sqlx::{sqlite::SqlitePoolOptions, FromRow, SqlitePool};
+use sqlx::{sqlite::SqliteConnectOptions, FromRow, SqlitePool};
+use std::str::FromStr;
 use tracing::info;
 
 /// Initialize the SQLite database and run migrations
 pub async fn init_db(database_url: &str) -> Result<SqlitePool, sqlx::Error> {
-    let pool = SqlitePoolOptions::new()
-        .max_connections(5)
-        .connect(database_url)
-        .await?;
+    let options = SqliteConnectOptions::from_str(database_url)?.create_if_missing(true);
+    let pool = SqlitePool::connect_with(options).await?;
 
-    // Run migrations sequentially
-    sqlx::query(include_str!("../migrations/001_init.sql"))
-        .execute(&pool)
-        .await?;
-    sqlx::query(include_str!("../migrations/002_admin_sessions.sql"))
-        .execute(&pool)
-        .await?;
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .map_err(|e| sqlx::Error::Migrate(Box::new(e)))?;
 
     info!("Database initialized");
     Ok(pool)
