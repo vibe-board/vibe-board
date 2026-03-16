@@ -67,7 +67,7 @@ export function GatewayGate({ children }: { children: ReactNode }) {
 
 function GatewayShell({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+    <div className="legacy-design flex min-h-screen items-center justify-center bg-background p-4">
       <div className="w-full max-w-md space-y-6">{children}</div>
     </div>
   );
