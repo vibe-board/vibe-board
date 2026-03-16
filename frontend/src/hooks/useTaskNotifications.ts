@@ -70,8 +70,8 @@ export function useTaskNotifications(
       if (prevStatus && prevStatus !== task.status) {
         if (task.status === 'done') {
           triggerNotification('Task Completed', task.title);
-        } else if (task.status === 'cancelled') {
-          triggerNotification('Task Cancelled', task.title);
+        } else if (task.status === 'inreview') {
+          triggerNotification('Review Needed', task.title);
         }
       }
 
