@@ -18,6 +18,8 @@ import { useOpenInEditor } from '@/hooks/useOpenInEditor';
 import { useDiffSummary } from '@/hooks/useDiffSummary';
 import { useDevServer } from '@/hooks/useDevServer';
 import { useHasDevServerScript } from '@/hooks/useHasDevServerScript';
+import { useExecutionProcesses } from '@/hooks/useExecutionProcesses';
+import { getLatestProfileFromProcesses } from '@/utils/executor';
 import { Button } from '@/components/ui/button';
 import { IdeIcon } from '@/components/ide/IdeIcon';
 import { useUserSystem } from '@/components/ConfigProvider';
@@ -82,6 +84,9 @@ export function NextActionCard({
     devServerProcesses,
   } = useDevServer(attemptId);
 
+  const { executionProcesses } = useExecutionProcesses(sessionId);
+  const latestProfile = getLatestProfileFromProcesses(executionProcesses);
+
   const hasRunningDevServer = runningDevServers.length > 0;
 
   const { data: projectHasDevScript = false } =
@@ -124,13 +129,13 @@ export function NextActionCard({
   }, [attempt?.task_id]);
 
   const handleContinue = useCallback(async () => {
-    if (!sessionId || !attempt?.session?.executor) return;
+    if (!sessionId || !latestProfile?.executor) return;
     try {
       await sessionsApi.followUp(sessionId, {
         prompt: 'continue',
         executor_profile_id: {
-          executor: attempt.session.executor as BaseCodingAgent,
-          variant: null,
+          executor: latestProfile.executor,
+          variant: latestProfile.variant ?? null,
         },
         retry_process_id: null,
         force_when_dirty: null,
@@ -140,7 +145,7 @@ export function NextActionCard({
     } catch (error) {
       console.error('Failed to send continue:', error);
     }
-  }, [sessionId, attempt?.session?.executor]);
+  }, [sessionId, latestProfile]);
 
   const handleGitActions = useCallback(() => {
     if (!attemptId) return;
@@ -256,7 +261,7 @@ export function NextActionCard({
                     variant="outline"
                     size="sm"
                     onClick={handleContinue}
-                    disabled={!attempt?.session?.executor}
+                    disabled={!latestProfile?.executor}
                     className="text-sm w-full sm:w-auto"
                     aria-label={t('attempt.continue')}
                   >
