@@ -328,7 +328,7 @@ export function ProjectTasks() {
   const isTaskView = !!taskId && !effectiveAttemptId;
   const { data: attempt } = useTaskAttemptWithSession(effectiveAttemptId);
   const [copied, setCopied] = useState(false);
-  const { repos } = useAttemptRepo(attempt?.id);
+  const { repos, isLoading: reposLoading } = useAttemptRepo(attempt?.id);
 
   const handleCopyWorktree = useCallback(async () => {
     const containerRef = attempt?.container_ref;
@@ -891,6 +891,7 @@ export function ProjectTasks() {
                               variant="ghost"
                               size="xs"
                               onClick={handleCopyWorktree}
+                              disabled={attempt?.mode === 'worktree' && reposLoading}
                               className="h-5 w-5 p-0"
                               aria-label="Copy worktree path"
                             >
