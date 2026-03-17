@@ -68,24 +68,44 @@ async fn handle_daemon_socket(socket: WebSocket, state: AppState, query: DaemonC
     // Try to authenticate from query param first
     let mut user_id: Option<String> = None;
     if let Some(token_str) = &query.token {
-        if let Ok(token) = serde_json::from_str::<e2ee_core::SignedAuthToken>(token_str) {
-            match crate::auth::verify_daemon_token(&state.db, &token).await {
-                Ok(uid) => {
-                    user_id = Some(uid.clone());
-                    let msg =
-                        serde_json::to_string(&GatewayToDaemon::AuthOk { user_id: uid }).unwrap();
-                    let _ = sender.send(Message::Text(msg.into())).await;
-                }
-                Err(e) => {
-                    let msg = serde_json::to_string(&GatewayToDaemon::AuthError {
-                        message: e.to_string(),
-                    })
-                    .unwrap();
-                    let _ = sender.send(Message::Text(msg.into())).await;
-                    return;
+        match serde_json::from_str::<e2ee_core::SignedAuthToken>(token_str) {
+            Ok(token) => {
+                match crate::auth::verify_daemon_token(&state.db, &token).await {
+                    Ok(uid) => {
+                        user_id = Some(uid.clone());
+                        let msg =
+                            serde_json::to_string(&GatewayToDaemon::AuthOk { user_id: uid }).unwrap();
+                        let _ = sender.send(Message::Text(msg.into())).await;
+                    }
+                    Err(e) => {
+                        warn!("Daemon auth verification failed: {e}");
+                        let msg = serde_json::to_string(&GatewayToDaemon::AuthError {
+                            message: e.to_string(),
+                        })
+                        .unwrap();
+                        let _ = sender.send(Message::Text(msg.into())).await;
+                        return;
+                    }
                 }
             }
+            Err(e) => {
+                warn!("Failed to parse daemon auth token from query param: {e}");
+                let msg = serde_json::to_string(&GatewayToDaemon::AuthError {
+                    message: format!("Invalid auth token format: {e}"),
+                })
+                .unwrap();
+                let _ = sender.send(Message::Text(msg.into())).await;
+                return;
+            }
         }
+    } else {
+        warn!("Daemon connected without token query parameter");
+        let msg = serde_json::to_string(&GatewayToDaemon::AuthError {
+            message: "Missing token parameter".to_string(),
+        })
+        .unwrap();
+        let _ = sender.send(Message::Text(msg.into())).await;
+        return;
     }
 
     let mut machine_id: Option<String> = None;

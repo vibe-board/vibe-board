@@ -49,18 +49,21 @@ pub async fn run_bridge(creds: &Credentials, local_port: u16) -> Result<()> {
 
     info!("Connecting to gateway: {}", creds.gateway_url);
 
-    let (ws_stream, _) = connect_async(&connect_url)
-        .await
-        .context("Failed to connect to gateway WebSocket")?;
+    let (ws_stream, _) = connect_async(&connect_url).await.map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to connect to gateway WebSocket at {}: {e}",
+            creds.gateway_url
+        )
+    })?;
 
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
 
     info!("Connected to gateway, waiting for auth...");
 
-    // Wait for auth response
-    let first_msg = ws_receiver
-        .next()
+    // Wait for auth response (with timeout)
+    let first_msg = tokio::time::timeout(std::time::Duration::from_secs(10), ws_receiver.next())
         .await
+        .context("Timed out waiting for gateway auth response — the gateway may have rejected the token silently")?
         .context("Connection closed before auth response")?
         .context("WebSocket error during auth")?;
 
