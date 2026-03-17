@@ -6,6 +6,8 @@ import '@xterm/xterm/css/xterm.css';
 
 import { useTheme } from '@/components/ThemeProvider';
 import { getTerminalTheme } from '@/utils/terminalTheme';
+import { getGatewayConnection } from '@/lib/gateway-mode';
+import type { RemoteWs } from '@/lib/e2ee/remoteWs';
 
 interface XTermInstanceProps {
   workspaceId: string;
@@ -83,7 +85,7 @@ export function XTermInstance({
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
+  const wsRef = useRef<WebSocket | RemoteWs | null>(null);
   const initialSizeRef = useRef({ cols: 80, rows: 24 });
   const { theme } = useTheme();
 
@@ -180,8 +182,15 @@ export function XTermInstance({
         }
       };
 
-      // Create WebSocket
-      const ws = new WebSocket(endpoint);
+      // Create WebSocket - route through E2EE gateway if connected
+      const conn = getGatewayConnection();
+      let ws: WebSocket | RemoteWs;
+      if (conn) {
+        const url = new URL(endpoint);
+        ws = conn.openWsStream(url.pathname, url.search?.substring(1) || undefined);
+      } else {
+        ws = new WebSocket(endpoint);
+      }
       wsRef.current = ws;
 
       ws.onmessage = (event) => {
