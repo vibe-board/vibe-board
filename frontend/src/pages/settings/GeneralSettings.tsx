@@ -20,7 +20,8 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
-import { FolderOpen, Loader2, Volume2 } from 'lucide-react';
+import { FolderOpen, Loader2, Volume2, RotateCcw } from 'lucide-react';
+import { getNotificationPermission } from '@/hooks/useTaskNotifications';
 import {
   DEFAULT_PR_DESCRIPTION_PROMPT,
   EditorType,
@@ -42,6 +43,9 @@ import ExecutorProfileSelector from '@/components/settings/ExecutorProfileSelect
 
 export function GeneralSettings() {
   const { t } = useTranslation(['settings', 'common']);
+  const [notifPermission, setNotifPermission] = useState(
+    () => getNotificationPermission()
+  );
 
   // Get language options with proper display names
   const languageOptions = getLanguageOptions(
@@ -762,6 +766,42 @@ export function GeneralSettings() {
               </p>
             </div>
           </div>
+          {draft?.notifications.push_enabled && (
+            <div className="ml-6 space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">
+                  {t('settings.general.notifications.push.permissionStatus', {
+                    status: notifPermission,
+                  })}
+                </span>
+                {notifPermission !== 'denied' && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      localStorage.removeItem('notification-prompt-dismissed');
+                      if (
+                        typeof Notification !== 'undefined' &&
+                        window.isSecureContext
+                      ) {
+                        Notification.requestPermission().then((perm) => {
+                          setNotifPermission(perm);
+                        });
+                      }
+                    }}
+                  >
+                    <RotateCcw className="h-3 w-3 mr-1" />
+                    {t('settings.general.notifications.push.resetPrompt')}
+                  </Button>
+                )}
+              </div>
+              {notifPermission === 'denied' && (
+                <p className="text-sm text-muted-foreground">
+                  {t('settings.general.notifications.push.deniedHelp')}
+                </p>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 

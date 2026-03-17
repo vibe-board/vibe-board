@@ -208,7 +208,10 @@
         },
         "push": {
           "label": "Push Notifications",
-          "helper": "Show system notifications when task attempts finish running."
+          "helper": "Show system notifications when task attempts finish running.",
+          "permissionStatus": "Browser permission: {{status}}",
+          "resetPrompt": "Request permission",
+          "deniedHelp": "Permission was denied. Please allow notifications for this site in your browser settings, then reload the page."
         }
       },
       "messageInput": {

@@ -208,7 +208,10 @@
         },
         "push": {
           "label": "推送通知",
-          "helper": "任务尝试完成运行时显示系统通知。"
+          "helper": "任务尝试完成运行时显示系统通知。",
+          "permissionStatus": "浏览器权限: {{status}}",
+          "resetPrompt": "请求权限",
+          "deniedHelp": "权限已被拒绝。请在浏览器设置中允许此网站的通知，然后刷新页面。"
         }
       },
       "messageInput": {

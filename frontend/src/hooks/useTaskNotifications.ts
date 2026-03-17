@@ -1,10 +1,22 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   TaskStatus,
   TaskWithAttemptStatus,
   ApprovalInfo,
 } from 'shared/types';
 import type { Config } from 'shared/types';
+
+const STORAGE_KEY = 'notification-prompt-dismissed';
+
+/**
+ * Check if browser notifications are supported and return current permission status.
+ */
+export function getNotificationPermission():
+  | NotificationPermission
+  | 'unsupported' {
+  if (typeof Notification === 'undefined') return 'unsupported';
+  return Notification.permission;
+}
 
 /**
  * Frontend-based notification hook that watches for task status changes
@@ -20,26 +32,38 @@ export function useTaskNotifications(
   const prevTasksRef = useRef<Record<string, TaskStatus>>({});
   const prevApprovalIdsRef = useRef<Set<string>>(new Set());
   const initializedRef = useRef(false);
+  const [notificationPermission, setNotificationPermission] = useState<
+    NotificationPermission | 'unsupported'
+  >(() => getNotificationPermission());
+  const [promptDismissed, setPromptDismissed] = useState(() => {
+    return localStorage.getItem(STORAGE_KEY) === 'true';
+  });
 
   const pushEnabled = config?.notifications.push_enabled;
   const soundEnabled = config?.notifications.sound_enabled;
   const soundFile = config?.notifications.sound_file;
 
+  // Whether the page is in a secure context (HTTPS or localhost)
+  const isSecureContext =
+    typeof window !== 'undefined' && window.isSecureContext;
+
+  // Show prompt only when: push enabled, permission not yet decided, not dismissed, secure context
+  const showNotificationPrompt =
+    pushEnabled &&
+    notificationPermission === 'default' &&
+    typeof Notification !== 'undefined' &&
+    isSecureContext &&
+    !promptDismissed;
+
   const triggerNotification = useCallback(
     (title: string, body: string) => {
       // Browser push notification
-      if (pushEnabled) {
-        if (typeof Notification !== 'undefined') {
-          if (Notification.permission === 'default') {
-            Notification.requestPermission().then((permission) => {
-              if (permission === 'granted') {
-                new Notification(title, { body });
-              }
-            });
-          } else if (Notification.permission === 'granted') {
-            new Notification(title, { body });
-          }
-        }
+      if (
+        pushEnabled &&
+        typeof Notification !== 'undefined' &&
+        Notification.permission === 'granted'
+      ) {
+        new Notification(title, { body, requireInteraction: true });
       }
 
       // Sound notification
@@ -51,9 +75,30 @@ export function useTaskNotifications(
     [pushEnabled, soundEnabled, soundFile]
   );
 
+  // Request notification permission (must be called from user gesture)
+  const enableNotifications = useCallback(() => {
+    if (typeof Notification === 'undefined' || !window.isSecureContext) return;
+    setPromptDismissed(false);
+    localStorage.removeItem(STORAGE_KEY);
+    Notification.requestPermission().then((permission) => {
+      setNotificationPermission(permission);
+    });
+  }, []);
+
+  // Dismiss the prompt (don't show again until user re-enables in settings)
+  const dismissNotificationPrompt = useCallback(() => {
+    setPromptDismissed(true);
+    localStorage.setItem(STORAGE_KEY, 'true');
+  }, []);
+
+  // Reset dismissed state (for settings panel)
+  const resetNotificationPrompt = useCallback(() => {
+    setPromptDismissed(false);
+    localStorage.removeItem(STORAGE_KEY);
+  }, []);
+
   // Watch task status changes
   useEffect(() => {
-    // On first run, just populate the ref without notifying
     if (!initializedRef.current) {
       Object.entries(tasksById).forEach(([id, task]) => {
         prevTasksRef.current[id] = task.status;
@@ -62,23 +107,19 @@ export function useTaskNotifications(
       return;
     }
 
-    // Detect transitions to terminal states
     Object.entries(tasksById).forEach(([id, task]) => {
       const prevStatus = prevTasksRef.current[id];
-
-      // Only notify on status change (not initial snapshot)
       if (prevStatus && prevStatus !== task.status) {
+        const agent = task.executor + (task.variant ? ` (${task.variant})` : '');
         if (task.status === 'done') {
-          triggerNotification('Task Completed', task.title);
+          triggerNotification('Task Completed', `${task.title}\n${agent}`);
         } else if (task.status === 'inreview') {
-          triggerNotification('Review Needed', task.title);
+          triggerNotification('Review Needed', `${task.title}\n${agent}`);
         }
       }
-
       prevTasksRef.current[id] = task.status;
     });
 
-    // Clean up removed tasks
     const currentIds = new Set(Object.keys(tasksById));
     Object.keys(prevTasksRef.current).forEach((id) => {
       if (!currentIds.has(id)) {
@@ -90,20 +131,22 @@ export function useTaskNotifications(
   // Watch new approval requests
   useEffect(() => {
     const currentIds = new Set(pendingApprovals.map((a) => a.approval_id));
-
-    // Find new approvals
     pendingApprovals.forEach((approval) => {
       if (!prevApprovalIdsRef.current.has(approval.approval_id)) {
         const title = approval.is_question
           ? 'Question Asked'
           : 'Approval Needed';
-        const body = approval.is_question
-          ? 'A question requires your answer'
-          : `Tool '${approval.tool_name}' requires approval`;
-        triggerNotification(title, body);
+        triggerNotification(title, approval.tool_name);
       }
     });
-
     prevApprovalIdsRef.current = currentIds;
   }, [pendingApprovals, triggerNotification]);
+
+  return {
+    showNotificationPrompt,
+    notificationPermission,
+    enableNotifications,
+    dismissNotificationPrompt,
+    resetNotificationPrompt,
+  };
 }
