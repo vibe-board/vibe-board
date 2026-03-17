@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { KanbanCard } from '@/components/ui/shadcn-io/kanban';
 import { Link, Loader2, Settings2, SquareTerminal, XCircle } from 'lucide-react';
 import type { TaskWithAttemptStatus, BaseCodingAgent } from 'shared/types';
@@ -23,7 +23,7 @@ interface TaskCardProps {
   projectId: string;
 }
 
-export function TaskCard({
+export const TaskCard = memo(function TaskCard({
   task,
   index,
   status,
@@ -144,4 +144,18 @@ export function TaskCard({
       </div>
     </KanbanCard>
   );
-}
+}, (prev, next) => {
+  return prev.task.id === next.task.id
+    && prev.task.title === next.task.title
+    && prev.task.status === next.task.status
+    && prev.task.has_in_progress_attempt === next.task.has_in_progress_attempt
+    && prev.task.last_attempt_failed === next.task.last_attempt_failed
+    && prev.task.parent_workspace_id === next.task.parent_workspace_id
+    && prev.task.executor === next.task.executor
+    && prev.task.variant === next.task.variant
+    && prev.task.description === next.task.description
+    && prev.index === next.index
+    && prev.isOpen === next.isOpen
+    && prev.status === next.status
+    && prev.projectId === next.projectId;
+});

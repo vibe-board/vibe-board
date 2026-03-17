@@ -1,8 +1,9 @@
 import type { PatchTypeWithKey } from '@/hooks/useConversationHistory/types';
 
 const DB_NAME = 'vibe-kanban-conversation-cache';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = 'process-entries';
+const MAX_CACHED_PROCESSES = 200;
 
 interface CachedProcessEntries {
   processId: string;
@@ -10,6 +11,7 @@ interface CachedProcessEntries {
   entries: PatchTypeWithKey[];
   totalCount: number;
   cachedAt: number;
+  lastAccessedAt: number;
 }
 
 let dbInstance: IDBDatabase | null = null;
@@ -35,14 +37,27 @@ async function getDB(): Promise<IDBDatabase> {
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
+      const oldVersion = event.oldVersion;
 
-      // Create object store for cached process entries
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
+      if (oldVersion < 1) {
+        // Fresh install: create store with all indexes
         const store = db.createObjectStore(STORE_NAME, {
           keyPath: ['attemptId', 'processId'],
         });
         store.createIndex('attemptId', 'attemptId', { unique: false });
         store.createIndex('cachedAt', 'cachedAt', { unique: false });
+        store.createIndex('lastAccessedAt', 'lastAccessedAt', {
+          unique: false,
+        });
+      } else if (oldVersion < 2) {
+        // Migrate from v1 to v2: add lastAccessedAt index
+        const transaction = (event.target as IDBOpenDBRequest).transaction!;
+        const store = transaction.objectStore(STORE_NAME);
+        if (!store.indexNames.contains('lastAccessedAt')) {
+          store.createIndex('lastAccessedAt', 'lastAccessedAt', {
+            unique: false,
+          });
+        }
       }
     };
   });
@@ -51,7 +66,7 @@ async function getDB(): Promise<IDBDatabase> {
 }
 
 /**
- * Get cached entries for a process
+ * Get cached entries for a process. Updates lastAccessedAt for LRU tracking.
  */
 export async function getCachedProcessEntries(
   attemptId: string,
@@ -62,7 +77,7 @@ export async function getCachedProcessEntries(
     const transaction = db.transaction(STORE_NAME, 'readonly');
     const store = transaction.objectStore(STORE_NAME);
 
-    return new Promise((resolve) => {
+    const result = await new Promise<CachedProcessEntries | null>((resolve) => {
       const request = store.get([attemptId, processId]);
       request.onsuccess = () => resolve(request.result || null);
       request.onerror = () => {
@@ -70,10 +85,39 @@ export async function getCachedProcessEntries(
         resolve(null);
       };
     });
+
+    // Update lastAccessedAt (fire-and-forget)
+    if (result) {
+      touchCacheEntry(attemptId, processId);
+    }
+
+    return result;
   } catch (error) {
     console.warn('IndexedDB error in getCachedProcessEntries:', error);
     return null;
   }
+}
+
+/**
+ * Update lastAccessedAt for an entry (fire-and-forget LRU touch)
+ */
+function touchCacheEntry(attemptId: string, processId: string): void {
+  getDB()
+    .then((db) => {
+      const transaction = db.transaction(STORE_NAME, 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.get([attemptId, processId]);
+      request.onsuccess = () => {
+        const entry = request.result;
+        if (entry) {
+          entry.lastAccessedAt = Date.now();
+          store.put(entry);
+        }
+      };
+    })
+    .catch(() => {
+      // Best-effort, ignore errors
+    });
 }
 
 /**
@@ -90,15 +134,17 @@ export async function setCachedProcessEntries(
     const transaction = db.transaction(STORE_NAME, 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
 
+    const now = Date.now();
     const cached: CachedProcessEntries = {
       processId,
       attemptId,
       entries,
       totalCount,
-      cachedAt: Date.now(),
+      cachedAt: now,
+      lastAccessedAt: now,
     };
 
-    return new Promise((resolve) => {
+    await new Promise<void>((resolve) => {
       const request = store.put(cached);
       request.onsuccess = () => resolve();
       request.onerror = () => {
@@ -106,8 +152,79 @@ export async function setCachedProcessEntries(
         resolve(); // Don't reject, caching is best-effort
       };
     });
+
+    // LRU eviction (fire-and-forget)
+    evictLRU();
   } catch (error) {
     console.warn('IndexedDB error in setCachedProcessEntries:', error);
+  }
+}
+
+/**
+ * Evict least recently used cache entries when over the limit
+ */
+async function evictLRU(): Promise<void> {
+  try {
+    const db = await getDB();
+
+    // Use a separate readonly transaction for counting to avoid
+    // the readwrite transaction auto-closing between await points.
+    const count = await new Promise<number>((resolve) => {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const req = tx.objectStore(STORE_NAME).count();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(0);
+    });
+
+    if (count <= MAX_CACHED_PROCESSES) return;
+
+    const toDelete = count - MAX_CACHED_PROCESSES;
+
+    // Use a fresh readwrite transaction for the cursor-based deletion.
+    await new Promise<void>((resolve) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const index = tx.objectStore(STORE_NAME).index('lastAccessedAt');
+      let deleted = 0;
+      const request = index.openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (cursor && deleted < toDelete) {
+          cursor.delete();
+          deleted++;
+          cursor.continue();
+        } else {
+          resolve();
+        }
+      };
+      request.onerror = () => resolve();
+    });
+  } catch (error) {
+    console.warn('IndexedDB error in evictLRU:', error);
+  }
+}
+
+/**
+ * Clear cached entries for a single process
+ */
+export async function clearCachedProcessEntries(
+  attemptId: string,
+  processId: string
+): Promise<void> {
+  try {
+    const db = await getDB();
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+
+    return new Promise((resolve) => {
+      const request = store.delete([attemptId, processId]);
+      request.onsuccess = () => resolve();
+      request.onerror = () => {
+        console.warn('Failed to clear cached process entries:', request.error);
+        resolve();
+      };
+    });
+  } catch (error) {
+    console.warn('IndexedDB error in clearCachedProcessEntries:', error);
   }
 }
 

@@ -11,6 +11,12 @@ import { useExecutionProcessesContext } from '@/contexts/ExecutionProcessesConte
 import { useEntries } from '@/contexts/EntriesContext';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { streamJsonPatchEntries } from '@/utils/streamJsonPatchEntries';
+import {
+  getCachedProcessEntries,
+  setCachedProcessEntries,
+  clearCachedProcessEntries,
+  isCacheStale,
+} from '@/utils/conversationCache';
 import type {
   AddEntryType,
   ExecutionProcessStateStore,
@@ -48,6 +54,7 @@ export const useConversationHistoryOld = ({
     Map<string, ExecutionProcessStateStore[string]>
   >(new Map());
   const [isPreloading, setIsPreloading] = useState(false);
+  const isMountedRef = useRef(true);
 
   const mergeIntoDisplayed = (
     mutator: (state: ExecutionProcessStateStore) => void
@@ -70,33 +77,63 @@ export const useConversationHistoryOld = ({
     );
   }, [executionProcessesRaw]);
 
-  const loadEntriesForHistoricExecutionProcess = (
-    executionProcess: ExecutionProcess
-  ) => {
-    let url = '';
-    if (executionProcess.executor_action.typ.type === 'ScriptRequest') {
-      url = `/api/execution-processes/${executionProcess.id}/raw-logs/ws`;
-    } else {
-      url = `/api/execution-processes/${executionProcess.id}/normalized-logs/ws`;
-    }
+  const loadEntriesForHistoricExecutionProcess = useCallback(
+    async (executionProcess: ExecutionProcess): Promise<PatchTypeWithKey[]> => {
+      const attemptId = attempt.id;
+      const processId = executionProcess.id;
 
-    return new Promise<PatchType[]>((resolve) => {
-      const controller = streamJsonPatchEntries<PatchType>(url, {
-        onFinished: (allEntries) => {
-          controller.close();
-          resolve(allEntries);
-        },
-        onError: (err) => {
-          console.warn(
-            `Error loading entries for historic execution process ${executionProcess.id}`,
-            err
-          );
-          controller.close();
-          resolve([]);
-        },
+      // Try IndexedDB cache first
+      const cached = await getCachedProcessEntries(attemptId, processId);
+      if (cached && !isCacheStale(cached.cachedAt)) {
+        return cached.entries;
+      }
+
+      // Cache miss or stale — fetch via WebSocket
+      let url = '';
+      if (executionProcess.executor_action.typ.type === 'ScriptRequest') {
+        url = `/api/execution-processes/${executionProcess.id}/raw-logs/ws`;
+      } else {
+        url = `/api/execution-processes/${executionProcess.id}/normalized-logs/ws`;
+      }
+
+      const rawEntries = await new Promise<PatchType[]>((resolve) => {
+        const controller = streamJsonPatchEntries<PatchType>(url, {
+          onFinished: (allEntries) => {
+            controller.close();
+            resolve(allEntries);
+          },
+          onError: (err) => {
+            console.warn(
+              `Error loading entries for historic execution process ${processId}`,
+              err
+            );
+            controller.close();
+            resolve([]);
+          },
+        });
       });
-    });
-  };
+
+      const entriesWithKey = rawEntries.map((e, idx) =>
+        patchWithKey(e, processId, idx)
+      );
+
+      // Write to IndexedDB cache (fire-and-forget), only for completed processes
+      if (
+        entriesWithKey.length > 0 &&
+        executionProcess.status !== ExecutionProcessStatus.running
+      ) {
+        setCachedProcessEntries(
+          attemptId,
+          processId,
+          entriesWithKey,
+          entriesWithKey.length
+        );
+      }
+
+      return entriesWithKey;
+    },
+    [attempt.id]
+  );
 
   const getLiveExecutionProcess = (
     executionProcessId: string
@@ -470,6 +507,7 @@ export const useConversationHistoryOld = ({
   const loadRunningAndEmitWithBackoff = useCallback(
     async (executionProcess: ExecutionProcess) => {
       for (let i = 0; i < 20; i++) {
+        if (!isMountedRef.current) break;
         try {
           await loadRunningAndEmit(executionProcess);
           break;
@@ -506,17 +544,14 @@ export const useConversationHistoryOld = ({
     // Preload up to MIN_INITIAL_ENTRIES worth of content
     let entriesLoaded = 0;
     for (const executionProcess of remainingProcesses) {
-      const entries =
+      const entriesWithKey =
         await loadEntriesForHistoricExecutionProcess(executionProcess);
-      const entriesWithKey = entries.map((e, idx) =>
-        patchWithKey(e, executionProcess.id, idx)
-      );
 
       preloadedEntries.current.set(executionProcess.id, {
         executionProcess,
         entries: entriesWithKey,
       });
-      entriesLoaded += entries.length;
+      entriesLoaded += entriesWithKey.length;
 
       if (entriesLoaded >= MIN_INITIAL_ENTRIES) {
         break;
@@ -524,7 +559,7 @@ export const useConversationHistoryOld = ({
     }
 
     setIsPreloading(false);
-  }, [isPreloading]);
+  }, [isPreloading, loadEntriesForHistoricExecutionProcess]);
 
   const loadInitialEntries =
     useCallback(async (): Promise<ExecutionProcessStateStore> => {
@@ -537,11 +572,8 @@ export const useConversationHistoryOld = ({
       preloadedEntries.current.clear();
 
       for (const executionProcess of historicProcesses) {
-        const entries =
+        const entriesWithKey =
           await loadEntriesForHistoricExecutionProcess(executionProcess);
-        const entriesWithKey = entries.map((e, idx) =>
-          patchWithKey(e, executionProcess.id, idx)
-        );
 
         localDisplayedExecutionProcesses[executionProcess.id] = {
           executionProcess,
@@ -569,7 +601,7 @@ export const useConversationHistoryOld = ({
       }
 
       return localDisplayedExecutionProcesses;
-    }, [getHistoricProcesses, preloadNextBatch]);
+    }, [getHistoricProcesses, preloadNextBatch, loadEntriesForHistoricExecutionProcess]);
 
   // Load more historic entries - use preloaded cache if available
   const loadMore = useCallback(async () => {
@@ -626,11 +658,8 @@ export const useConversationHistoryOld = ({
 
     let entriesLoaded = 0;
     for (const executionProcess of remainingProcesses) {
-      const entries =
+      const entriesWithKey =
         await loadEntriesForHistoricExecutionProcess(executionProcess);
-      const entriesWithKey = entries.map((e, idx) =>
-        patchWithKey(e, executionProcess.id, idx)
-      );
 
       mergeIntoDisplayed((state) => {
         state[executionProcess.id] = {
@@ -639,7 +668,7 @@ export const useConversationHistoryOld = ({
         };
       });
       loadedProcessIds.current.add(executionProcess.id);
-      entriesLoaded += entries.length;
+      entriesLoaded += entriesWithKey.length;
 
       emitEntries(displayedExecutionProcesses.current, 'historic', true);
 
@@ -659,7 +688,7 @@ export const useConversationHistoryOld = ({
     if (stillRemaining.length > 0) {
       preloadNextBatch();
     }
-  }, [isLoadingMore, hasMore, emitEntries, preloadNextBatch]);
+  }, [isLoadingMore, hasMore, emitEntries, preloadNextBatch, loadEntriesForHistoricExecutionProcess]);
 
   const ensureProcessVisible = useCallback((p: ExecutionProcess) => {
     mergeIntoDisplayed((state) => {
@@ -686,6 +715,27 @@ export const useConversationHistoryOld = ({
     () => executionProcessesRaw?.map((p) => `${p.id}:${p.status}`).join(','),
     [executionProcessesRaw]
   );
+
+  // Invalidate IndexedDB cache when a process transitions from running to completed/failed/killed
+  const prevStatusMapRef = useRef<Map<string, string>>(new Map());
+  useEffect(() => {
+    const prevMap = prevStatusMapRef.current;
+    for (const ep of executionProcessesRaw) {
+      const prevStatus = prevMap.get(ep.id);
+      if (
+        prevStatus === ExecutionProcessStatus.running &&
+        ep.status !== ExecutionProcessStatus.running
+      ) {
+        clearCachedProcessEntries(attempt.id, ep.id);
+      }
+    }
+    // Rebuild the map for next comparison
+    const nextMap = new Map<string, string>();
+    for (const ep of executionProcessesRaw) {
+      nextMap.set(ep.id, ep.status);
+    }
+    prevStatusMapRef.current = nextMap;
+  }, [attempt.id, idStatusKey, executionProcessesRaw]);
 
   // Initial load when attempt changes
   useEffect(() => {
@@ -772,10 +822,19 @@ export const useConversationHistoryOld = ({
     streamingProcessIdsRef.current.clear();
     loadedProcessIds.current.clear();
     allHistoricProcesses.current = [];
+    preloadedEntries.current.clear();
     setHasMore(false);
     setIsLoadingMore(false);
     emitEntries(displayedExecutionProcesses.current, 'initial', true);
   }, [attempt.id, emitEntries]);
+
+  // Track unmount for cancelling background retries
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   return {
     loadMore,
