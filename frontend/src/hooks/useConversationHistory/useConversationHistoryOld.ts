@@ -27,6 +27,7 @@ import type {
 } from './types';
 import {
   makeLoadingPatch,
+  MAX_IN_MEMORY_ENTRIES,
   MIN_INITIAL_ENTRIES,
   nextActionPatch,
   taskDurationPatch,
@@ -53,7 +54,7 @@ export const useConversationHistoryOld = ({
   const preloadedEntries = useRef<
     Map<string, ExecutionProcessStateStore[string]>
   >(new Map());
-  const [isPreloading, setIsPreloading] = useState(false);
+  const isPreloadingRef = useRef(false);
   const isMountedRef = useRef(true);
 
   const mergeIntoDisplayed = (
@@ -445,6 +446,34 @@ export const useConversationHistoryOld = ({
       addEntryType: AddEntryType,
       loading: boolean
     ) => {
+      // Evict oldest processes if total entries exceed the cap
+      const totalEntries = Object.values(executionProcessState).reduce(
+        (sum, p) => sum + p.entries.length,
+        0
+      );
+      if (totalEntries > MAX_IN_MEMORY_ENTRIES) {
+        const sorted = Object.entries(executionProcessState).sort(
+          ([, a], [, b]) =>
+            new Date(
+              a.executionProcess.created_at as unknown as string
+            ).getTime() -
+            new Date(
+              b.executionProcess.created_at as unknown as string
+            ).getTime()
+        );
+        let remaining = totalEntries;
+        for (const [id, proc] of sorted) {
+          if (remaining <= MAX_IN_MEMORY_ENTRIES) break;
+          // Never evict running processes
+          const live = getLiveExecutionProcess(id);
+          if (live?.status === ExecutionProcessStatus.running) continue;
+          remaining -= proc.entries.length;
+          delete executionProcessState[id];
+          loadedProcessIds.current.delete(id);
+        }
+        setHasMore(true);
+      }
+
       const entries = flattenEntriesForEmit(executionProcessState);
       let modifiedAddEntryType = addEntryType;
 
@@ -529,7 +558,7 @@ export const useConversationHistoryOld = ({
 
   // Preload next batch into cache (non-blocking)
   const preloadNextBatch = useCallback(async () => {
-    if (isPreloading) return;
+    if (isPreloadingRef.current) return;
 
     const remainingProcesses = allHistoricProcesses.current.filter(
       (p) =>
@@ -539,7 +568,7 @@ export const useConversationHistoryOld = ({
 
     if (remainingProcesses.length === 0) return;
 
-    setIsPreloading(true);
+    isPreloadingRef.current = true;
 
     // Preload up to MIN_INITIAL_ENTRIES worth of content
     let entriesLoaded = 0;
@@ -558,8 +587,8 @@ export const useConversationHistoryOld = ({
       }
     }
 
-    setIsPreloading(false);
-  }, [isPreloading, loadEntriesForHistoricExecutionProcess]);
+    isPreloadingRef.current = false;
+  }, [loadEntriesForHistoricExecutionProcess]);
 
   const loadInitialEntries =
     useCallback(async (): Promise<ExecutionProcessStateStore> => {
@@ -823,6 +852,7 @@ export const useConversationHistoryOld = ({
     loadedProcessIds.current.clear();
     allHistoricProcesses.current = [];
     preloadedEntries.current.clear();
+    isPreloadingRef.current = false;
     setHasMore(false);
     setIsLoadingMore(false);
     emitEntries(displayedExecutionProcesses.current, 'initial', true);
