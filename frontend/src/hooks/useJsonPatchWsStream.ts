@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { produce } from 'immer';
 import type { Operation } from 'rfc6902';
 import { applyUpsertPatch } from '@/utils/jsonPatch';
-import { getGatewayConnection } from '@/lib/gateway-mode';
+import { getGatewayConnection } from '@/lib/gatewayMode';
 import type { RemoteWs } from '@/lib/e2ee/remoteWs';
 
 type WsJsonPatchMsg = { JsonPatch: Operation[] };

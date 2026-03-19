@@ -35,7 +35,7 @@ export function useTaskNotifications(
   const [notificationPermission, setNotificationPermission] = useState<
     NotificationPermission | 'unsupported'
   >(() => getNotificationPermission());
-  const [_promptDismissed, setPromptDismissed] = useState(() => {
+  const [, setPromptDismissed] = useState(() => {
     return localStorage.getItem(STORAGE_KEY) === 'true';
   });
 

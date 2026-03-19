@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import type { PatchType } from 'shared/types';
-import { getGatewayConnection } from '@/lib/gateway-mode';
+import { getGatewayConnection } from '@/lib/gatewayMode';
 import type { RemoteWs } from '@/lib/e2ee/remoteWs';
 
 type LogEntry = Extract<PatchType, { type: 'STDOUT' } | { type: 'STDERR' }>;

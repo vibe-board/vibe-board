@@ -140,7 +140,7 @@ const makeRequest = async (url: string, options: RequestInit = {}) => {
   }
 
   // In gateway mode, route through E2EE connection to the remote daemon
-  const { getGatewayConnection } = await import('@/lib/gateway-mode');
+  const { getGatewayConnection } = await import('@/lib/gatewayMode');
   const conn = getGatewayConnection();
   if (conn) {
     return conn.remoteFetch(url, { ...options, headers });
@@ -1157,7 +1157,7 @@ const uploadFormData = async (
   url: string,
   formData: FormData
 ): Promise<Response> => {
-  const { getGatewayConnection } = await import('@/lib/gateway-mode');
+  const { getGatewayConnection } = await import('@/lib/gatewayMode');
   const conn = getGatewayConnection();
   if (conn) {
     return conn.remoteFetch(url, { method: 'POST', body: formData });

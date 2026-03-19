@@ -15,7 +15,7 @@ import { E2EEManager, E2EEConnection, type MachineStatus } from '@/lib/e2ee';
 import {
   detectGatewayMode,
   setGatewayConnection,
-} from '@/lib/gateway-mode';
+} from '@/lib/gatewayMode';
 
 export type GatewayPhase =
   | 'detecting'

@@ -6,7 +6,7 @@ import '@xterm/xterm/css/xterm.css';
 
 import { useTheme } from '@/components/ThemeProvider';
 import { getTerminalTheme } from '@/utils/terminalTheme';
-import { getGatewayConnection } from '@/lib/gateway-mode';
+import { getGatewayConnection } from '@/lib/gatewayMode';
 import type { RemoteWs } from '@/lib/e2ee/remoteWs';
 
 interface XTermInstanceProps {
@@ -54,7 +54,7 @@ function ensureViewportReady(terminal: Terminal, maxRetries = 30): Promise<void>
     const trySync = () => {
       attempts++;
       try {
-        const core = (terminal as any)._core;
+        const core = (terminal as { _core?: { viewport?: { syncScrollArea: () => void } } })._core;
         if (core?.viewport) {
           core.viewport.syncScrollArea();
         }
@@ -300,7 +300,7 @@ export function XTermInstance({
     requestAnimationFrame(openTerminal);
 
     return true;
-  }, [endpoint, onClose]);
+  }, [endpoint, onClose, onSessionId]);
 
   // Initialize terminal: try immediately, or wait for container to have dimensions via ResizeObserver
   useEffect(() => {

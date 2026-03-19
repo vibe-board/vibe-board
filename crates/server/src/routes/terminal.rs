@@ -47,12 +47,18 @@ enum TerminalCommand {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum TerminalMessage {
-    Output { data: String },
-    Error { message: String },
+    Output {
+        data: String,
+    },
+    Error {
+        message: String,
+    },
     /// Sent when the PTY process exits
     Exit {},
     /// Sent on connect with the session_id for future reconnection
-    SessionInfo { session_id: Uuid },
+    SessionInfo {
+        session_id: Uuid,
+    },
     /// Sent when trying to reconnect to an expired/unknown session
     SessionExpired {},
 }
@@ -205,10 +211,10 @@ async fn handle_terminal_ws(
                 let msg = TerminalMessage::Output {
                     data: BASE64.encode(&data),
                 };
-                if let Ok(json) = serde_json::to_string(&msg) {
-                    if ws_sender.send(Message::Text(json.into())).await.is_err() {
-                        return ws_sender;
-                    }
+                if let Ok(json) = serde_json::to_string(&msg)
+                    && ws_sender.send(Message::Text(json.into())).await.is_err()
+                {
+                    return ws_sender;
                 }
             }
         } else {
@@ -238,10 +244,10 @@ async fn handle_terminal_ws(
                             let msg = TerminalMessage::Output {
                                 data: BASE64.encode(&data),
                             };
-                            if let Ok(json) = serde_json::to_string(&msg) {
-                                if ws_sender.send(Message::Text(json.into())).await.is_err() {
-                                    return ws_sender;
-                                }
+                            if let Ok(json) = serde_json::to_string(&msg)
+                                && ws_sender.send(Message::Text(json.into())).await.is_err()
+                            {
+                                return ws_sender;
                             }
                         }
                         break;

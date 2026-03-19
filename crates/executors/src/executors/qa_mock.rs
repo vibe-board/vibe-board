@@ -196,6 +196,7 @@ fn generate_mock_logs(prompt: &str) -> Vec<String> {
             status: None,
             slash_commands: vec![],
             plugins: vec![],
+            agents: vec![],
         },
         // 2. Assistant thinking
         ClaudeJson::Assistant {

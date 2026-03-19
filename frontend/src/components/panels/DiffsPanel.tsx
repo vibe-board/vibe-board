@@ -89,7 +89,10 @@ export function DiffsPanel({
     staleTime: 60_000,
   });
 
-  const diffs = isCommitMode ? (commitDiffs ?? []) : streamDiffs;
+  const diffs = useMemo(
+    () => (isCommitMode ? (commitDiffs ?? []) : streamDiffs),
+    [isCommitMode, commitDiffs, streamDiffs]
+  );
   const error = isCommitMode
     ? commitError
       ? String(commitError)

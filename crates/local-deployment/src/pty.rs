@@ -3,8 +3,8 @@ use std::{
     io::{Read, Write},
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering},
         Arc, Mutex, RwLock,
+        atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering},
     },
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -59,7 +59,12 @@ impl TerminalBuffer {
         let mut history = self.history.write().unwrap();
 
         // Evict old entries if we'd exceed the limit
-        while self.total_bytes.load(Ordering::Relaxed).saturating_add(bytes) > MAX_TERMINAL_BUFFER_BYTES {
+        while self
+            .total_bytes
+            .load(Ordering::Relaxed)
+            .saturating_add(bytes)
+            > MAX_TERMINAL_BUFFER_BYTES
+        {
             if let Some(front) = history.pop_front() {
                 self.total_bytes.fetch_sub(front.len(), Ordering::Relaxed);
             } else {
@@ -147,13 +152,13 @@ impl PtyService {
             }
         }
 
-        if !to_remove.is_empty() {
-            if let Ok(mut sessions) = sessions.lock() {
-                for id in to_remove {
-                    if let Some(mut session) = sessions.remove(&id) {
-                        session.closed = true;
-                        tracing::info!("Cleaned up detached terminal session: {}", id);
-                    }
+        if !to_remove.is_empty()
+            && let Ok(mut sessions) = sessions.lock()
+        {
+            for id in to_remove {
+                if let Some(mut session) = sessions.remove(&id) {
+                    session.closed = true;
+                    tracing::info!("Cleaned up detached terminal session: {}", id);
                 }
             }
         }
@@ -301,7 +306,7 @@ impl PtyService {
                     .unwrap_or_default()
                     .as_secs() as i64,
             ),
-            exit_tx: exit_tx,
+            exit_tx,
         };
 
         self.sessions
@@ -327,7 +332,14 @@ impl PtyService {
     pub async fn attach_session(
         &self,
         session_id: Uuid,
-    ) -> Result<(Vec<Vec<u8>>, broadcast::Receiver<Vec<u8>>, watch::Receiver<bool>), PtyError> {
+    ) -> Result<
+        (
+            Vec<Vec<u8>>,
+            broadcast::Receiver<Vec<u8>>,
+            watch::Receiver<bool>,
+        ),
+        PtyError,
+    > {
         let sessions = self
             .sessions
             .lock()

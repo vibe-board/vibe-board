@@ -1,7 +1,7 @@
 use axum::{
     extract::{
-        ws::{Message, WebSocket},
         Query, State, WebSocketUpgrade,
+        ws::{Message, WebSocket},
     },
     response::IntoResponse,
 };
@@ -9,7 +9,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, warn};
 
-use crate::{services::cli_registry::CliRecord, AppState};
+use crate::{AppState, services::cli_registry::CliRecord};
 
 #[derive(Deserialize)]
 pub struct DaemonConnectQuery {
@@ -61,6 +61,7 @@ enum GatewayToDaemon {
     Forward { payload: serde_json::Value },
 }
 
+#[allow(unused_assignments)]
 async fn handle_daemon_socket(socket: WebSocket, state: AppState, query: DaemonConnectQuery) {
     let (mut sender, mut receiver) = socket.split();
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
@@ -69,25 +70,23 @@ async fn handle_daemon_socket(socket: WebSocket, state: AppState, query: DaemonC
     let mut user_id: Option<String> = None;
     if let Some(token_str) = &query.token {
         match serde_json::from_str::<e2ee_core::SignedAuthToken>(token_str) {
-            Ok(token) => {
-                match crate::auth::verify_daemon_token(&state.db, &token).await {
-                    Ok(uid) => {
-                        user_id = Some(uid.clone());
-                        let msg =
-                            serde_json::to_string(&GatewayToDaemon::AuthOk { user_id: uid }).unwrap();
-                        let _ = sender.send(Message::Text(msg.into())).await;
-                    }
-                    Err(e) => {
-                        warn!("Daemon auth verification failed: {e}");
-                        let msg = serde_json::to_string(&GatewayToDaemon::AuthError {
-                            message: e.to_string(),
-                        })
-                        .unwrap();
-                        let _ = sender.send(Message::Text(msg.into())).await;
-                        return;
-                    }
+            Ok(token) => match crate::auth::verify_daemon_token(&state.db, &token).await {
+                Ok(uid) => {
+                    user_id = Some(uid.clone());
+                    let msg =
+                        serde_json::to_string(&GatewayToDaemon::AuthOk { user_id: uid }).unwrap();
+                    let _ = sender.send(Message::Text(msg.into())).await;
                 }
-            }
+                Err(e) => {
+                    warn!("Daemon auth verification failed: {e}");
+                    let msg = serde_json::to_string(&GatewayToDaemon::AuthError {
+                        message: e.to_string(),
+                    })
+                    .unwrap();
+                    let _ = sender.send(Message::Text(msg.into())).await;
+                    return;
+                }
+            },
             Err(e) => {
                 warn!("Failed to parse daemon auth token from query param: {e}");
                 let msg = serde_json::to_string(&GatewayToDaemon::AuthError {

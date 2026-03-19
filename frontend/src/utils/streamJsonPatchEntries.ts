@@ -1,7 +1,7 @@
 // streamJsonPatchEntries.ts - WebSocket JSON patch streaming utility
 import type { Operation } from 'rfc6902';
 import { applyUpsertPatch } from '@/utils/jsonPatch';
-import { getGatewayConnection } from '@/lib/gateway-mode';
+import { getGatewayConnection } from '@/lib/gatewayMode';
 import type { RemoteWs } from '@/lib/e2ee/remoteWs';
 
 type PatchContainer<E = unknown> = { entries: E[] };

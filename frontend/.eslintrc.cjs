@@ -39,7 +39,16 @@ module.exports = {
       {
         vars: 'all',
         args: 'after-used',
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
         ignoreRestSiblings: false,
+      },
+    ],
+    '@typescript-eslint/no-unused-vars': [
+      'error',
+      {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
       },
     ],
     '@typescript-eslint/no-explicit-any': 'warn',
