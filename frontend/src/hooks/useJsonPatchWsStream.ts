@@ -47,6 +47,7 @@ export const useJsonPatchWsStream = <T extends object>(
   const retryAttemptsRef = useRef<number>(0);
   const [retryNonce, setRetryNonce] = useState(0);
   const finishedRef = useRef<boolean>(false);
+  const cleanupCalledRef = useRef<boolean>(false);
 
   const injectInitialEntry = options?.injectInitialEntry;
   const deduplicatePatches = options?.deduplicatePatches;
@@ -63,6 +64,9 @@ export const useJsonPatchWsStream = <T extends object>(
   }
 
   useEffect(() => {
+    // Reset cleanup flag for this effect run — allows onclose to schedule reconnects
+    cleanupCalledRef.current = false;
+
     if (!enabled || !endpoint) {
       // Close connection and reset state
       if (wsRef.current) {
@@ -171,6 +175,9 @@ export const useJsonPatchWsStream = <T extends object>(
         setIsConnected(false);
         wsRef.current = null;
 
+        // Do not reconnect if cleanup has already run (component unmounting or effect re-running)
+        if (cleanupCalledRef.current) return;
+
         // Do not reconnect if we received a finished message or clean close
         if (finishedRef.current || (evt?.code === 1000 && evt?.wasClean)) {
           return;
@@ -185,6 +192,9 @@ export const useJsonPatchWsStream = <T extends object>(
     }
 
     return () => {
+      // Mark cleanup as called so in-flight onclose callbacks skip reconnect
+      cleanupCalledRef.current = true;
+
       if (wsRef.current) {
         const ws = wsRef.current;
 
