@@ -5,14 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   AlertTriangle,
-  Bell,
   Check,
   Cloud,
   Copy,
   ExternalLink,
   Plus,
   Sparkles,
-  X,
 } from 'lucide-react';
 import { Loader } from '@/components/ui/loader';
 import { tasksApi } from '@/lib/api';
@@ -203,11 +201,7 @@ export function ProjectTasks() {
 
   const { config, updateAndSaveConfig, loading } = useUserSystem();
 
-  const {
-    showNotificationPrompt,
-    enableNotifications,
-    dismissNotificationPrompt,
-  } = useTaskNotifications(tasksById, pendingApprovals, config);
+  useTaskNotifications(tasksById, pendingApprovals, config);
 
   const isLoaded = !loading;
   const showcaseId = showcases.taskPanel.id;
@@ -1033,38 +1027,6 @@ export function ProjectTasks() {
             {t('common:states.reconnecting')}
           </AlertTitle>
           <AlertDescription>{streamError}</AlertDescription>
-        </Alert>
-      )}
-
-      {showNotificationPrompt && (
-        <Alert className="w-full z-30">
-          <div className="flex items-start gap-2">
-            <Bell size="16" className="mt-0.5 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <AlertTitle>Enable Notifications</AlertTitle>
-              <AlertDescription className="flex items-center gap-2 mt-1">
-                <span>
-                  Get notified when tasks complete or need review.
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={enableNotifications}
-                  className="shrink-0"
-                >
-                  Enable
-                </Button>
-              </AlertDescription>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 shrink-0 -mt-1 -mr-1"
-              onClick={dismissNotificationPrompt}
-            >
-              <X size="14" />
-            </Button>
-          </div>
         </Alert>
       )}
 

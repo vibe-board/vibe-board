@@ -35,7 +35,7 @@ export function useTaskNotifications(
   const [notificationPermission, setNotificationPermission] = useState<
     NotificationPermission | 'unsupported'
   >(() => getNotificationPermission());
-  const [promptDismissed, setPromptDismissed] = useState(() => {
+  const [_promptDismissed, setPromptDismissed] = useState(() => {
     return localStorage.getItem(STORAGE_KEY) === 'true';
   });
 
@@ -43,17 +43,9 @@ export function useTaskNotifications(
   const soundEnabled = config?.notifications.sound_enabled;
   const soundFile = config?.notifications.sound_file;
 
-  // Whether the page is in a secure context (HTTPS or localhost)
-  const isSecureContext =
-    typeof window !== 'undefined' && window.isSecureContext;
-
-  // Show prompt only when: push enabled, permission not yet decided, not dismissed, secure context
-  const showNotificationPrompt =
-    pushEnabled &&
-    notificationPermission === 'default' &&
-    typeof Notification !== 'undefined' &&
-    isSecureContext &&
-    !promptDismissed;
+  // Don't auto-prompt for notifications — users configure this in Settings.
+  // Push notifications are only needed for E2EE and remote connection scenarios.
+  const showNotificationPrompt = false;
 
   const triggerNotification = useCallback(
     (title: string, body: string) => {

@@ -20,7 +20,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
-import { FolderOpen, Loader2, Volume2, RotateCcw } from 'lucide-react';
+import { FolderOpen, Loader2, Volume2, RotateCcw, AlertTriangle } from 'lucide-react';
 import { getNotificationPermission } from '@/hooks/useTaskNotifications';
 import {
   DEFAULT_PR_DESCRIPTION_PROMPT,
@@ -774,20 +774,15 @@ export function GeneralSettings() {
                     status: notifPermission,
                   })}
                 </span>
-                {notifPermission !== 'denied' && (
+                {notifPermission === 'default' && (
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => {
                       localStorage.removeItem('notification-prompt-dismissed');
-                      if (
-                        typeof Notification !== 'undefined' &&
-                        window.isSecureContext
-                      ) {
-                        Notification.requestPermission().then((perm) => {
-                          setNotifPermission(perm);
-                        });
-                      }
+                      Notification.requestPermission().then((perm) => {
+                        setNotifPermission(perm);
+                      });
                     }}
                   >
                     <RotateCcw className="h-3 w-3 mr-1" />
@@ -796,9 +791,12 @@ export function GeneralSettings() {
                 )}
               </div>
               {notifPermission === 'denied' && (
-                <p className="text-sm text-muted-foreground">
-                  {t('settings.general.notifications.push.deniedHelp')}
-                </p>
+                <Alert className="mt-2">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>
+                    {t('settings.general.notifications.push.deniedHelp')}
+                  </AlertDescription>
+                </Alert>
               )}
             </div>
           )}

@@ -198,7 +198,7 @@
       },
       "notifications": {
         "title": "通知",
-        "description": "控制何时以及如何接收通知。",
+        "description": "控制何时以及如何接收通知。推送通知仅在 E2EE 和远程连接场景下需要。",
         "sound": {
           "label": "声音通知",
           "helper": "任务尝试完成运行时播放声音。",
@@ -208,8 +208,8 @@
         },
         "push": {
           "label": "推送通知",
-          "helper": "任务尝试完成运行时显示系统通知。",
-          "permissionStatus": "浏览器权限: {{status}}",
+          "helper": "仅在 E2EE 和远程连接场景下需要。本地部署可依赖后端系统通知，无需开启。",
+          "permissionStatus": "浏览器通知权限: {{status}}",
           "resetPrompt": "请求权限",
           "deniedHelp": "权限已被拒绝。请在浏览器设置中允许此网站的通知，然后刷新页面。"
         }
