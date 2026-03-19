@@ -182,6 +182,14 @@
         "agent": {
           "label": "Commit Message Agent",
           "helper": "Select the agent profile to use for generating commit messages. A faster model is recommended."
+        },
+        "customPrompt": {
+          "useCustom": "Use custom prompt",
+          "helper": "Custom prompt for the AI agent when generating commit messages. Use {current_branch} and {target_branch} as placeholders."
+        },
+        "singleCommit": {
+          "label": "Generate commit message for single commit",
+          "helper": "When enabled, the AI agent will generate a commit message even when the branch has only one commit. When disabled (default), the existing commit message is reused."
         }
       },
       "commits": {

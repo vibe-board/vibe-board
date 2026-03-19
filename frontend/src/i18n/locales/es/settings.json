@@ -182,6 +182,14 @@
         "agent": {
           "label": "Agente de mensajes de commit",
           "helper": "Selecciona el perfil de agente para generar mensajes de commit. Se recomienda un modelo más rápido."
+        },
+        "customPrompt": {
+          "useCustom": "Usar prompt personalizado",
+          "helper": "Prompt personalizado para el agente de IA al generar mensajes de commit. Usa {current_branch} y {target_branch} como marcadores de posición."
+        },
+        "singleCommit": {
+          "label": "Generar mensaje de commit para un solo commit",
+          "helper": "Cuando está habilitado, el agente de IA generará un mensaje de commit incluso cuando la rama tenga un solo commit. Cuando está deshabilitado (por defecto), se reutiliza el mensaje de commit existente."
         }
       },
       "commits": {

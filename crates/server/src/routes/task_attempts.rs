@@ -46,6 +46,7 @@ use git::{ConflictOp, GitCliError, GitService, GitServiceError};
 use git2::BranchType;
 use serde::{Deserialize, Serialize};
 use services::services::{
+    config::DEFAULT_COMMIT_MESSAGE_PROMPT,
     container::ContainerService, diff_stream, remote_client::RemoteClientError, remote_sync,
     workspace_manager::WorkspaceManager,
 };
@@ -516,6 +517,7 @@ async fn generate_commit_message_via_agent(
     executor_profile_id: &ExecutorProfileId,
     current_branch: &str,
     target_branch: &str,
+    prompt: &str,
 ) -> Option<String> {
     use std::time::Duration;
 
@@ -527,27 +529,9 @@ async fn generate_commit_message_via_agent(
         .filter(|d| !d.is_empty())
         .cloned();
 
-    let prompt = format!(
-        "The current branch is \"{}\", the target branch is \"{}\". \
-         Generate a conventional commit message for the changes that would be merged from the current branch into the target. \
-         You may run git diff or other commands to inspect the changes.\n\n\
-         Conventional Commits rules (use as-is, do not search):\n\
-         - Subject line format: type(scope): description — one line. Type (required): feat, fix, docs, style, refactor, perf, test, chore, build, ci. Scope (optional): short noun in parentheses. Description: imperative mood, lowercase after colon, no period, under ~72 chars.\n\
-         - For SIMPLE or small changes (e.g. one file, trivial fix): put ONLY the subject line in the block below. No body.\n\
-         - For COMPLEX or larger changes (multiple files, non-trivial logic): put the subject line, then a blank line, then an optional body (bullet points or short paragraphs). No product or tool names.\n\n\
-         You may include reasoning or explanation before or after the block. The commit message will be taken ONLY from the following block.\n\n\
-         Output the commit message in a markdown code block that starts with a line containing exactly \"```commit\" and ends with a line containing exactly \"```\". Example:\n\
-         ```commit\n\
-         feat(merge): improve commit message prompt and parsing\n\
-         ```\n\
-         Or for a complex change:\n\
-         ```commit\n\
-         feat(auth): add login flow\n\n\
-         - Email/password flow\n\
-         - Session cookie handling\n\
-         ```",
-        current_branch, target_branch
-    );
+    let prompt = prompt
+        .replace("{current_branch}", current_branch)
+        .replace("{target_branch}", target_branch);
 
     // Always create a new DB Session so the commit message agent's
     // ExecutionProcess and CodingAgentTurn records don't pollute the
@@ -748,6 +732,8 @@ pub struct MergeTaskAttemptRequest {
     pub commit_message_executor_profile_id: Option<ExecutorProfileId>,
     #[serde(default = "default_commit_message_enabled")]
     pub commit_message_enabled: bool,
+    #[serde(default)]
+    pub commit_message_single_commit: bool,
 }
 
 fn default_commit_message_enabled() -> bool {
@@ -836,20 +822,63 @@ pub async fn merge_task_attempt(
         .unwrap_or(&request.executor_profile_id);
 
     let commit_message = if request.commit_message_enabled {
-        generate_commit_message_via_agent(
-            &deployment,
-            &workspace,
-            commit_message_profile,
-            &workspace.branch,
-            &workspace_repo.target_branch,
-        )
-        .await
-        .unwrap_or_else(|| {
+        // Check if the branch has a single commit — if so, skip AI generation
+        // and use the existing commit message directly.
+        let single_commit_message = if !request.commit_message_single_commit {
+            let ahead = deployment
+                .git()
+                .get_branch_status(&repo.path, &workspace.branch, &workspace_repo.target_branch)
+                .map(|(ahead, _)| ahead)
+                .unwrap_or(0);
+            if ahead == 1 {
+                deployment
+                    .git()
+                    .get_branch_oid(&repo.path, &workspace.branch)
+                    .ok()
+                    .and_then(|sha| {
+                        deployment
+                            .git()
+                            .get_commit_subject(&repo.path, &sha)
+                            .ok()
+                    })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if let Some(msg) = single_commit_message {
             tracing::debug!(
-                "Agent did not return commit message, using legacy (task title + description)"
+                "Single commit on branch, using existing commit message: {}",
+                msg
             );
-            legacy_commit_message(&task)
-        })
+            msg
+        } else {
+            let commit_message_prompt = {
+                let config = deployment.config().read().await;
+                config
+                    .commit_message_prompt
+                    .as_deref()
+                    .unwrap_or(DEFAULT_COMMIT_MESSAGE_PROMPT)
+                    .to_string()
+            };
+            generate_commit_message_via_agent(
+                &deployment,
+                &workspace,
+                commit_message_profile,
+                &workspace.branch,
+                &workspace_repo.target_branch,
+                &commit_message_prompt,
+            )
+            .await
+            .unwrap_or_else(|| {
+                tracing::debug!(
+                    "Agent did not return commit message, using legacy (task title + description)"
+                );
+                legacy_commit_message(&task)
+            })
+        }
     } else {
         tracing::debug!(
             "Commit message generation disabled, using legacy (task title + description)"

@@ -84,6 +84,10 @@ pub struct Config {
     pub commit_message_executor_profile: Option<ExecutorProfileId>,
     #[serde(default = "default_commit_message_enabled")]
     pub commit_message_enabled: bool,
+    #[serde(default)]
+    pub commit_message_prompt: Option<String>,
+    #[serde(default)]
+    pub commit_message_single_commit: bool,
 }
 
 impl Config {
@@ -116,6 +120,8 @@ impl Config {
             agent_enabled: default_agent_enabled(),
             commit_message_executor_profile: None,
             commit_message_enabled: default_commit_message_enabled(),
+            commit_message_prompt: None,
+            commit_message_single_commit: false,
         }
     }
 
@@ -176,6 +182,8 @@ impl Default for Config {
             agent_enabled: default_agent_enabled(),
             commit_message_executor_profile: None,
             commit_message_enabled: default_commit_message_enabled(),
+            commit_message_prompt: None,
+            commit_message_single_commit: false,
         }
     }
 }

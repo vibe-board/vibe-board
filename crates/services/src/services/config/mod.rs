@@ -22,6 +22,29 @@ Use the appropriate CLI tool to update the PR (gh pr edit for GitHub, az repos p
 
 pub const DEFAULT_COMMIT_REMINDER_PROMPT: &str = "There are uncommitted changes. Please stage and commit them now with a descriptive commit message.";
 
+pub const DEFAULT_COMMIT_MESSAGE_PROMPT: &str = r#"The current branch is "{current_branch}", the target branch is "{target_branch}".
+Generate a conventional commit message for the changes that would be merged from the current branch into the target.
+You may run git diff or other commands to inspect the changes.
+
+Conventional Commits rules (use as-is, do not search):
+- Subject line format: type(scope): description — one line. Type (required): feat, fix, docs, style, refactor, perf, test, chore, build, ci. Scope (optional): short noun in parentheses. Description: imperative mood, lowercase after colon, no period, under ~72 chars.
+- For SIMPLE or small changes (e.g. one file, trivial fix): put ONLY the subject line in the block below. No body.
+- For COMPLEX or larger changes (multiple files, non-trivial logic): put the subject line, then a blank line, then an optional body (bullet points or short paragraphs). No product or tool names.
+
+You may include reasoning or explanation before or after the block. The commit message will be taken ONLY from the following block.
+
+Output the commit message in a markdown code block that starts with a line containing exactly "```commit" and ends with a line containing exactly "```". Example:
+```commit
+feat(merge): improve commit message prompt and parsing
+```
+Or for a complex change:
+```commit
+feat(auth): add login flow
+
+- Email/password flow
+- Session cookie handling
+```"#;
+
 /// Prompt used to auto-queue a follow-up when the workspace is dirty after a CodingAgent run
 /// (e.g. commit failed due to linter). The agent is asked to fix linter issues and re-commit.
 pub const DEFAULT_LINTER_FIX_FOLLOW_UP_PROMPT: &str =

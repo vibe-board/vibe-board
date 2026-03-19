@@ -236,6 +236,7 @@ function GitOperations({
         commitMessageExecutorProfileId:
           config?.commit_message_executor_profile ?? null,
         commitMessageEnabled: config?.commit_message_enabled ?? true,
+        commitMessageSingleCommit: config?.commit_message_single_commit ?? false,
       });
       setMergeSuccess(true);
       setTimeout(() => setMergeSuccess(false), 2000);

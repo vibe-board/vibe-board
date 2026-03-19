@@ -14,6 +14,8 @@ export type MergeParams = {
   commitMessageExecutorProfileId?: ExecutorProfileId | null;
   /** Whether to use AI to generate commit messages. Defaults to true. */
   commitMessageEnabled?: boolean;
+  /** Whether to generate commit message via AI even for single-commit branches. Defaults to false. */
+  commitMessageSingleCommit?: boolean;
 };
 
 export function useMerge(
@@ -33,6 +35,7 @@ export function useMerge(
         commit_message_executor_profile_id:
           params.commitMessageExecutorProfileId ?? null,
         commit_message_enabled: params.commitMessageEnabled ?? true,
+        commit_message_single_commit: params.commitMessageSingleCommit ?? false,
       });
     },
     onSuccess: () => {

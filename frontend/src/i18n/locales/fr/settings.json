@@ -182,6 +182,14 @@
         "agent": {
           "label": "Agent de messages de commit",
           "helper": "Sélectionnez le profil d'agent pour générer les messages de commit. Un modèle plus rapide est recommandé."
+        },
+        "customPrompt": {
+          "useCustom": "Utiliser un prompt personnalisé",
+          "helper": "Prompt personnalisé pour l'agent IA lors de la génération des messages de commit. Utilisez {current_branch} et {target_branch} comme variables."
+        },
+        "singleCommit": {
+          "label": "Générer un message de commit pour un commit unique",
+          "helper": "Lorsqu'activé, l'agent IA générera un message de commit même si la branche n'a qu'un seul commit. Lorsqu'désactivé (par défaut), le message de commit existant est réutilisé."
         }
       },
       "commits": {

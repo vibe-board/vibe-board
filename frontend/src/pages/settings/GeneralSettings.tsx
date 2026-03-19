@@ -23,6 +23,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { FolderOpen, Loader2, Volume2, RotateCcw, AlertTriangle } from 'lucide-react';
 import { getNotificationPermission } from '@/hooks/useTaskNotifications';
 import {
+  DEFAULT_COMMIT_MESSAGE_PROMPT,
   DEFAULT_PR_DESCRIPTION_PROMPT,
   EditorType,
   SoundFile,
@@ -663,6 +664,70 @@ export function GeneralSettings() {
                   </p>
                 </div>
               )}
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="use-custom-commit-prompt"
+                  checked={draft?.commit_message_prompt != null}
+                  onCheckedChange={(checked: boolean) => {
+                    if (checked) {
+                      updateDraft({
+                        commit_message_prompt: DEFAULT_COMMIT_MESSAGE_PROMPT,
+                      });
+                    } else {
+                      updateDraft({ commit_message_prompt: null });
+                    }
+                  }}
+                />
+                <Label
+                  htmlFor="use-custom-commit-prompt"
+                  className="cursor-pointer"
+                >
+                  {t('settings.general.commitMessage.customPrompt.useCustom')}
+                </Label>
+              </div>
+              <div className="space-y-2">
+                <textarea
+                  id="commit-custom-prompt"
+                  className={`flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                    draft?.commit_message_prompt == null
+                      ? 'opacity-50 cursor-not-allowed'
+                      : ''
+                  }`}
+                  value={
+                    draft?.commit_message_prompt ??
+                    DEFAULT_COMMIT_MESSAGE_PROMPT
+                  }
+                  disabled={draft?.commit_message_prompt == null}
+                  onChange={(e) =>
+                    updateDraft({
+                      commit_message_prompt: e.target.value,
+                    })
+                  }
+                />
+                <p className="text-sm text-muted-foreground">
+                  {t('settings.general.commitMessage.customPrompt.helper')}
+                </p>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="commit-message-single-commit"
+                  checked={draft?.commit_message_single_commit ?? false}
+                  onCheckedChange={(checked: boolean) =>
+                    updateDraft({ commit_message_single_commit: checked })
+                  }
+                />
+                <div className="space-y-0.5">
+                  <Label
+                    htmlFor="commit-message-single-commit"
+                    className="cursor-pointer"
+                  >
+                    {t('settings.general.commitMessage.singleCommit.label')}
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    {t('settings.general.commitMessage.singleCommit.helper')}
+                  </p>
+                </div>
+              </div>
             </>
           )}
         </CardContent>
