@@ -129,7 +129,7 @@ export function ExecutorConfigForm({
     }
   };
 
-  const handleSubmit = async (event: IChangeEvent<unknown>) => {
+  const handleSubmit = async (_event: IChangeEvent<unknown>) => {
     // Use formDataRef instead of event.formData: env changes bypass RJSF's
     // internal form state via the custom onEnvChange path, so event.formData
     // may be stale. The ref always holds the latest merged state.
