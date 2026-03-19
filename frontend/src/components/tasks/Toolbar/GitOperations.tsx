@@ -316,7 +316,7 @@ function GitOperations({
 
   const actionsClasses = isVertical
     ? 'flex flex-wrap items-center gap-2'
-    : 'shrink-0 flex flex-wrap items-center gap-2 overflow-y-hidden overflow-x-visible max-h-8';
+    : 'shrink-0 flex flex-wrap items-center gap-2 overflow-hidden max-h-8';
 
   const statusChips = (
     <div className="flex items-center gap-2 text-xs min-w-0 overflow-hidden whitespace-nowrap">

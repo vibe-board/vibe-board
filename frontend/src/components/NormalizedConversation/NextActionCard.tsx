@@ -218,7 +218,7 @@ export function NextActionCard({
           {!error && (
             <button
               onClick={handleOpenDiffs}
-              className="flex items-center gap-1.5 text-sm shrink-0 cursor-pointer hover:underline transition-all"
+              className="flex items-center gap-1.5 text-sm min-w-0 cursor-pointer hover:underline transition-all"
               aria-label={t('attempt.diffs')}
             >
               <span>{t('diff.filesChanged', { count: fileCount })}</span>
@@ -273,7 +273,7 @@ export function NextActionCard({
 
           {/* Right: Icon buttons */}
           {fileCount > 0 && (
-            <div className="flex items-center gap-1 shrink-0 sm:ml-auto">
+            <div className="flex items-center gap-1 min-w-0 sm:ml-auto">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
