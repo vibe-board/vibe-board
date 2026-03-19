@@ -53,7 +53,19 @@ export const useScratch = (
   );
 
   const deleteScratch = useCallback(async () => {
-    await scratchApi.delete(scratchType, id);
+    try {
+      await scratchApi.delete(scratchType, id);
+    } catch (e: unknown) {
+      // Scratch may already be deleted server-side (e.g. follow-up handler),
+      // so "not found" is not an error.
+      if (
+        e instanceof Error &&
+        e.message.includes('Scratch not found')
+      ) {
+        return;
+      }
+      throw e;
+    }
   }, [scratchType, id]);
 
   const isLoading = !isInitialized && !error;
