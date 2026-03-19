@@ -705,6 +705,12 @@ impl GitCli {
         }
         Ok(files)
     }
+
+    /// Revert a specific commit by SHA.
+    pub fn revert_commit(&self, worktree_path: &Path, sha: &str) -> Result<(), GitCliError> {
+        self.git(worktree_path, ["revert", sha, "--no-edit"])?;
+        Ok(())
+    }
 }
 
 // Private methods

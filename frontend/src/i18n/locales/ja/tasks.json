@@ -763,5 +763,20 @@
       "repoNotInProject": "リポジトリがどのプロジェクトにも属していません",
       "failedToCreateWorkspace": "ワークスペースの作成に失敗しました"
     }
+  },
+  "commit": {
+    "viewDiff": "差分を表示",
+    "revert": "コミットをリバート",
+    "revertCommit": "コミットをリバート",
+    "revertCommitDescription": "コミット {{sha}} をリバート",
+    "revertWarning": "警告",
+    "revertWarningDescription": "これにより変更を取り消す新しいコミットが作成されます。元のコミットは履歴に残ります。",
+    "revertConflictError": "他の変更との競合のため、リバートを自動的に完了できませんでした。",
+    "reverting": "リバート中...",
+    "noCommits": "コミットがありません",
+    "count_one": "{{count}}件のコミット",
+    "count_other": "{{count}}件のコミット",
+    "backToCommits": "コミット一覧に戻る",
+    "errorLoadingHistory": "コミット履歴の読み込みに失敗しました: {{error}}"
   }
 }

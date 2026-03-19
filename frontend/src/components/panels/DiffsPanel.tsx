@@ -1,13 +1,14 @@
 import { useDiffStream } from '@/hooks/useDiffStream';
 import { useMemo, useCallback, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useQuery } from '@tanstack/react-query';
 import { Loader } from '@/components/ui/loader';
 import { Button } from '@/components/ui/button';
 import DiffViewSwitch from '@/components/DiffViewSwitch';
 import DiffCard from '@/components/DiffCard';
 import { useDiffSummary } from '@/hooks/useDiffSummary';
 import { NewCardHeader } from '@/components/ui/new-card';
-import { ChevronsUp, ChevronsDown } from 'lucide-react';
+import { ChevronsUp, ChevronsDown, ArrowLeft } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -16,12 +17,16 @@ import {
 } from '@/components/ui/tooltip';
 import type { Diff, DiffChangeKind } from 'shared/types';
 import type { Workspace } from 'shared/types';
+import { attemptsApi } from '@/lib/api';
 import GitOperations, {
   type GitOperationsInputs,
 } from '@/components/tasks/Toolbar/GitOperations.tsx';
 
 interface DiffsPanelProps {
   selectedAttempt: Workspace | null;
+  commitSha?: string | null;
+  onClearCommit?: () => void;
+  repoId?: string | null;
   gitOps?: GitOperationsInputs;
 }
 
@@ -48,30 +53,72 @@ const exceedsMaxLineCount = (d: Diff, maxLines: number): boolean => {
 const getDiffId = ({ diff, index }: { diff: Diff; index: number }) =>
   `${diff.newPath || diff.oldPath || index}`;
 
-export function DiffsPanel({ selectedAttempt, gitOps }: DiffsPanelProps) {
+export function DiffsPanel({
+  selectedAttempt,
+  commitSha,
+  onClearCommit,
+  repoId,
+  gitOps,
+}: DiffsPanelProps) {
   const { t } = useTranslation('tasks');
   const [loadingState, setLoadingState] = useState<
     'loading' | 'loaded' | 'timed-out'
   >('loading');
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [processedIds, setProcessedIds] = useState<Set<string>>(new Set());
-  const { diffs, error } = useDiffStream(selectedAttempt?.id ?? null, true);
-  const { fileCount, added, deleted } = useDiffSummary(
-    selectedAttempt?.id ?? null
+
+  const isCommitMode = !!commitSha;
+
+  const { diffs: streamDiffs, error: streamError } = useDiffStream(
+    isCommitMode ? null : selectedAttempt?.id ?? null,
+    true
   );
+  const { fileCount: streamFileCount, added: streamAdded, deleted: streamDeleted } = useDiffSummary(
+    isCommitMode ? null : selectedAttempt?.id ?? null
+  );
+
+  const {
+    data: commitDiffs,
+    isLoading: commitLoading,
+    error: commitError,
+  } = useQuery({
+    queryKey: ['commitDiff', selectedAttempt?.id, commitSha],
+    queryFn: () =>
+      attemptsApi.getCommitDiff(selectedAttempt!.id, commitSha!, repoId ?? ''),
+    enabled: isCommitMode && !!selectedAttempt?.id && !!commitSha,
+    staleTime: 60_000,
+  });
+
+  const diffs = isCommitMode ? (commitDiffs ?? []) : streamDiffs;
+  const error = isCommitMode
+    ? commitError
+      ? String(commitError)
+      : null
+    : streamError;
+  const loading = isCommitMode
+    ? commitLoading
+    : loadingState === 'loading';
+  const fileCount = isCommitMode ? diffs.length : streamFileCount;
+  const added = isCommitMode
+    ? diffs.reduce((sum, d) => sum + (d.additions ?? 0), 0)
+    : streamAdded;
+  const deletedCount = isCommitMode
+    ? diffs.reduce((sum, d) => sum + (d.deletions ?? 0), 0)
+    : streamDeleted;
 
   // If no diffs arrive within 3 seconds, stop showing the spinner
   useEffect(() => {
+    if (isCommitMode) return;
     if (loadingState !== 'loading') return;
     const timer = setTimeout(() => setLoadingState('timed-out'), 3000);
     return () => clearTimeout(timer);
-  }, [loadingState]);
+  }, [loadingState, isCommitMode]);
 
-  if (diffs.length > 0 && loadingState === 'loading') {
+  if (!isCommitMode && diffs.length > 0 && loadingState === 'loading') {
     setLoadingState('loaded');
   }
 
-  if (diffs.length > 0) {
+  if (!isCommitMode && diffs.length > 0) {
     const newDiffs = diffs
       .map((d, index) => ({ diff: d, index }))
       .filter((d) => {
@@ -95,8 +142,6 @@ export function DiffsPanel({ selectedAttempt, gitOps }: DiffsPanelProps) {
       }
     }
   }
-
-  const loading = loadingState === 'loading';
 
   const ids = useMemo(() => {
     return diffs.map((d, i) => getDiffId({ diff: d, index: i }));
@@ -130,7 +175,7 @@ export function DiffsPanel({ selectedAttempt, gitOps }: DiffsPanelProps) {
       diffs={diffs}
       fileCount={fileCount}
       added={added}
-      deleted={deleted}
+      deleted={deletedCount}
       collapsedIds={collapsedIds}
       allCollapsed={allCollapsed}
       handleCollapseAll={handleCollapseAll}
@@ -138,6 +183,7 @@ export function DiffsPanel({ selectedAttempt, gitOps }: DiffsPanelProps) {
       selectedAttempt={selectedAttempt}
       gitOps={gitOps}
       loading={loading}
+      onBack={isCommitMode ? onClearCommit : undefined}
       t={t}
     />
   );
@@ -155,10 +201,11 @@ interface DiffsPanelContentProps {
   selectedAttempt: Workspace | null;
   gitOps?: GitOperationsInputs;
   loading: boolean;
+  onBack?: () => void;
   t: (key: string, params?: Record<string, unknown>) => string;
 }
 
-function DiffsPanelContent({
+export function DiffsPanelContent({
   diffs,
   fileCount,
   added,
@@ -170,17 +217,29 @@ function DiffsPanelContent({
   selectedAttempt,
   gitOps,
   loading,
+  onBack,
   t,
 }: DiffsPanelContentProps) {
   return (
     <div className="h-full flex flex-col relative">
-      {diffs.length > 0 && (
+      {(diffs.length > 0 || onBack) && (
         <NewCardHeader
           className="sticky top-0 z-10"
           actions={
             <>
-              <DiffViewSwitch />
-              <div className="h-4 w-px bg-border" />
+              {onBack && (
+                <Button
+                  variant="icon"
+                  onClick={onBack}
+                  aria-label={t('commit.backToCommits')}
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+              )}
+              {diffs.length > 0 && (
+                <>
+                  <DiffViewSwitch />
+                  <div className="h-4 w-px bg-border" />
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -206,6 +265,8 @@ function DiffsPanelContent({
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
+                </>
+              )}
             </>
           }
         >

@@ -42,7 +42,7 @@ use executors::{
     executors::{CodingAgent, ExecutorError},
     profile::{ExecutorConfigs, ExecutorProfileId},
 };
-use git::{ConflictOp, GitCliError, GitService, GitServiceError};
+use git::{CommitInfo, ConflictOp, GitCliError, GitService, GitServiceError};
 use git2::BranchType;
 use serde::{Deserialize, Serialize};
 use services::services::{
@@ -57,6 +57,7 @@ use uuid::Uuid;
 
 use crate::{
     DeploymentImpl, error::ApiError, middleware::load_workspace_middleware,
+    middleware::load_workspace_middleware_with_extra_param,
     routes::task_attempts::gh_cli_setup::GhCliSetupError,
 };
 
@@ -1255,6 +1256,114 @@ pub async fn get_task_attempt_branch_status(
     Ok(ResponseJson(ApiResponse::success(results)))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct CommitHistoryQuery {
+    pub repo_id: Uuid,
+    #[serde(default = "default_commit_limit")]
+    pub limit: usize,
+}
+
+fn default_commit_limit() -> usize {
+    50
+}
+
+/// Get commit history for a task attempt's branch
+pub async fn get_commit_history(
+    Extension(workspace): Extension<Workspace>,
+    State(deployment): State<DeploymentImpl>,
+    Query(query): Query<CommitHistoryQuery>,
+) -> Result<ResponseJson<ApiResponse<Vec<CommitInfo>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let workspace_repo =
+        WorkspaceRepo::find_by_workspace_and_repo_id(pool, workspace.id, query.repo_id)
+            .await?
+            .ok_or(RepoError::NotFound)?;
+    let repo = Repo::find_by_id(pool, workspace_repo.repo_id)
+        .await?
+        .ok_or(RepoError::NotFound)?;
+
+    let container_ref = deployment
+        .container()
+        .ensure_container_exists(&workspace)
+        .await?;
+    let workspace_path = Path::new(&container_ref);
+    let worktree_path = repo_worktree_path(workspace_path, &workspace, &repo);
+
+    let git_service = GitService::new();
+    let commits = git_service.get_commit_history(
+        &worktree_path,
+        &workspace.branch,
+        &workspace_repo.target_branch,
+        query.limit,
+    )?;
+
+    Ok(ResponseJson(ApiResponse::success(commits)))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CommitDiffParams {
+    pub id: Uuid,
+    pub sha: String,
+}
+
+/// Get diff for a specific commit
+pub async fn get_commit_diff(
+    Extension(workspace): Extension<Workspace>,
+    State(deployment): State<DeploymentImpl>,
+    Query(query): Query<CommitHistoryQuery>,
+    AxumPath(params): AxumPath<CommitDiffParams>,
+) -> Result<ResponseJson<ApiResponse<Vec<utils::diff::Diff>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let workspace_repo =
+        WorkspaceRepo::find_by_workspace_and_repo_id(pool, workspace.id, query.repo_id)
+            .await?
+            .ok_or(RepoError::NotFound)?;
+    let repo = Repo::find_by_id(pool, workspace_repo.repo_id)
+        .await?
+        .ok_or(RepoError::NotFound)?;
+
+    let container_ref = deployment
+        .container()
+        .ensure_container_exists(&workspace)
+        .await?;
+    let workspace_path = Path::new(&container_ref);
+    let worktree_path = repo_worktree_path(workspace_path, &workspace, &repo);
+
+    let git_service = GitService::new();
+    let diffs = git_service.get_commit_diff(&worktree_path, &params.sha)?;
+
+    Ok(ResponseJson(ApiResponse::success(diffs)))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RevertCommitRequest {
+    pub repo_id: Uuid,
+}
+
+/// Revert a specific commit
+pub async fn revert_commit(
+    Extension(workspace): Extension<Workspace>,
+    State(deployment): State<DeploymentImpl>,
+    AxumPath(params): AxumPath<CommitDiffParams>,
+    Json(body): Json<RevertCommitRequest>,
+) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let repo = Repo::find_by_id(pool, body.repo_id)
+        .await?
+        .ok_or(RepoError::NotFound)?;
+
+    let container_ref = deployment
+        .container()
+        .ensure_container_exists(&workspace)
+        .await?;
+    let workspace_dir = Path::new(&container_ref);
+    let worktree_path = repo_worktree_path(workspace_dir, &workspace, &repo);
+
+    deployment.git().revert_commit(&worktree_path, &params.sha)?;
+
+    Ok(ResponseJson(ApiResponse::success(())))
+}
+
 #[derive(serde::Deserialize, Debug, TS)]
 pub struct ChangeTargetBranchRequest {
     pub repo_id: Uuid,
@@ -2324,6 +2433,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
                 .route("/run-archive-script", post(run_archive_script))
                 .route("/branch-status", get(get_task_attempt_branch_status))
                 .route("/diff/ws", get(stream_task_attempt_diff_ws))
+                .route("/commits", get(get_commit_history))
                 .route("/merge", post(merge_task_attempt))
                 .route("/push", post(push_task_attempt_branch))
                 .route("/push/force", post(force_push_task_attempt_branch))
@@ -2348,6 +2458,14 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
                 )),
         );
 
+    let commit_sha_router = Router::new()
+        .route("/diff", get(get_commit_diff))
+        .route("/revert", post(revert_commit))
+        .layer(from_fn_with_state(
+            deployment.clone(),
+            load_workspace_middleware_with_extra_param,
+        ));
+
     let task_attempts_router = Router::new()
         .route("/", get(get_task_attempts).post(create_task_attempt))
         .route("/from-pr", post(pr::create_workspace_from_pr))
@@ -2355,6 +2473,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/stream/ws", get(stream_workspaces_ws))
         .route("/summary", post(workspace_summary::get_workspace_summaries))
         .nest("/{id}", task_attempt_id_router)
+        .nest("/{id}/commits/{sha}", commit_sha_router)
         .nest("/{id}/images", images::router(deployment));
 
     Router::new().nest("/task-attempts", task_attempts_router)

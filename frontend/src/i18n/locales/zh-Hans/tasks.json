@@ -763,5 +763,20 @@
       "repoNotInProject": "仓库不在任何项目中",
       "failedToCreateWorkspace": "创建工作区失败"
     }
+  },
+  "commit": {
+    "viewDiff": "查看差异",
+    "revert": "回滚提交",
+    "revertCommit": "回滚提交",
+    "revertCommitDescription": "回滚提交 {{sha}}",
+    "revertWarning": "警告",
+    "revertWarningDescription": "这将创建一个新的提交来撤消更改。原始提交将保留在历史记录中。",
+    "revertConflictError": "由于与其他更改冲突，无法自动完成回滚。",
+    "reverting": "正在回滚...",
+    "noCommits": "暂无提交",
+    "count_one": "{{count}} 个提交",
+    "count_other": "{{count}} 个提交",
+    "backToCommits": "返回提交列表",
+    "errorLoadingHistory": "加载提交历史失败: {{error}}"
   }
 }

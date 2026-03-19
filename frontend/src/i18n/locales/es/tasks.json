@@ -763,5 +763,20 @@
       "repoNotInProject": "El repositorio no está en ningún proyecto",
       "failedToCreateWorkspace": "Error al crear espacio de trabajo"
     }
+  },
+  "commit": {
+    "viewDiff": "Ver diferencias",
+    "revert": "Revertir commit",
+    "revertCommit": "Revertir commit",
+    "revertCommitDescription": "Revertir commit {{sha}}",
+    "revertWarning": "Advertencia",
+    "revertWarningDescription": "Esto creará un nuevo commit que deshará los cambios. El commit original permanecerá en el historial.",
+    "revertConflictError": "No se pudo completar la reversión automáticamente porque entra en conflicto con otros cambios.",
+    "reverting": "Revirtiendo...",
+    "noCommits": "No hay commits",
+    "count_one": "{{count}} commit",
+    "count_other": "{{count}} commits",
+    "backToCommits": "Volver a commits",
+    "errorLoadingHistory": "Error al cargar el historial de commits: {{error}}"
   }
 }

@@ -9,7 +9,7 @@ import {
 import { AnimatePresence, motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
-export type LayoutMode = 'preview' | 'diffs' | 'terminal' | null;
+export type LayoutMode = 'preview' | 'diffs' | 'commits' | 'terminal' | null;
 
 interface TasksLayoutProps {
   kanban: ReactNode;
@@ -40,7 +40,7 @@ function AuxRouter({ mode, aux, terminal }: { mode: LayoutMode; aux: ReactNode; 
       {/* Preview/Diffs - use AnimatePresence for transitions */}
       <div className={mode !== 'terminal' ? 'h-full min-h-0' : 'hidden'}>
         <AnimatePresence initial={false} mode="popLayout">
-          {(mode === 'preview' || mode === 'diffs') && (
+          {(mode === 'preview' || mode === 'diffs' || mode === 'commits') && (
             <motion.div
               key={mode}
               initial={{ opacity: 0 }}
@@ -97,7 +97,7 @@ function RightWorkArea({
   };
 
   const hasAux = mode !== null;
-  const auxLabel = mode === 'preview' ? 'Preview' : mode === 'diffs' ? 'Diffs' : 'Terminal';
+  const auxLabel = mode === 'preview' ? 'Preview' : mode === 'diffs' ? 'Diffs' : mode === 'commits' ? 'Commits' : 'Terminal';
 
   return (
     <div className="h-full min-h-0 flex flex-col">

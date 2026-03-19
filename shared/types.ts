@@ -491,6 +491,8 @@ export type QueueStatus = { "status": "empty" } | { "status": "queued", message:
 
 export type ConflictOp = "rebase" | "merge" | "cherry_pick" | "revert";
 
+export type CommitInfo = { sha: string, message: string, author: string, timestamp: Date, additions: number, deletions: number, files_changed: number, };
+
 export type ExecutorAction = { typ: ExecutorActionType, next_action: ExecutorAction | null, };
 
 export type McpConfig = { servers: { [key in string]?: JsonValue }, servers_path: Array<string>, template: JsonValue, preconfigured: JsonValue, is_toml_config: boolean, };

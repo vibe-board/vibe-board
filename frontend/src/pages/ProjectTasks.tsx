@@ -64,6 +64,7 @@ import { useHotkeysContext } from 'react-hotkeys-hook';
 import { TasksLayout, type LayoutMode } from '@/components/layout/TasksLayout';
 import { PreviewPanel } from '@/components/panels/PreviewPanel';
 import { DiffsPanel } from '@/components/panels/DiffsPanel';
+import { CommitHistoryPanel } from '@/components/panels/CommitHistoryPanel';
 import TaskAttemptPanel from '@/components/panels/TaskAttemptPanel';
 import TaskPanel from '@/components/panels/TaskPanel';
 import TodoPanel from '@/components/tasks/TodoPanel';
@@ -119,20 +120,29 @@ function DiffsPanelContainer({
   selectedTask,
   branchStatus,
   branchStatusError,
+  selectedCommitSha,
+  onClearCommit,
+  repoId,
 }: {
   attempt: Workspace | null;
   selectedTask: TaskWithAttemptStatus | null;
   branchStatus: RepoBranchStatus[] | null;
   branchStatusError?: Error | null;
+  selectedCommitSha?: string | null;
+  onClearCommit?: () => void;
+  repoId?: string | null;
 }) {
   const { isAttemptRunning } = useAttemptExecution(attempt?.id);
 
   return (
     <DiffsPanel
-      key={attempt?.id}
+      key={selectedCommitSha ?? attempt?.id}
       selectedAttempt={attempt}
+      commitSha={selectedCommitSha}
+      onClearCommit={onClearCommit}
+      repoId={repoId}
       gitOps={
-        attempt && selectedTask
+        attempt && selectedTask && !selectedCommitSha
           ? {
               task: selectedTask,
               branchStatus: branchStatus ?? null,
@@ -365,7 +375,7 @@ export function ProjectTasks() {
 
   const rawMode = searchParams.get('view') as LayoutMode;
   const mode: LayoutMode =
-    rawMode === 'preview' || rawMode === 'diffs' || rawMode === 'terminal'
+    rawMode === 'preview' || rawMode === 'diffs' || rawMode === 'commits' || rawMode === 'terminal'
       ? rawMode
       : null;
 
@@ -392,6 +402,25 @@ export function ProjectTasks() {
     },
     [searchParams, setSearchParams]
   );
+
+  const selectedCommitSha = searchParams.get('commit');
+
+  const handleViewCommitDiff = useCallback(
+    (sha: string) => {
+      const params = new URLSearchParams(searchParams);
+      params.set('view', 'diffs');
+      params.set('commit', sha);
+      setSearchParams(params, { replace: true });
+    },
+    [searchParams, setSearchParams]
+  );
+
+  const handleClearCommit = useCallback(() => {
+    const params = new URLSearchParams(searchParams);
+    params.delete('commit');
+    params.set('view', 'commits');
+    setSearchParams(params, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const handleCreateNewTask = useCallback(() => {
     handleCreateTask();
@@ -539,7 +568,7 @@ export function ProjectTasks() {
    */
   const cycleView = useCallback(
     (direction: 'forward' | 'backward' = 'forward') => {
-      const order: LayoutMode[] = [null, 'preview', 'diffs', 'terminal'];
+      const order: LayoutMode[] = [null, 'preview', 'diffs', 'commits', 'terminal'];
       const idx = order.indexOf(mode);
       const next =
         direction === 'forward'
@@ -563,7 +592,7 @@ export function ProjectTasks() {
     () => {
       if (isPanelOpen) {
         // Track keyboard shortcut before cycling view
-        const order: LayoutMode[] = [null, 'preview', 'diffs'];
+        const order: LayoutMode[] = [null, 'preview', 'diffs', 'commits'];
         const idx = order.indexOf(mode);
         const next = order[(idx + 1) % order.length];
 
@@ -596,7 +625,7 @@ export function ProjectTasks() {
     () => {
       if (isPanelOpen) {
         // Track keyboard shortcut before cycling view
-        const order: LayoutMode[] = [null, 'preview', 'diffs'];
+        const order: LayoutMode[] = [null, 'preview', 'diffs', 'commits'];
         const idx = order.indexOf(mode);
         const next = order[(idx - 1 + order.length) % order.length];
 
@@ -987,6 +1016,16 @@ export function ProjectTasks() {
             selectedTask={selectedTask}
             branchStatus={branchStatus ?? null}
             branchStatusError={branchStatusError}
+            selectedCommitSha={selectedCommitSha}
+            onClearCommit={handleClearCommit}
+            repoId={repos[0]?.id ?? null}
+          />
+        )}
+        {mode === 'commits' && (
+          <CommitHistoryPanel
+            selectedAttempt={attempt}
+            repoId={repos[0]?.id ?? null}
+            onViewDiff={handleViewCommitDiff}
           />
         )}
       </div>

@@ -763,5 +763,20 @@
       "repoNotInProject": "儲存庫不在任何專案中",
       "failedToCreateWorkspace": "建立工作區失敗"
     }
+  },
+  "commit": {
+    "viewDiff": "檢視差異",
+    "revert": "還原提交",
+    "revertCommit": "還原提交",
+    "revertCommitDescription": "還原提交 {{sha}}",
+    "revertWarning": "警告",
+    "revertWarningDescription": "這將建立一個新的提交來撤消變更。原始提交將保留在歷史記錄中。",
+    "revertConflictError": "由於與其他變更衝突，無法自動完成還原。",
+    "reverting": "正在還原...",
+    "noCommits": "暫無提交",
+    "count_one": "{{count}} 個提交",
+    "count_other": "{{count}} 個提交",
+    "backToCommits": "返回提交列表",
+    "errorLoadingHistory": "載入提交歷史失敗: {{error}}"
   }
 }

@@ -3,6 +3,7 @@
 import {
   ApprovalStatus,
   ApiResponse,
+  CommitInfo,
   Config,
   CreateFollowUpAttempt,
   ResetProcessRequest,
@@ -96,6 +97,7 @@ import {
   CreateFromPrError,
   MigrationRequest,
   MigrationResponse,
+  Diff,
 } from 'shared/types';
 import type { WorkspaceWithSession } from '@/types/attempt';
 import { createWorkspaceWithSession } from '@/types/attempt';
@@ -831,6 +833,46 @@ export const attemptsApi = {
       CreateWorkspaceFromPrResponse,
       CreateFromPrError
     >(response);
+  },
+
+  /** Get commit history for a task attempt's branch */
+  getCommitHistory: async (
+    attemptId: string,
+    repoId: string,
+    limit: number = 50
+  ): Promise<CommitInfo[]> => {
+    const response = await makeRequest(
+      `/api/task-attempts/${attemptId}/commits?repo_id=${repoId}&limit=${limit}`
+    );
+    return handleApiResponse<CommitInfo[]>(response);
+  },
+
+  /** Get diff for a specific commit */
+  getCommitDiff: async (
+    attemptId: string,
+    sha: string,
+    repoId: string
+  ): Promise<Diff[]> => {
+    const response = await makeRequest(
+      `/api/task-attempts/${attemptId}/commits/${sha}/diff?repo_id=${repoId}`
+    );
+    return handleApiResponse<Diff[]>(response);
+  },
+
+  /** Revert a specific commit */
+  revertCommit: async (
+    attemptId: string,
+    sha: string,
+    repoId: string
+  ): Promise<void> => {
+    const response = await makeRequest(
+      `/api/task-attempts/${attemptId}/commits/${sha}/revert`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ repo_id: repoId }),
+      }
+    );
+    return handleApiResponse<void>(response);
   },
 };
 

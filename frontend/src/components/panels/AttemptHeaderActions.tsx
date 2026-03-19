@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Eye, FileDiff, SquareTerminal, X } from 'lucide-react';
+import { Eye, FileDiff, GitCommitHorizontal, SquareTerminal, X } from 'lucide-react';
 import { Button } from '../ui/button';
 import { ToggleGroup, ToggleGroupItem } from '../ui/toggle-group';
 import {
@@ -61,6 +61,12 @@ export const AttemptHeaderActions = ({
                   timestamp: new Date().toISOString(),
                   source: 'frontend',
                 });
+              } else if (newMode === 'commits') {
+                posthog?.capture('commits_navigated', {
+                  trigger: 'button',
+                  timestamp: new Date().toISOString(),
+                  source: 'frontend',
+                });
               } else if (newMode === null) {
                 // Closing the view (clicked active button)
                 posthog?.capture('view_closed', {
@@ -103,6 +109,21 @@ export const AttemptHeaderActions = ({
               </TooltipTrigger>
               <TooltipContent side="bottom">
                 {t('attemptHeaderActions.diffs')}
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <ToggleGroupItem
+                  value="commits"
+                  aria-label="Commits"
+                  active={mode === 'commits'}
+                >
+                  <GitCommitHorizontal className="h-4 w-4" />
+                </ToggleGroupItem>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {t('attemptHeaderActions.commits', 'Commits')}
               </TooltipContent>
             </Tooltip>
 

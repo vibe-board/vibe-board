@@ -86,6 +86,19 @@ pub struct GitRemote {
     pub url: String,
 }
 
+/// Information about a single commit in the history
+#[derive(Debug, Clone, Serialize, TS)]
+pub struct CommitInfo {
+    pub sha: String,
+    pub message: String,
+    pub author: String,
+    #[ts(type = "Date")]
+    pub timestamp: DateTime<Utc>,
+    pub additions: u32,
+    pub deletions: u32,
+    pub files_changed: u32,
+}
+
 #[derive(Debug, Clone)]
 pub struct HeadInfo {
     pub branch: String,
@@ -1960,5 +1973,141 @@ impl GitService {
         }
 
         Ok(stats)
+    }
+
+    /// Get the commit history for a branch up to a merge base.
+    /// Returns commits in reverse chronological order (newest first).
+    pub fn get_commit_history(
+        &self,
+        repo_path: &Path,
+        branch_name: &str,
+        base_branch: &str,
+        limit: usize,
+    ) -> Result<Vec<CommitInfo>, GitServiceError> {
+        let repo = self.open_repo(repo_path)?;
+
+        // Get Oids directly from the repo
+        let branch_oid = Self::find_branch(&repo, branch_name)?
+            .get()
+            .peel_to_commit()?
+            .id();
+        let base_oid = Self::find_branch(&repo, base_branch)?
+            .get()
+            .peel_to_commit()?
+            .id();
+
+        // Find the merge base to know where to stop
+        let merge_base = repo.merge_base(branch_oid, base_oid)?;
+
+        let mut revwalk = repo.revwalk()?;
+        revwalk.push(branch_oid)?;
+        revwalk.set_sorting(Sort::TIME)?;
+        // Hide commits reachable from base branch
+        revwalk.hide(base_oid)?;
+
+        let mut commits = Vec::new();
+
+        for oid_result in revwalk.take(limit) {
+            let oid = oid_result?;
+            let commit = repo.find_commit(oid)?;
+
+            // Stop if we've reached the merge base
+            if oid == merge_base {
+                break;
+            }
+
+            let message = commit
+                .message()
+                .unwrap_or("")
+                .lines()
+                .next()
+                .unwrap_or("")
+                .to_string();
+
+            let author = commit
+                .author()
+                .name()
+                .unwrap_or("Unknown")
+                .to_string();
+
+            let timestamp = {
+                let time = commit.time();
+                DateTime::from_timestamp(time.seconds(), 0).unwrap_or_else(Utc::now)
+            };
+
+            // Calculate diff stats
+            let commit_tree = commit.tree()?;
+            let parent_tree = if commit.parent_count() == 0 {
+                None
+            } else {
+                Some(commit.parent(0)?.tree()?)
+            };
+
+            let diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&commit_tree), None)?;
+            let stats = diff.stats()?;
+
+            commits.push(CommitInfo {
+                sha: oid.to_string(),
+                message,
+                author,
+                timestamp,
+                additions: stats.insertions() as u32,
+                deletions: stats.deletions() as u32,
+                files_changed: stats.files_changed() as u32,
+            });
+        }
+
+        Ok(commits)
+    }
+
+    /// Get the diff for a specific commit
+    pub fn get_commit_diff(
+        &self,
+        repo_path: &Path,
+        commit_sha: &str,
+    ) -> Result<Vec<Diff>, GitServiceError> {
+        self.get_diffs(
+            DiffTarget::Commit {
+                repo_path,
+                commit_sha,
+            },
+            None,
+        )
+    }
+
+    /// Revert a specific commit by SHA.
+    pub fn revert_commit(
+        &self,
+        worktree_path: &Path,
+        sha: &str,
+    ) -> Result<(), GitServiceError> {
+        let repo = self.open_repo(worktree_path)?;
+        let git_cli = GitCli::new();
+
+        // 1. Ensure the worktree is clean before attempting revert
+        self.check_worktree_clean(&repo)?;
+
+        // 2. Ensure git identity is configured (needed for revert to create a commit)
+        self.ensure_cli_commit_identity(worktree_path)?;
+
+        // 3. Perform the revert
+        git_cli.revert_commit(worktree_path, sha)?;
+
+        // 4. Check if a conflict occurred and auto-abort if so
+        if git_cli.is_revert_in_progress(worktree_path)? {
+            let conflicted = git_cli.get_conflicted_files(worktree_path).unwrap_or_default();
+            git_cli.abort_revert(worktree_path)?;
+            let files_part = if conflicted.is_empty() {
+                String::new()
+            } else {
+                format!(" Conflicted files: {}", conflicted.join(", "))
+            };
+            return Err(GitServiceError::MergeConflicts {
+                message: format!("Revert of {sha} produced conflicts.{files_part}"),
+                conflicted_files: conflicted,
+            });
+        }
+
+        Ok(())
     }
 }

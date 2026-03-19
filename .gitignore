@@ -77,6 +77,7 @@ remote-frontend/dist
 build-npm-package-codesign.sh
 
 npx-cli/dist
+npx-cli/package-lock.json
 npx-cli/vibe-kanban-*
 vibe-kanban-*.tgz
 

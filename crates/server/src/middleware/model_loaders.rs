@@ -93,6 +93,29 @@ pub async fn load_workspace_middleware(
     Ok(next.run(request).await)
 }
 
+/// Like `load_workspace_middleware` but for routes with an extra path parameter
+/// (e.g. `/{id}/commits/{sha}/diff`). The second parameter is ignored.
+pub async fn load_workspace_middleware_with_extra_param(
+    State(deployment): State<DeploymentImpl>,
+    Path((workspace_id, _extra)): Path<(Uuid, String)>,
+    mut request: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let workspace = match Workspace::find_by_id(&deployment.db().pool, workspace_id).await {
+        Ok(Some(w)) => w,
+        Ok(None) => {
+            tracing::warn!("Workspace {} not found", workspace_id);
+            return Err(StatusCode::NOT_FOUND);
+        }
+        Err(e) => {
+            tracing::error!("Failed to fetch Workspace {}: {}", workspace_id, e);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+    request.extensions_mut().insert(workspace);
+    Ok(next.run(request).await)
+}
+
 pub async fn load_execution_process_middleware(
     State(deployment): State<DeploymentImpl>,
     Path(process_id): Path<Uuid>,
