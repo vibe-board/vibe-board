@@ -218,24 +218,24 @@ fn fix_hunk_headers(hunks: Vec<String>) -> Vec<String> {
     new_hunks
 }
 
-/// Creates a full unified diff with the file path in the header,
+/// Creates a full unified diff with the file path in the header.
+/// Returns an empty string if there are no hunks (e.g. identical content),
+/// since a diff header without any `@@` hunk headers is invalid.
 pub fn concatenate_diff_hunks(file_path: &str, hunks: &[String]) -> String {
-    let mut unified_diff = String::new();
+    if hunks.is_empty() {
+        return String::new();
+    }
 
-    let header = format!("--- a/{file_path}\n+++ b/{file_path}\n");
+    let mut unified_diff = format!("--- a/{file_path}\n+++ b/{file_path}\n");
 
-    unified_diff.push_str(&header);
-
-    if !hunks.is_empty() {
-        let lines = hunks
-            .iter()
-            .flat_map(|hunk| hunk.lines())
-            .filter(|line| line.starts_with("@@ ") || line.starts_with([' ', '+', '-']))
-            .collect::<Vec<_>>();
-        unified_diff.push_str(lines.join("\n").as_str());
-        if !unified_diff.ends_with('\n') {
-            unified_diff.push('\n');
-        }
+    let lines = hunks
+        .iter()
+        .flat_map(|hunk| hunk.lines())
+        .filter(|line| line.starts_with("@@ ") || line.starts_with([' ', '+', '-']))
+        .collect::<Vec<_>>();
+    unified_diff.push_str(lines.join("\n").as_str());
+    if !unified_diff.ends_with('\n') {
+        unified_diff.push('\n');
     }
 
     unified_diff
