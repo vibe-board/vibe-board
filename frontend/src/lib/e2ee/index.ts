@@ -5,7 +5,12 @@ export {
   unwrapDek,
   randomBytes,
 } from './crypto';
-export { deriveContentKeyPair, type ContentKeyPair } from './keys';
+export {
+  deriveAuthKeyPair,
+  deriveContentKeyPair,
+  type AuthKeyPair,
+  type ContentKeyPair,
+} from './keys';
 export {
   encryptToEnvelope,
   decryptFromEnvelope,

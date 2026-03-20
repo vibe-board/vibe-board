@@ -307,6 +307,38 @@
           "label": "워크스페이스 베타 활성화",
           "helper": "작업 시도를 볼 때 새로운 워크스페이스 인터페이스를 사용합니다. 작업은 먼저 작업 보기에서 열리고, 시도는 새로운 워크스페이스 보기에서 열립니다."
         }
+      },
+      "e2ee": {
+        "title": "E2EE 설정",
+        "description": "원격 접근을 위한 종단간 암호화를 설정합니다.",
+        "gateway": {
+          "label": "게이트웨이",
+          "urlPlaceholder": "게이트웨이 URL (예: https://gateway.example.com)",
+          "login": "로그인",
+          "signup": "회원가입",
+          "emailPlaceholder": "이메일",
+          "passwordPlaceholder": "비밀번호",
+          "namePlaceholder": "이름 (선택사항)",
+          "connecting": "연결 중...",
+          "createAccount": "계정 생성",
+          "loginButton": "로그인",
+          "logout": "로그아웃",
+          "userId": "사용자 ID"
+        },
+        "masterSecret": {
+          "label": "마스터 시크릿",
+          "generating": "마스터 시크릿 생성 및 기기 등록 중...",
+          "copy": "복사",
+          "copied": "복사됨!",
+          "hint": "이 시크릿을 사용하여 다른 기기나 CLI 도구를 페어링하세요.",
+          "connected": "연결됨",
+          "notConnected": "연결 안 됨"
+        },
+        "machines": {
+          "label": "온라인 기기",
+          "connect": "연결"
+        },
+        "close": "닫기"
       }
     },
     "agents": {

@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import NiceModal, { useModal } from '@ebay/nice-modal-react';
 import { defineModal } from '@/lib/modals';
 import {
@@ -13,22 +14,66 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useE2EE } from '@/hooks/useE2ee';
-import { useGatewayAuth } from '@/hooks/useGatewayAuth';
+import { useGatewayAuth, type GatewaySession } from '@/hooks/useGatewayAuth';
+import { deriveAuthKeyPair, randomBytes } from '@/lib/e2ee';
+
+function generateMasterSecretB64(): string {
+  const bytes = randomBytes(32);
+  return btoa(String.fromCharCode(...bytes));
+}
+
+async function registerDevice(
+  gatewayUrl: string,
+  sessionToken: string,
+  authPublicKeyB64: string
+): Promise<void> {
+  const resp = await fetch(`${gatewayUrl}/api/auth/device/register`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${sessionToken}`,
+    },
+    body: JSON.stringify({
+      public_key: authPublicKeyB64,
+      device_name: 'WebUI',
+    }),
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Device registration failed (${resp.status}): ${text}`);
+  }
+}
+
+async function notifyBackendCredentials(
+  masterSecret: string,
+  session: GatewaySession
+) {
+  await fetch('/api/e2ee/credentials', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      master_secret: masterSecret,
+      gateway_url: session.gatewayUrl,
+      session_token: session.sessionToken,
+      user_id: session.userId,
+    }),
+  });
+}
+
+async function notifyBackendLogout() {
+  try {
+    await fetch('/api/e2ee/credentials', { method: 'DELETE' });
+  } catch {
+    // Best-effort
+  }
+}
 
 export interface E2EESettingsDialogProps {}
 
 const E2EESettingsDialogImpl = NiceModal.create<E2EESettingsDialogProps>(() => {
   const modal = useModal();
-  const {
-    hasPairedSecrets,
-    pairedSecretIds,
-    addPairedSecret,
-    clearSecrets,
-    connected,
-    machines,
-    connectToGateway,
-    error: e2eeError,
-  } = useE2EE();
+  const { t } = useTranslation('settings');
+  const { machines, connected, connectToGateway, error: e2eeError } = useE2EE();
 
   const {
     session,
@@ -49,9 +94,11 @@ const E2EESettingsDialogImpl = NiceModal.create<E2EESettingsDialogProps>(() => {
   const [isSignupMode, setIsSignupMode] = useState(false);
   const [registrationOpen, setRegistrationOpen] = useState(false);
 
-  // Secret pairing form
-  const [secretInput, setSecretInput] = useState('');
-  const [inputError, setInputError] = useState<string | null>(null);
+  // Generated master secret state
+  const [masterSecret, setMasterSecret] = useState<string | null>(null);
+  const [setupLoading, setSetupLoading] = useState(false);
+  const [setupError, setSetupError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   // Machine selection
   const [selectedMachineId, setSelectedMachineId] = useState<string | null>(
@@ -77,6 +124,48 @@ const E2EESettingsDialogImpl = NiceModal.create<E2EESettingsDialogProps>(() => {
     };
   }, [gatewayUrl, checkRegistrationStatus]);
 
+  // After login, auto-setup: generate secret, register device, notify backend
+  useEffect(() => {
+    if (!isAuthenticated || !session || masterSecret) return;
+    let cancelled = false;
+
+    const setup = async () => {
+      setSetupLoading(true);
+      setSetupError(null);
+      try {
+        const secretB64 = generateMasterSecretB64();
+        const secretBytes = Uint8Array.from(atob(secretB64), (c) =>
+          c.charCodeAt(0)
+        );
+        const authKp = await deriveAuthKeyPair(secretBytes);
+        const pubKeyB64 = btoa(String.fromCharCode(...authKp.publicKey));
+
+        await registerDevice(
+          session.gatewayUrl,
+          session.sessionToken,
+          pubKeyB64
+        );
+        if (cancelled) return;
+
+        await notifyBackendCredentials(secretB64, session);
+        if (cancelled) return;
+
+        setMasterSecret(secretB64);
+      } catch (e) {
+        if (!cancelled) {
+          setSetupError(e instanceof Error ? e.message : 'Setup failed');
+        }
+      } finally {
+        if (!cancelled) setSetupLoading(false);
+      }
+    };
+
+    setup();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, session, masterSecret]);
+
   const handleAuth = async () => {
     if (!gatewayUrl.trim()) return;
     try {
@@ -93,49 +182,47 @@ const E2EESettingsDialogImpl = NiceModal.create<E2EESettingsDialogProps>(() => {
     }
   };
 
-  const handlePair = () => {
-    const trimmed = secretInput.trim();
-    if (!trimmed) {
-      setInputError('Please enter a master secret');
-      return;
-    }
-
-    try {
-      const decoded = atob(trimmed);
-      if (decoded.length !== 32) {
-        setInputError('Master secret must be 32 bytes (44 base64 chars)');
-        return;
-      }
-    } catch {
-      setInputError('Invalid base64 encoding');
-      return;
-    }
-
-    addPairedSecret(trimmed);
-    setSecretInput('');
-    setInputError(null);
-  };
-
   const handleConnect = async (machineId: string) => {
     if (!session) return;
     setSelectedMachineId(machineId);
     await connectToGateway(session.gatewayUrl, session.sessionToken, machineId);
   };
 
+  const handleCopySecret = async () => {
+    if (!masterSecret) return;
+    await navigator.clipboard.writeText(masterSecret);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleLogout = useCallback(async () => {
+    logout();
+    setMasterSecret(null);
+    setSetupError(null);
+    await notifyBackendLogout();
+  }, [logout]);
+
   return (
     <Dialog open={modal.visible} onOpenChange={() => modal.hide()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>E2EE Settings</DialogTitle>
+          <DialogTitle>
+            {t('settings.general.e2ee.title', 'E2EE Settings')}
+          </DialogTitle>
           <DialogDescription>
-            Configure end-to-end encryption for remote access.
+            {t(
+              'settings.general.e2ee.description',
+              'Configure end-to-end encryption for remote access.'
+            )}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-5">
           {/* Section 1: Gateway Authentication */}
           <div className="space-y-3">
-            <Label className="text-sm font-medium">Gateway</Label>
+            <Label className="text-sm font-medium">
+              {t('settings.general.e2ee.gateway.label', 'Gateway')}
+            </Label>
 
             {isAuthenticated && session ? (
               <div className="space-y-2">
@@ -143,18 +230,22 @@ const E2EESettingsDialogImpl = NiceModal.create<E2EESettingsDialogProps>(() => {
                   <div className="space-y-0.5">
                     <p className="text-sm font-medium">{session.gatewayUrl}</p>
                     <p className="text-xs text-muted-foreground">
-                      User ID: {session.userId}
+                      {t('settings.general.e2ee.gateway.userId', 'User ID')}:{' '}
+                      {session.userId}
                     </p>
                   </div>
-                  <Button variant="outline" size="sm" onClick={logout}>
-                    Logout
+                  <Button variant="outline" size="sm" onClick={handleLogout}>
+                    {t('settings.general.e2ee.gateway.logout', 'Logout')}
                   </Button>
                 </div>
               </div>
             ) : (
               <div className="space-y-2">
                 <Input
-                  placeholder="Gateway URL (e.g., https://gateway.example.com)"
+                  placeholder={t(
+                    'settings.general.e2ee.gateway.urlPlaceholder',
+                    'Gateway URL (e.g., https://gateway.example.com)'
+                  )}
                   value={gatewayUrl}
                   onChange={(e) => setGatewayUrl(e.target.value)}
                 />
@@ -165,26 +256,32 @@ const E2EESettingsDialogImpl = NiceModal.create<E2EESettingsDialogProps>(() => {
                       className={`${!isSignupMode ? 'font-bold underline' : 'text-muted-foreground'}`}
                       onClick={() => setIsSignupMode(false)}
                     >
-                      Login
+                      {t('settings.general.e2ee.gateway.login', 'Login')}
                     </button>
                     <span className="text-muted-foreground">/</span>
                     <button
                       className={`${isSignupMode ? 'font-bold underline' : 'text-muted-foreground'}`}
                       onClick={() => setIsSignupMode(true)}
                     >
-                      Sign Up
+                      {t('settings.general.e2ee.gateway.signup', 'Sign Up')}
                     </button>
                   </div>
                 )}
 
                 <Input
-                  placeholder="Email"
+                  placeholder={t(
+                    'settings.general.e2ee.gateway.emailPlaceholder',
+                    'Email'
+                  )}
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
                 <Input
-                  placeholder="Password"
+                  placeholder={t(
+                    'settings.general.e2ee.gateway.passwordPlaceholder',
+                    'Password'
+                  )}
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -194,7 +291,10 @@ const E2EESettingsDialogImpl = NiceModal.create<E2EESettingsDialogProps>(() => {
                 />
                 {isSignupMode && (
                   <Input
-                    placeholder="Name (optional)"
+                    placeholder={t(
+                      'settings.general.e2ee.gateway.namePlaceholder',
+                      'Name (optional)'
+                    )}
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                   />
@@ -211,79 +311,94 @@ const E2EESettingsDialogImpl = NiceModal.create<E2EESettingsDialogProps>(() => {
                   size="sm"
                 >
                   {authLoading
-                    ? 'Connecting...'
+                    ? t(
+                        'settings.general.e2ee.gateway.connecting',
+                        'Connecting...'
+                      )
                     : isSignupMode
-                      ? 'Create Account'
-                      : 'Login'}
+                      ? t(
+                          'settings.general.e2ee.gateway.createAccount',
+                          'Create Account'
+                        )
+                      : t('settings.general.e2ee.gateway.loginButton', 'Login')}
                 </Button>
               </div>
             )}
           </div>
 
-          {/* Section 2: Device Pairing */}
-          <div className="space-y-3">
-            <Label className="text-sm font-medium">Device Pairing</Label>
+          {/* Section 2: Master Secret (auto-generated after login) */}
+          {isAuthenticated && (
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">
+                {t('settings.general.e2ee.masterSecret.label', 'Master Secret')}
+              </Label>
 
-            {/* Connection Status */}
-            <div className="flex items-center gap-2">
-              <div
-                className={`w-2 h-2 rounded-full ${
-                  connected ? 'bg-green-500' : 'bg-gray-400'
-                }`}
-              />
-              <span className="text-sm text-muted-foreground">
-                {connected ? 'Connected' : 'Not connected'}
-              </span>
-            </div>
-
-            {hasPairedSecrets ? (
-              <div className="space-y-2">
-                {pairedSecretIds.map((id, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between rounded-md border px-3 py-2"
-                  >
-                    <code className="text-xs font-mono">{id}</code>
+              {setupLoading ? (
+                <p className="text-sm text-muted-foreground">
+                  {t(
+                    'settings.general.e2ee.masterSecret.generating',
+                    'Generating master secret and registering device...'
+                  )}
+                </p>
+              ) : setupError ? (
+                <p className="text-xs text-red-500">{setupError}</p>
+              ) : masterSecret ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 rounded-md bg-muted px-3 py-2 text-xs font-mono break-all">
+                      {masterSecret}
+                    </code>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCopySecret}
+                    >
+                      {copied
+                        ? t(
+                            'settings.general.e2ee.masterSecret.copied',
+                            'Copied!'
+                          )
+                        : t('settings.general.e2ee.masterSecret.copy', 'Copy')}
+                    </Button>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                No paired devices. Run{' '}
-                <code className="text-xs bg-muted px-1 rounded">
-                  vibe-kanban status
-                </code>{' '}
-                on your machine to get the master secret, then paste it below.
-              </p>
-            )}
+                  <p className="text-xs text-muted-foreground">
+                    {t(
+                      'settings.general.e2ee.masterSecret.hint',
+                      'Use this secret to pair other devices or CLI tools.'
+                    )}
+                  </p>
+                </div>
+              ) : null}
 
-            {/* Add Secret */}
-            <div className="flex gap-2">
-              <Input
-                type="password"
-                placeholder="Paste master secret (base64)"
-                value={secretInput}
-                onChange={(e) => {
-                  setSecretInput(e.target.value);
-                  setInputError(null);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handlePair();
-                }}
-              />
-              <Button onClick={handlePair} size="sm">
-                Pair
-              </Button>
+              {/* Connection Status */}
+              <div className="flex items-center gap-2">
+                <div
+                  className={`w-2 h-2 rounded-full ${
+                    connected ? 'bg-green-500' : 'bg-gray-400'
+                  }`}
+                />
+                <span className="text-sm text-muted-foreground">
+                  {connected
+                    ? t(
+                        'settings.general.e2ee.masterSecret.connected',
+                        'Connected'
+                      )
+                    : t(
+                        'settings.general.e2ee.masterSecret.notConnected',
+                        'Not connected'
+                      )}
+                </span>
+              </div>
+              {e2eeError && <p className="text-xs text-red-500">{e2eeError}</p>}
             </div>
-            {(inputError || e2eeError) && (
-              <p className="text-xs text-red-500">{inputError || e2eeError}</p>
-            )}
-          </div>
+          )}
 
           {/* Section 3: Online Machines */}
           {machines.length > 0 && (
             <div className="space-y-3">
-              <Label className="text-sm font-medium">Online Machines</Label>
+              <Label className="text-sm font-medium">
+                {t('settings.general.e2ee.machines.label', 'Online Machines')}
+              </Label>
               <div className="space-y-1">
                 {machines.map((m) => (
                   <div
@@ -306,7 +421,7 @@ const E2EESettingsDialogImpl = NiceModal.create<E2EESettingsDialogProps>(() => {
                         onClick={() => handleConnect(m.machine_id)}
                         disabled={selectedMachineId === m.machine_id}
                       >
-                        Connect
+                        {t('settings.general.e2ee.machines.connect', 'Connect')}
                       </Button>
                     )}
                   </div>
@@ -317,13 +432,8 @@ const E2EESettingsDialogImpl = NiceModal.create<E2EESettingsDialogProps>(() => {
         </div>
 
         <DialogFooter>
-          {hasPairedSecrets && (
-            <Button variant="destructive" onClick={clearSecrets}>
-              Clear All Keys
-            </Button>
-          )}
           <Button variant="outline" onClick={() => modal.hide()}>
-            Close
+            {t('settings.general.e2ee.close', 'Close')}
           </Button>
         </DialogFooter>
       </DialogContent>

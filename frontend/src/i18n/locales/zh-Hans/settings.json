@@ -307,6 +307,38 @@
           "label": "启用工作区 Beta",
           "helper": "查看任务尝试时使用新的工作区界面。任务将首先在任务视图中打开，尝试将在新的工作区视图中打开。"
         }
+      },
+      "e2ee": {
+        "title": "E2EE 设置",
+        "description": "配置远程访问的端到端加密。",
+        "gateway": {
+          "label": "网关",
+          "urlPlaceholder": "网关地址（例如 https://gateway.example.com）",
+          "login": "登录",
+          "signup": "注册",
+          "emailPlaceholder": "邮箱",
+          "passwordPlaceholder": "密码",
+          "namePlaceholder": "名称（可选）",
+          "connecting": "连接中...",
+          "createAccount": "创建账户",
+          "loginButton": "登录",
+          "logout": "退出登录",
+          "userId": "用户 ID"
+        },
+        "masterSecret": {
+          "label": "主密钥",
+          "generating": "正在生成主密钥并注册设备...",
+          "copy": "复制",
+          "copied": "已复制！",
+          "hint": "使用此密钥配对其他设备或 CLI 工具。",
+          "connected": "已连接",
+          "notConnected": "未连接"
+        },
+        "machines": {
+          "label": "在线设备",
+          "connect": "连接"
+        },
+        "close": "关闭"
       }
     },
     "agents": {
