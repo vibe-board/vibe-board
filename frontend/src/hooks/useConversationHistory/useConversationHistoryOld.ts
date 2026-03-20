@@ -19,9 +19,10 @@ import {
 } from '@/utils/conversationCache';
 import type {
   AddEntryType,
+  ExecutionProcessState,
   ExecutionProcessStateStore,
-  OnEntriesUpdated,
   PatchTypeWithKey,
+  ScrollIntent,
   UseConversationHistoryParams,
   UseConversationHistoryResult,
 } from './types';
@@ -33,9 +34,10 @@ import {
   taskDurationPatch,
 } from './constants';
 
+const FIRST_ITEM_INDEX_BASE = 100_000;
+
 export const useConversationHistoryOld = ({
   attempt,
-  onEntriesUpdated,
 }: UseConversationHistoryParams): UseConversationHistoryResult => {
   const { executionProcessesVisible: executionProcessesRaw } =
     useExecutionProcessesContext();
@@ -44,18 +46,49 @@ export const useConversationHistoryOld = ({
   const displayedExecutionProcesses = useRef<ExecutionProcessStateStore>({});
   const loadedInitialEntries = useRef(false);
   const streamingProcessIdsRef = useRef<Set<string>>(new Set());
-  const onEntriesUpdatedRef = useRef<OnEntriesUpdated | null>(null);
-  // Track pagination state
+
+  // --- Declarative state (single source of truth) ---
+  const [entries, setEntries] = useState<PatchTypeWithKey[]>([]);
+  const [firstItemIndex, setFirstItemIndex] = useState(FIRST_ITEM_INDEX_BASE);
+  const [scrollIntent, setScrollIntent] = useState<ScrollIntent>('none');
+  const [initialLoading, setInitialLoading] = useState(true);
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  // --- Refs for stable loadMore (read inside callback, avoid closure staleness) ---
+  const isLoadingMoreRef = useRef(false);
+  const hasMoreRef = useRef(false);
+  const prevFirstKeyRef = useRef<string | null>(null);
+  const hasReceivedRealDataRef = useRef(false);
+
   const loadedProcessIds = useRef<Set<string>>(new Set());
+  // Tracks processes evicted from memory during streaming — these need to be
+  // re-loadable when the user scrolls back up.
+  const evictedProcessIds = useRef<Set<string>>(new Set());
   const allHistoricProcesses = useRef<ExecutionProcess[]>([]);
-  // Preloaded entries cache: processId -> { executionProcess, entries }
   const preloadedEntries = useRef<
     Map<string, ExecutionProcessStateStore[string]>
   >(new Map());
   const isPreloadingRef = useRef(false);
   const isMountedRef = useRef(true);
+
+  // Refs for stable loadMore — stores latest function versions so the
+  // empty-deps useCallback always calls the current implementation.
+  const emitStateRef = useRef<
+    (state: ExecutionProcessStateStore, addType: AddEntryType) => void
+  >(() => {});
+  const preloadNextBatchRef = useRef<() => Promise<void>>(async () => {});
+  const loadEntriesRef = useRef<
+    (ep: ExecutionProcess) => Promise<PatchTypeWithKey[]>
+  >(async () => []);
+  // When true, loadMore will loop until hasMore is false or wantMore is cleared.
+  // Set by the consumer (VirtualizedList) when user is at top.
+  const wantMoreRef = useRef(false);
+
+  // Keep hasMoreRef in sync
+  useEffect(() => {
+    hasMoreRef.current = hasMore;
+  }, [hasMore]);
 
   const mergeIntoDisplayed = (
     mutator: (state: ExecutionProcessStateStore) => void
@@ -63,9 +96,6 @@ export const useConversationHistoryOld = ({
     const state = displayedExecutionProcesses.current;
     mutator(state);
   };
-  useEffect(() => {
-    onEntriesUpdatedRef.current = onEntriesUpdated;
-  }, [onEntriesUpdated]);
 
   // Keep executionProcesses up to date
   useEffect(() => {
@@ -135,6 +165,7 @@ export const useConversationHistoryOld = ({
     },
     [attempt.id]
   );
+  loadEntriesRef.current = loadEntriesForHistoricExecutionProcess;
 
   const getLiveExecutionProcess = (
     executionProcessId: string
@@ -440,59 +471,132 @@ export const useConversationHistoryOld = ({
     [setTokenUsageInfo]
   );
 
-  const emitEntries = useCallback(
+  /**
+   * Central state emitter. Replaces the old callback-based `emitEntries`.
+   * Runs eviction, flattens entries, computes hasMore, and sets all React state
+   * in one go — eliminating the dual-data-source / callback-sync problems.
+   */
+  const emitState = useCallback(
     (
       executionProcessState: ExecutionProcessStateStore,
-      addEntryType: AddEntryType,
-      loading: boolean
+      addEntryType: AddEntryType
     ) => {
-      // Evict oldest processes if total entries exceed the cap
+      // --- Eviction ---
       const totalEntries = Object.values(executionProcessState).reduce(
         (sum, p) => sum + p.entries.length,
         0
       );
+      let evictedCount = 0;
       if (totalEntries > MAX_IN_MEMORY_ENTRIES) {
+        const ascending = (
+          [, a]: [string, ExecutionProcessState],
+          [, b]: [string, ExecutionProcessState]
+        ) =>
+          new Date(
+            a.executionProcess.created_at as unknown as string
+          ).getTime() -
+          new Date(
+            b.executionProcess.created_at as unknown as string
+          ).getTime();
         const sorted = Object.entries(executionProcessState).sort(
-          ([, a], [, b]) =>
-            new Date(
-              a.executionProcess.created_at as unknown as string
-            ).getTime() -
-            new Date(
-              b.executionProcess.created_at as unknown as string
-            ).getTime()
+          addEntryType === 'historic' ? (a, b) => ascending(b, a) : ascending
         );
         let remaining = totalEntries;
         for (const [id, proc] of sorted) {
           if (remaining <= MAX_IN_MEMORY_ENTRIES) break;
-          // Never evict running processes
           const live = getLiveExecutionProcess(id);
           if (live?.status === ExecutionProcessStatus.running) continue;
           remaining -= proc.entries.length;
+          evictedCount += proc.entries.length;
           delete executionProcessState[id];
-          loadedProcessIds.current.delete(id);
+          // Track as evicted so loadMore can re-load them if user scrolls back.
+          // Do NOT remove from loadedProcessIds — that would cause an infinite
+          // load→evict→load cycle because hasMore would re-count them.
+          evictedProcessIds.current.add(id);
         }
-        setHasMore(true);
       }
 
-      const entries = flattenEntriesForEmit(executionProcessState);
-      let modifiedAddEntryType = addEntryType;
+      // --- Flatten ---
+      const newEntries = flattenEntriesForEmit(executionProcessState);
 
-      // Modify so that if add entry type is 'running' and last entry is a plan, emit special plan type
-      if (entries.length > 0) {
-        const lastEntry = entries[entries.length - 1];
+      // --- Detect plan addType override ---
+      let effectiveAddType = addEntryType;
+      if (newEntries.length > 0) {
+        const lastEntry = newEntries[newEntries.length - 1];
         if (
           lastEntry.type === 'NORMALIZED_ENTRY' &&
           lastEntry.content.entry_type.type === 'tool_use' &&
           lastEntry.content.entry_type.tool_name === 'ExitPlanMode'
         ) {
-          modifiedAddEntryType = 'plan';
+          effectiveAddType = 'plan';
         }
       }
 
-      onEntriesUpdatedRef.current?.(entries, modifiedAddEntryType, loading);
+      // --- Compute hasMore AFTER eviction ---
+      // Never-loaded processes (haven't been fetched yet)
+      const stillRemaining = allHistoricProcesses.current.filter(
+        (p) => !loadedProcessIds.current.has(p.id)
+      );
+      // Evicted processes that are no longer in memory but were previously loaded
+      const hasEvicted = evictedProcessIds.current.size > 0;
+      const newHasMore = stillRemaining.length > 0 || hasEvicted;
+      setHasMore(newHasMore);
+      hasMoreRef.current = newHasMore;
+
+      // --- Compute firstItemIndex for historic prepends ---
+      // Use key-based lookup to find exactly how many items were prepended,
+      // which is immune to entry count changes from concurrent streaming.
+      if (addEntryType === 'historic') {
+        const prevKey = prevFirstKeyRef.current;
+        let prepended = 0;
+        if (prevKey && newEntries.length > 0) {
+          const idx = newEntries.findIndex((e) => e.patchKey === prevKey);
+          if (idx > 0) prepended = idx;
+        }
+        if (prepended > 0) {
+          setFirstItemIndex((prev) => prev - prepended);
+        }
+      }
+      prevFirstKeyRef.current = newEntries[0]?.patchKey ?? null;
+
+      // --- Compute scrollIntent ---
+      if (effectiveAddType === 'running' || effectiveAddType === 'plan') {
+        setScrollIntent('bottom-smooth');
+      } else if (effectiveAddType === 'initial') {
+        setScrollIntent('bottom-instant');
+      } else {
+        // 'historic' — no scroll change, Virtuoso handles via firstItemIndex
+        setScrollIntent('none');
+      }
+
+      // --- Set entries (single source of truth) ---
+      setEntries(newEntries);
+
+      // --- initialLoading logic ---
+      if (!hasReceivedRealDataRef.current && effectiveAddType === 'initial') {
+        const onlySynthetic = newEntries.every(
+          (e) =>
+            e.type === 'NORMALIZED_ENTRY' &&
+            e.content?.entry_type?.type === 'next_action'
+        );
+        if (!onlySynthetic && newEntries.length > 0) {
+          hasReceivedRealDataRef.current = true;
+          setInitialLoading(false);
+        }
+      }
+      // For running/plan/historic entries, dismiss overlay immediately
+      if (
+        !hasReceivedRealDataRef.current &&
+        (effectiveAddType === 'running' || effectiveAddType === 'historic') &&
+        newEntries.length > 0
+      ) {
+        hasReceivedRealDataRef.current = true;
+        setInitialLoading(false);
+      }
     },
     [flattenEntriesForEmit]
   );
+  emitStateRef.current = emitState;
 
   // This emits its own events as they are streamed
   const loadRunningAndEmit = useCallback(
@@ -515,10 +619,10 @@ export const useConversationHistoryOld = ({
                 entries: patchesWithKey,
               };
             });
-            emitEntries(displayedExecutionProcesses.current, 'running', false);
+            emitState(displayedExecutionProcesses.current, 'running');
           },
           onFinished: () => {
-            emitEntries(displayedExecutionProcesses.current, 'running', false);
+            emitState(displayedExecutionProcesses.current, 'running');
             controller.close();
             resolve();
           },
@@ -529,7 +633,7 @@ export const useConversationHistoryOld = ({
         });
       });
     },
-    [emitEntries]
+    [emitState]
   );
 
   // Sometimes it can take a few seconds for the stream to start, wrap the loadRunningAndEmit method
@@ -589,6 +693,7 @@ export const useConversationHistoryOld = ({
 
     isPreloadingRef.current = false;
   }, [loadEntriesForHistoricExecutionProcess]);
+  preloadNextBatchRef.current = preloadNextBatch;
 
   const loadInitialEntries =
     useCallback(async (): Promise<ExecutionProcessStateStore> => {
@@ -623,6 +728,7 @@ export const useConversationHistoryOld = ({
         (p) => !loadedProcessIds.current.has(p.id)
       );
       setHasMore(remainingProcesses.length > 0);
+      hasMoreRef.current = remainingProcesses.length > 0;
 
       // Start preloading next batch in background
       if (remainingProcesses.length > 0) {
@@ -636,98 +742,116 @@ export const useConversationHistoryOld = ({
       loadEntriesForHistoricExecutionProcess,
     ]);
 
-  // Load more historic entries - use preloaded cache if available
+  // Load more historic entries — STABLE reference (empty deps).
+  // Reads hasMoreRef/isLoadingMoreRef and function refs to avoid closure staleness.
+  // Loops internally while wantMoreRef is true and hasMoreRef is true,
+  // so continuous pagination doesn't depend on external effect timing.
   const loadMore = useCallback(async () => {
-    if (isLoadingMore || !hasMore) return;
+    if (isLoadingMoreRef.current || !hasMoreRef.current) return;
 
+    isLoadingMoreRef.current = true;
     setIsLoadingMore(true);
 
-    // Yield to let React render the loading state before we proceed.
-    // Without this, React 18 batches the setIsLoadingMore(true) and
-    // setIsLoadingMore(false) calls synchronously, so the loading
-    // spinner never appears in the preloaded path.
-    await new Promise((r) => setTimeout(r, 0));
+    try {
+      // Yield to let React render the loading state before we proceed.
+      await new Promise((r) => setTimeout(r, 0));
 
-    // First, use any preloaded entries
-    const preloaded = Array.from(preloadedEntries.current.values());
-    if (preloaded.length > 0) {
-      for (const state of preloaded) {
-        mergeIntoDisplayed((s) => {
-          s[state.executionProcess.id] = state;
-        });
-        loadedProcessIds.current.add(state.executionProcess.id);
-      }
-      preloadedEntries.current.clear();
+      // Loop: keep loading while consumer wants more and there is more
+      let prevDisplayedCount = Object.keys(
+        displayedExecutionProcesses.current
+      ).length;
+      do {
+        // First, use any preloaded entries
+        const preloaded = Array.from(preloadedEntries.current.values());
+        if (preloaded.length > 0) {
+          for (const state of preloaded) {
+            mergeIntoDisplayed((s) => {
+              s[state.executionProcess.id] = state;
+            });
+            loadedProcessIds.current.add(state.executionProcess.id);
+            evictedProcessIds.current.delete(state.executionProcess.id);
+          }
+          preloadedEntries.current.clear();
 
-      // Emit with loading=true while we start the next preload
-      emitEntries(displayedExecutionProcesses.current, 'historic', true);
+          emitStateRef.current(displayedExecutionProcesses.current, 'historic');
 
-      // Check if there are still more
-      const stillRemaining = allHistoricProcesses.current.filter(
-        (p) => !loadedProcessIds.current.has(p.id)
-      );
-      setHasMore(stillRemaining.length > 0);
+          if (hasMoreRef.current) {
+            preloadNextBatchRef.current();
+          }
+        } else {
+          // No preloaded content, load synchronously
+          // First try never-loaded processes, then evicted ones
+          let remainingProcesses = allHistoricProcesses.current.filter(
+            (p) => !loadedProcessIds.current.has(p.id)
+          );
 
-      // Start preloading next batch in background BEFORE clearing loading state
-      if (stillRemaining.length > 0) {
-        preloadNextBatch();
-      }
+          // If all never-loaded processes are done, try re-loading evicted ones
+          if (
+            remainingProcesses.length === 0 &&
+            evictedProcessIds.current.size > 0
+          ) {
+            remainingProcesses = allHistoricProcesses.current.filter(
+              (p) =>
+                evictedProcessIds.current.has(p.id) &&
+                !displayedExecutionProcesses.current[p.id]
+            );
+          }
 
+          if (remainingProcesses.length === 0) {
+            setHasMore(false);
+            hasMoreRef.current = false;
+            break;
+          }
+
+          let entriesLoaded = 0;
+          for (const executionProcess of remainingProcesses) {
+            const entriesWithKey =
+              await loadEntriesRef.current(executionProcess);
+
+            mergeIntoDisplayed((state) => {
+              state[executionProcess.id] = {
+                executionProcess,
+                entries: entriesWithKey,
+              };
+            });
+            loadedProcessIds.current.add(executionProcess.id);
+            // Remove from evicted set since it's back in memory
+            evictedProcessIds.current.delete(executionProcess.id);
+            entriesLoaded += entriesWithKey.length;
+
+            if (entriesLoaded >= MIN_INITIAL_ENTRIES) {
+              break;
+            }
+          }
+
+          emitStateRef.current(displayedExecutionProcesses.current, 'historic');
+
+          if (hasMoreRef.current) {
+            preloadNextBatchRef.current();
+          }
+        }
+
+        // Yield between iterations so React can render the new entries
+        // and Virtuoso can update scroll position.
+        await new Promise((r) => setTimeout(r, 0));
+
+        // Progress guard: if the displayed set didn't grow, we're in an
+        // eviction cycle (loading A evicts B, loading B evicts A). Break
+        // to avoid an infinite loop.
+        const currentDisplayedCount = Object.keys(
+          displayedExecutionProcesses.current
+        ).length;
+        if (currentDisplayedCount <= prevDisplayedCount) {
+          break;
+        }
+        prevDisplayedCount = currentDisplayedCount;
+      } while (wantMoreRef.current && hasMoreRef.current);
+    } finally {
+      isLoadingMoreRef.current = false;
       setIsLoadingMore(false);
-      emitEntries(displayedExecutionProcesses.current, 'historic', false);
-      return;
     }
-
-    // No preloaded content, load synchronously
-    const remainingProcesses = allHistoricProcesses.current.filter(
-      (p) => !loadedProcessIds.current.has(p.id)
-    );
-
-    if (remainingProcesses.length === 0) {
-      setHasMore(false);
-      setIsLoadingMore(false);
-      return;
-    }
-
-    let entriesLoaded = 0;
-    for (const executionProcess of remainingProcesses) {
-      const entriesWithKey =
-        await loadEntriesForHistoricExecutionProcess(executionProcess);
-
-      mergeIntoDisplayed((state) => {
-        state[executionProcess.id] = {
-          executionProcess,
-          entries: entriesWithKey,
-        };
-      });
-      loadedProcessIds.current.add(executionProcess.id);
-      entriesLoaded += entriesWithKey.length;
-
-      emitEntries(displayedExecutionProcesses.current, 'historic', true);
-
-      if (entriesLoaded >= MIN_INITIAL_ENTRIES) {
-        break;
-      }
-    }
-
-    const stillRemaining = allHistoricProcesses.current.filter(
-      (p) => !loadedProcessIds.current.has(p.id)
-    );
-    setHasMore(stillRemaining.length > 0);
-    setIsLoadingMore(false);
-    emitEntries(displayedExecutionProcesses.current, 'historic', false);
-
-    // Start preloading next batch
-    if (stillRemaining.length > 0) {
-      preloadNextBatch();
-    }
-  }, [
-    isLoadingMore,
-    hasMore,
-    emitEntries,
-    preloadNextBatch,
-    loadEntriesForHistoricExecutionProcess,
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const ensureProcessVisible = useCallback((p: ExecutionProcess) => {
     mergeIntoDisplayed((state) => {
@@ -793,13 +917,13 @@ export const useConversationHistoryOld = ({
       mergeIntoDisplayed((state) => {
         Object.assign(state, allInitialEntries);
       });
-      emitEntries(displayedExecutionProcesses.current, 'initial', false);
+      emitState(displayedExecutionProcesses.current, 'initial');
       loadedInitialEntries.current = true;
     })();
     return () => {
       cancelled = true;
     };
-  }, [attempt.id, idListKey, loadInitialEntries, emitEntries]); // include idListKey so new processes trigger reload
+  }, [attempt.id, idListKey, loadInitialEntries, emitState]);
 
   useEffect(() => {
     const activeProcesses = getActiveAgentProcesses();
@@ -812,11 +936,7 @@ export const useConversationHistoryOld = ({
             ? 'running'
             : 'initial';
         ensureProcessVisible(activeProcess);
-        emitEntries(
-          displayedExecutionProcesses.current,
-          runningOrInitial,
-          false
-        );
+        emitState(displayedExecutionProcesses.current, runningOrInitial);
       }
 
       if (
@@ -832,7 +952,7 @@ export const useConversationHistoryOld = ({
   }, [
     attempt.id,
     idStatusKey,
-    emitEntries,
+    emitState,
     ensureProcessVisible,
     loadRunningAndEmitWithBackoff,
   ]);
@@ -860,13 +980,22 @@ export const useConversationHistoryOld = ({
     loadedInitialEntries.current = false;
     streamingProcessIdsRef.current.clear();
     loadedProcessIds.current.clear();
+    evictedProcessIds.current.clear();
     allHistoricProcesses.current = [];
     preloadedEntries.current.clear();
     isPreloadingRef.current = false;
+    isLoadingMoreRef.current = false;
+    hasReceivedRealDataRef.current = false;
+    prevFirstKeyRef.current = null;
+    hasMoreRef.current = false;
+    wantMoreRef.current = false;
     setHasMore(false);
     setIsLoadingMore(false);
-    emitEntries(displayedExecutionProcesses.current, 'initial', true);
-  }, [attempt.id, emitEntries]);
+    setEntries([]);
+    setFirstItemIndex(FIRST_ITEM_INDEX_BASE);
+    setScrollIntent('none');
+    setInitialLoading(true);
+  }, [attempt.id]);
 
   // Track unmount for cancelling background retries
   useEffect(() => {
@@ -876,9 +1005,18 @@ export const useConversationHistoryOld = ({
     };
   }, []);
 
+  const setWantMore = useCallback((want: boolean) => {
+    wantMoreRef.current = want;
+  }, []);
+
   return {
-    loadMore,
+    entries,
+    firstItemIndex,
     hasMore,
     isLoadingMore,
+    loadMore,
+    setWantMore,
+    scrollIntent,
+    initialLoading,
   };
 };

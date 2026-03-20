@@ -74,11 +74,7 @@ export function isAggregatedThinkingGroup(
 
 export type AddEntryType = 'initial' | 'running' | 'historic' | 'plan';
 
-export type OnEntriesUpdated = (
-  newEntries: PatchTypeWithKey[],
-  addType: AddEntryType,
-  loading: boolean
-) => void;
+export type ScrollIntent = 'none' | 'bottom-smooth' | 'bottom-instant';
 
 export type ExecutionProcessStaticInfo = {
   id: string;
@@ -96,12 +92,24 @@ export type ExecutionProcessStateStore = Record<string, ExecutionProcessState>;
 
 export interface UseConversationHistoryParams {
   attempt: Workspace;
-  onEntriesUpdated: OnEntriesUpdated;
 }
 
 export interface UseConversationHistoryResult {
-  // Load more historic entries on demand
-  loadMore?: () => Promise<void>;
-  hasMore?: boolean;
-  isLoadingMore?: boolean;
+  /** Flattened, display-ready entry array — single source of truth. */
+  entries: PatchTypeWithKey[];
+  /** Virtuoso firstItemIndex. Starts at 100_000, decreases on historic prepends. */
+  firstItemIndex: number;
+  /** Whether more historic processes can be loaded. */
+  hasMore: boolean;
+  /** Whether a loadMore operation is in flight. */
+  isLoadingMore: boolean;
+  /** Trigger loading the next batch of historic processes. Stable reference.
+   *  Loops internally while wantMore is true and hasMore is true. */
+  loadMore: () => void;
+  /** Tell the hook whether the consumer wants continuous loading (e.g. user is at top). */
+  setWantMore: (want: boolean) => void;
+  /** Scroll intent for the current data update. */
+  scrollIntent: ScrollIntent;
+  /** True until first real (non-synthetic) data arrives. */
+  initialLoading: boolean;
 }

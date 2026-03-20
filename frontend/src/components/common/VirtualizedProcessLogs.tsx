@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  DataWithScrollModifier,
-  ScrollModifier,
+  type DataWithScrollModifier,
+  type ScrollModifier,
   VirtuosoMessageList,
-  VirtuosoMessageListLicense,
-  VirtuosoMessageListMethods,
-  VirtuosoMessageListProps,
-} from '@virtuoso.dev/message-list';
+  type VirtuosoMessageListMethods,
+  type VirtuosoMessageListProps,
+} from '@/components/ui/virtuoso-message-list';
 import { WarningCircleIcon } from '@phosphor-icons/react/dist/ssr';
 import RawLogText from '@/components/common/RawLogText';
 import type { PatchType } from 'shared/types';
@@ -81,10 +80,8 @@ export function VirtualizedProcessLogs({
   const { t } = useTranslation('tasks');
   const [channelData, setChannelData] =
     useState<DataWithScrollModifier<LogEntryWithKey> | null>(null);
-  const messageListRef = useRef<VirtuosoMessageListMethods<
-    LogEntryWithKey,
-    SearchContext
-  > | null>(null);
+  const messageListRef =
+    useRef<VirtuosoMessageListMethods<LogEntryWithKey> | null>(null);
   const prevLogsLengthRef = useRef(0);
   const prevCurrentMatchRef = useRef<number | undefined>(undefined);
 
@@ -163,19 +160,15 @@ export function VirtualizedProcessLogs({
 
   return (
     <div className="h-full">
-      <VirtuosoMessageListLicense
-        licenseKey={import.meta.env.VITE_PUBLIC_REACT_VIRTUOSO_LICENSE_KEY}
-      >
-        <VirtuosoMessageList<LogEntryWithKey, SearchContext>
-          ref={messageListRef}
-          className="h-full"
-          data={channelData}
-          context={context}
-          initialLocation={INITIAL_TOP_ITEM}
-          computeItemKey={computeItemKey}
-          ItemContent={ItemContent}
-        />
-      </VirtuosoMessageListLicense>
+      <VirtuosoMessageList<LogEntryWithKey, SearchContext>
+        ref={messageListRef}
+        className="h-full"
+        data={channelData}
+        context={context}
+        initialLocation={INITIAL_TOP_ITEM}
+        computeItemKey={computeItemKey}
+        ItemContent={ItemContent}
+      />
     </div>
   );
 }
