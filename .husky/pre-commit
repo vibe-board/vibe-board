@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+
+# Auto-format Rust and frontend code before commit
+pnpm run format

@@ -48,13 +48,18 @@ function decodeBase64(base64: string): string {
  * This function retries until syncScrollArea succeeds,
  * recovering from the initial failed setTimeout.
  */
-function ensureViewportReady(terminal: Terminal, maxRetries = 30): Promise<void> {
+function ensureViewportReady(
+  terminal: Terminal,
+  maxRetries = 30
+): Promise<void> {
   return new Promise((resolve) => {
     let attempts = 0;
     const trySync = () => {
       attempts++;
       try {
-        const core = (terminal as { _core?: { viewport?: { syncScrollArea: () => void } } })._core;
+        const core = (
+          terminal as { _core?: { viewport?: { syncScrollArea: () => void } } }
+        )._core;
         if (core?.viewport) {
           core.viewport.syncScrollArea();
         }
@@ -90,8 +95,7 @@ export function XTermInstance({
   const { theme } = useTheme();
 
   const endpoint = useMemo(() => {
-    const protocol =
-      window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
     let url = `${protocol}//${host}/api/terminal/ws?workspace_id=${workspaceId}&cols=${initialSizeRef.current.cols}&rows=${initialSizeRef.current.rows}`;
     if (sessionId) {
@@ -187,7 +191,10 @@ export function XTermInstance({
       let ws: WebSocket | RemoteWs;
       if (conn) {
         const url = new URL(endpoint);
-        ws = conn.openWsStream(url.pathname, url.search?.substring(1) || undefined);
+        ws = conn.openWsStream(
+          url.pathname,
+          url.search?.substring(1) || undefined
+        );
       } else {
         ws = new WebSocket(endpoint);
       }

@@ -2,7 +2,7 @@ use axum::{
     body::Body,
     response::{IntoResponse, Response},
 };
-use http::{HeaderValue, StatusCode, header};
+use http::{header, HeaderValue, StatusCode};
 use rust_embed::RustEmbed;
 
 #[derive(RustEmbed)]

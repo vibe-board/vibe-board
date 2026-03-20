@@ -1,5 +1,11 @@
 import { useTranslation } from 'react-i18next';
-import { Eye, FileDiff, GitCommitHorizontal, SquareTerminal, X } from 'lucide-react';
+import {
+  Eye,
+  FileDiff,
+  GitCommitHorizontal,
+  SquareTerminal,
+  X,
+} from 'lucide-react';
 import { Button } from '../ui/button';
 import { ToggleGroup, ToggleGroupItem } from '../ui/toggle-group';
 import {

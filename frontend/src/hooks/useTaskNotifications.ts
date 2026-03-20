@@ -102,7 +102,8 @@ export function useTaskNotifications(
     Object.entries(tasksById).forEach(([id, task]) => {
       const prevStatus = prevTasksRef.current[id];
       if (prevStatus && prevStatus !== task.status) {
-        const agent = task.executor + (task.variant ? ` (${task.variant})` : '');
+        const agent =
+          task.executor + (task.variant ? ` (${task.variant})` : '');
         if (task.status === 'done') {
           triggerNotification('Task Completed', `${task.title}\n${agent}`);
         } else if (task.status === 'inreview') {

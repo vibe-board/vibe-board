@@ -29,7 +29,15 @@ const COLLAPSED_SIZE = 0; // percentage (0-100)
  * AuxRouter - Handles nested AnimatePresence for preview/diffs transitions.
  * Terminal is kept alive (mounted but hidden) to preserve xterm.js state and WebSocket.
  */
-function AuxRouter({ mode, aux, terminal }: { mode: LayoutMode; aux: ReactNode; terminal?: ReactNode }) {
+function AuxRouter({
+  mode,
+  aux,
+  terminal,
+}: {
+  mode: LayoutMode;
+  aux: ReactNode;
+  terminal?: ReactNode;
+}) {
   const hasEverMountedTerminal = useRef(false);
   if (mode === 'terminal' || terminal) {
     hasEverMountedTerminal.current = true;
@@ -97,7 +105,14 @@ function RightWorkArea({
   };
 
   const hasAux = mode !== null;
-  const auxLabel = mode === 'preview' ? 'Preview' : mode === 'diffs' ? 'Diffs' : mode === 'commits' ? 'Commits' : 'Terminal';
+  const auxLabel =
+    mode === 'preview'
+      ? 'Preview'
+      : mode === 'diffs'
+        ? 'Diffs'
+        : mode === 'commits'
+          ? 'Commits'
+          : 'Terminal';
 
   return (
     <div className="h-full min-h-0 flex flex-col">

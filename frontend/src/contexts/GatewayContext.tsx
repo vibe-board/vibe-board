@@ -12,10 +12,7 @@ import {
   type ReactNode,
 } from 'react';
 import { E2EEManager, E2EEConnection, type MachineStatus } from '@/lib/e2ee';
-import {
-  detectGatewayMode,
-  setGatewayConnection,
-} from '@/lib/gatewayMode';
+import { detectGatewayMode, setGatewayConnection } from '@/lib/gatewayMode';
 
 export type GatewayPhase =
   | 'detecting'
@@ -268,9 +265,7 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
         setPairError(null);
         setPhase('machine_select');
       } catch (e) {
-        setPairError(
-          e instanceof Error ? e.message : 'Invalid master secret'
-        );
+        setPairError(e instanceof Error ? e.message : 'Invalid master secret');
       }
     },
     [manager]

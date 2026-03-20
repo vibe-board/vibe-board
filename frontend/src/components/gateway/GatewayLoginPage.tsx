@@ -90,11 +90,7 @@ export function GatewayLoginPage() {
           disabled={authLoading}
           className="gateway-button-primary"
         >
-          {authLoading
-            ? 'Loading...'
-            : isSignupMode
-              ? 'Sign Up'
-              : 'Sign In'}
+          {authLoading ? 'Loading...' : isSignupMode ? 'Sign Up' : 'Sign In'}
         </button>
       </form>
 

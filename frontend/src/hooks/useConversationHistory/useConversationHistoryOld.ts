@@ -630,7 +630,11 @@ export const useConversationHistoryOld = ({
       }
 
       return localDisplayedExecutionProcesses;
-    }, [getHistoricProcesses, preloadNextBatch, loadEntriesForHistoricExecutionProcess]);
+    }, [
+      getHistoricProcesses,
+      preloadNextBatch,
+      loadEntriesForHistoricExecutionProcess,
+    ]);
 
   // Load more historic entries - use preloaded cache if available
   const loadMore = useCallback(async () => {
@@ -717,7 +721,13 @@ export const useConversationHistoryOld = ({
     if (stillRemaining.length > 0) {
       preloadNextBatch();
     }
-  }, [isLoadingMore, hasMore, emitEntries, preloadNextBatch, loadEntriesForHistoricExecutionProcess]);
+  }, [
+    isLoadingMore,
+    hasMore,
+    emitEntries,
+    preloadNextBatch,
+    loadEntriesForHistoricExecutionProcess,
+  ]);
 
   const ensureProcessVisible = useCallback((p: ExecutionProcess) => {
     mergeIntoDisplayed((state) => {

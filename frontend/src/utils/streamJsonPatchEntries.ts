@@ -53,7 +53,10 @@ export function streamJsonPatchEntries<E = unknown>(
   let ws: WebSocket | RemoteWs;
   if (conn) {
     const parsed = new URL(url, window.location.origin);
-    ws = conn.openWsStream(parsed.pathname, parsed.search?.substring(1) || undefined);
+    ws = conn.openWsStream(
+      parsed.pathname,
+      parsed.search?.substring(1) || undefined
+    );
   } else {
     // Convert HTTP endpoint to WebSocket endpoint
     const wsUrl = url.replace(/^http/, 'ws');

@@ -70,12 +70,14 @@ export function DiffsPanel({
   const isCommitMode = !!commitSha;
 
   const { diffs: streamDiffs, error: streamError } = useDiffStream(
-    isCommitMode ? null : selectedAttempt?.id ?? null,
+    isCommitMode ? null : (selectedAttempt?.id ?? null),
     true
   );
-  const { fileCount: streamFileCount, added: streamAdded, deleted: streamDeleted } = useDiffSummary(
-    isCommitMode ? null : selectedAttempt?.id ?? null
-  );
+  const {
+    fileCount: streamFileCount,
+    added: streamAdded,
+    deleted: streamDeleted,
+  } = useDiffSummary(isCommitMode ? null : (selectedAttempt?.id ?? null));
 
   const {
     data: commitDiffs,
@@ -98,9 +100,7 @@ export function DiffsPanel({
       ? String(commitError)
       : null
     : streamError;
-  const loading = isCommitMode
-    ? commitLoading
-    : loadingState === 'loading';
+  const loading = isCommitMode ? commitLoading : loadingState === 'loading';
   const fileCount = isCommitMode ? diffs.length : streamFileCount;
   const added = isCommitMode
     ? diffs.reduce((sum, d) => sum + (d.additions ?? 0), 0)
@@ -243,31 +243,33 @@ export function DiffsPanelContent({
                 <>
                   <DiffViewSwitch />
                   <div className="h-4 w-px bg-border" />
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="icon"
-                      onClick={handleCollapseAll}
-                      aria-pressed={allCollapsed}
-                      aria-label={
-                        allCollapsed
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="icon"
+                          onClick={handleCollapseAll}
+                          aria-pressed={allCollapsed}
+                          aria-label={
+                            allCollapsed
+                              ? t('diff.expandAll')
+                              : t('diff.collapseAll')
+                          }
+                        >
+                          {allCollapsed ? (
+                            <ChevronsDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronsUp className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        {allCollapsed
                           ? t('diff.expandAll')
-                          : t('diff.collapseAll')
-                      }
-                    >
-                      {allCollapsed ? (
-                        <ChevronsDown className="h-4 w-4" />
-                      ) : (
-                        <ChevronsUp className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    {allCollapsed ? t('diff.expandAll') : t('diff.collapseAll')}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+                          : t('diff.collapseAll')}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </>
               )}
             </>

@@ -70,10 +70,7 @@ export class RemoteWs {
   /** Send string data to remote */
   send(data: string | ArrayBuffer | Blob): void {
     if (this.readyState !== RemoteWs.OPEN) {
-      throw new DOMException(
-        'WebSocket is not open',
-        'InvalidStateError'
-      );
+      throw new DOMException('WebSocket is not open', 'InvalidStateError');
     }
     // Convert to base64 string for the bridge protocol
     let str: string;

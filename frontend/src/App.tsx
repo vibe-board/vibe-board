@@ -116,57 +116,60 @@ function AppContent() {
         <SearchProvider>
           <TerminalProvider>
             <SentryRoutes>
-            {/* VS Code full-page logs route (outside NormalLayout for minimal UI) */}
-            <Route
-              path="/local-projects/:projectId/tasks/:taskId/attempts/:attemptId/full"
-              element={
-                <LegacyDesignScope>
-                  <FullAttemptLogsPage />
-                </LegacyDesignScope>
-              }
-            />
+              {/* VS Code full-page logs route (outside NormalLayout for minimal UI) */}
+              <Route
+                path="/local-projects/:projectId/tasks/:taskId/attempts/:attemptId/full"
+                element={
+                  <LegacyDesignScope>
+                    <FullAttemptLogsPage />
+                  </LegacyDesignScope>
+                }
+              />
 
-            <Route
-              element={
-                <LegacyDesignScope>
-                  <NormalLayout />
-                </LegacyDesignScope>
-              }
-            >
-              <Route path="/" element={<Projects />} />
-              <Route path="/local-projects" element={<Projects />} />
-              <Route path="/local-projects/:projectId" element={<Projects />} />
-              <Route path="/migration" element={<Migration />} />
               <Route
-                path="/local-projects/:projectId/tasks"
-                element={<ProjectTasks />}
-              />
-              <Route path="/settings/*" element={<SettingsLayout />}>
-                <Route index element={<Navigate to="general" replace />} />
-                <Route path="general" element={<GeneralSettings />} />
-                <Route path="projects" element={<ProjectSettings />} />
-                <Route path="repos" element={<ReposSettings />} />
+                element={
+                  <LegacyDesignScope>
+                    <NormalLayout />
+                  </LegacyDesignScope>
+                }
+              >
+                <Route path="/" element={<Projects />} />
+                <Route path="/local-projects" element={<Projects />} />
                 <Route
-                  path="organizations"
-                  element={<OrganizationSettings />}
+                  path="/local-projects/:projectId"
+                  element={<Projects />}
                 />
-                <Route path="agents" element={<AgentSettings />} />
-                <Route path="mcp" element={<McpSettings />} />
+                <Route path="/migration" element={<Migration />} />
+                <Route
+                  path="/local-projects/:projectId/tasks"
+                  element={<ProjectTasks />}
+                />
+                <Route path="/settings/*" element={<SettingsLayout />}>
+                  <Route index element={<Navigate to="general" replace />} />
+                  <Route path="general" element={<GeneralSettings />} />
+                  <Route path="projects" element={<ProjectSettings />} />
+                  <Route path="repos" element={<ReposSettings />} />
+                  <Route
+                    path="organizations"
+                    element={<OrganizationSettings />}
+                  />
+                  <Route path="agents" element={<AgentSettings />} />
+                  <Route path="mcp" element={<McpSettings />} />
+                </Route>
+                <Route
+                  path="/mcp-servers"
+                  element={<Navigate to="/settings/mcp" replace />}
+                />
+                <Route
+                  path="/local-projects/:projectId/tasks/:taskId"
+                  element={<ProjectTasks />}
+                />
+                <Route
+                  path="/local-projects/:projectId/tasks/:taskId/attempts/:attemptId"
+                  element={<ProjectTasks />}
+                />
               </Route>
-              <Route
-                path="/mcp-servers"
-                element={<Navigate to="/settings/mcp" replace />}
-              />
-              <Route
-                path="/local-projects/:projectId/tasks/:taskId"
-                element={<ProjectTasks />}
-              />
-              <Route
-                path="/local-projects/:projectId/tasks/:taskId/attempts/:attemptId"
-                element={<ProjectTasks />}
-              />
-            </Route>
-          </SentryRoutes>
+            </SentryRoutes>
           </TerminalProvider>
         </SearchProvider>
       </ThemeProvider>

@@ -20,7 +20,13 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
-import { FolderOpen, Loader2, Volume2, RotateCcw, AlertTriangle } from 'lucide-react';
+import {
+  FolderOpen,
+  Loader2,
+  Volume2,
+  RotateCcw,
+  AlertTriangle,
+} from 'lucide-react';
 import { getNotificationPermission } from '@/hooks/useTaskNotifications';
 import {
   DEFAULT_COMMIT_MESSAGE_PROMPT,
@@ -44,8 +50,8 @@ import ExecutorProfileSelector from '@/components/settings/ExecutorProfileSelect
 
 export function GeneralSettings() {
   const { t } = useTranslation(['settings', 'common']);
-  const [notifPermission, setNotifPermission] = useState(
-    () => getNotificationPermission()
+  const [notifPermission, setNotifPermission] = useState(() =>
+    getNotificationPermission()
   );
 
   // Get language options with proper display names

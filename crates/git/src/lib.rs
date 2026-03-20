@@ -2024,11 +2024,7 @@ impl GitService {
                 .unwrap_or("")
                 .to_string();
 
-            let author = commit
-                .author()
-                .name()
-                .unwrap_or("Unknown")
-                .to_string();
+            let author = commit.author().name().unwrap_or("Unknown").to_string();
 
             let timestamp = {
                 let time = commit.time();
@@ -2076,11 +2072,7 @@ impl GitService {
     }
 
     /// Revert a specific commit by SHA.
-    pub fn revert_commit(
-        &self,
-        worktree_path: &Path,
-        sha: &str,
-    ) -> Result<(), GitServiceError> {
+    pub fn revert_commit(&self, worktree_path: &Path, sha: &str) -> Result<(), GitServiceError> {
         let repo = self.open_repo(worktree_path)?;
         let git_cli = GitCli::new();
 
@@ -2095,7 +2087,9 @@ impl GitService {
 
         // 4. Check if a conflict occurred and auto-abort if so
         if git_cli.is_revert_in_progress(worktree_path)? {
-            let conflicted = git_cli.get_conflicted_files(worktree_path).unwrap_or_default();
+            let conflicted = git_cli
+                .get_conflicted_files(worktree_path)
+                .unwrap_or_default();
             git_cli.abort_revert(worktree_path)?;
             let files_part = if conflicted.is_empty() {
                 String::new()

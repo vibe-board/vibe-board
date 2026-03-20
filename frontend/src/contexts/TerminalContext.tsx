@@ -239,7 +239,11 @@ interface TerminalContextType {
   setActiveTab: (workspaceId: string, tabId: string) => void;
   updateTabTitle: (workspaceId: string, tabId: string, title: string) => void;
   clearWorkspaceTabs: (workspaceId: string) => void;
-  setSessionId: (workspaceId: string, tabId: string, sessionId: string | null) => void;
+  setSessionId: (
+    workspaceId: string,
+    tabId: string,
+    sessionId: string | null
+  ) => void;
 }
 
 const TerminalContext = createContext<TerminalContextType | null>(null);
@@ -249,7 +253,11 @@ interface TerminalProviderProps {
 }
 
 export function TerminalProvider({ children }: TerminalProviderProps) {
-  const [state, dispatch] = useReducer(terminalReducer, null, loadPersistedState);
+  const [state, dispatch] = useReducer(
+    terminalReducer,
+    null,
+    loadPersistedState
+  );
 
   // Persist state to localStorage on every change
   useEffect(() => {
@@ -289,9 +297,12 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
     [state.closedWorkspaces]
   );
 
-  const createTab = useCallback((workspaceId: string, taskId: string, cwd: string) => {
-    dispatch({ type: 'CREATE_TAB', workspaceId, taskId, cwd });
-  }, []);
+  const createTab = useCallback(
+    (workspaceId: string, taskId: string, cwd: string) => {
+      dispatch({ type: 'CREATE_TAB', workspaceId, taskId, cwd });
+    },
+    []
+  );
 
   const closeTab = useCallback((workspaceId: string, tabId: string) => {
     dispatch({ type: 'CLOSE_TAB', workspaceId, tabId });

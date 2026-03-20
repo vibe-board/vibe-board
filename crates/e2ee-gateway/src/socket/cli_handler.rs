@@ -1,7 +1,7 @@
 use axum::{
     extract::{
-        Query, State, WebSocketUpgrade,
         ws::{Message, WebSocket},
+        Query, State, WebSocketUpgrade,
     },
     response::IntoResponse,
 };
@@ -9,7 +9,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, warn};
 
-use crate::{AppState, services::cli_registry::CliRecord};
+use crate::{services::cli_registry::CliRecord, AppState};
 
 #[derive(Deserialize)]
 pub struct DaemonConnectQuery {

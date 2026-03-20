@@ -72,17 +72,12 @@ function getCssVariable(name: string): string {
  */
 export function getTerminalTheme(): ITheme {
   const background =
-    getCssVariable('--console-background') ||
-    getCssVariable('--bg-secondary');
+    getCssVariable('--console-background') || getCssVariable('--bg-secondary');
   const foreground =
-    getCssVariable('--console-foreground') ||
-    getCssVariable('--text-high');
+    getCssVariable('--console-foreground') || getCssVariable('--text-high');
   const success =
-    getCssVariable('--console-success') ||
-    getCssVariable('--success');
-  const error =
-    getCssVariable('--console-error') ||
-    getCssVariable('--error');
+    getCssVariable('--console-success') || getCssVariable('--success');
+  const error = getCssVariable('--console-error') || getCssVariable('--error');
 
   // Detect if we're in dark mode by checking the class on html element
   const isDark = document.documentElement.classList.contains('dark');

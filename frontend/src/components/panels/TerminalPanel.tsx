@@ -9,7 +9,11 @@ interface TerminalPanelProps {
   cwd: string | null;
 }
 
-export function TerminalPanel({ workspaceId, taskId, cwd }: TerminalPanelProps) {
+export function TerminalPanel({
+  workspaceId,
+  taskId,
+  cwd,
+}: TerminalPanelProps) {
   const {
     getTabsForWorkspace,
     getActiveTab,

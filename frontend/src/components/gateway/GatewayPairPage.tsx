@@ -21,10 +21,7 @@ export function GatewayPairPage() {
           Enter the master secret from your vibe-kanban server.
         </p>
         <div className="gateway-code-block">
-          Run{' '}
-          <code>
-            vibe-kanban login --gateway {window.location.origin}
-          </code>{' '}
+          Run <code>vibe-kanban login --gateway {window.location.origin}</code>{' '}
           on your server to get the master secret.
         </div>
       </div>

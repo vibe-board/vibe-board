@@ -294,12 +294,18 @@ impl ClaudeAgentClient {
                 // Check if this question was already answered via the hook callback
                 // path. If so, short-circuit with the stored answers instead of
                 // creating a duplicate approval that would block forever.
-                if let Some(answers_map) =
-                    self.answered_questions.lock().await.remove(latest_tool_use_id)
+                if let Some(answers_map) = self
+                    .answered_questions
+                    .lock()
+                    .await
+                    .remove(latest_tool_use_id)
                 {
                     let mut updated = input.clone();
                     if let Some(obj) = updated.as_object_mut() {
-                        obj.insert("answers".to_string(), serde_json::Value::Object(answers_map));
+                        obj.insert(
+                            "answers".to_string(),
+                            serde_json::Value::Object(answers_map),
+                        );
                     }
                     return Ok(PermissionResult::Allow {
                         updated_input: updated,

@@ -12,6 +12,7 @@
   "scripts": {
     "lint": "pnpm run frontend:lint && pnpm run backend:lint",
     "format": "cargo fmt --all && cd frontend && pnpm run format",
+    "format:check": "cargo fmt --all -- --check && cd frontend && pnpm run format:check",
     "check": "pnpm run frontend:check && pnpm run backend:check",
     "dev": "export FRONTEND_PORT=$(node scripts/setup-dev-environment.js frontend) && export BACKEND_PORT=$(node scripts/setup-dev-environment.js backend) && export VK_ALLOWED_ORIGINS=\"http://localhost:${FRONTEND_PORT}\" && export VITE_VK_SHARED_API_BASE=${VK_SHARED_API_BASE:-} && concurrently \"pnpm run backend:dev:watch\" \"pnpm run frontend:dev\"",
     "test:npm": "./test-npm-package.sh",
@@ -36,10 +37,12 @@
     "remote:prepare-db": "cd crates/remote && bash scripts/prepare-db.sh",
     "remote:prepare-db:check": "cd crates/remote && bash scripts/prepare-db.sh --check",
     "gateway:build": "cd frontend && pnpm run build && cd .. && cargo build --release --bin e2ee-gateway",
-    "gateway:dev": "RUST_LOG=debug cargo run --bin e2ee-gateway"
+    "gateway:dev": "RUST_LOG=debug cargo run --bin e2ee-gateway",
+    "prepare": "husky"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
+    "husky": "^9.1.7",
     "vite": "^6.3.5"
   },
   "engines": {

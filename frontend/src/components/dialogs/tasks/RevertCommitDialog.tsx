@@ -69,7 +69,11 @@ const RevertCommitDialogImpl = NiceModal.create<RevertCommitDialogProps>(
     const shortSha = commit.sha.substring(0, 7);
 
     return (
-      <Dialog open={modal.visible} onOpenChange={handleOpenChange} className="sm:max-w-md">
+      <Dialog
+        open={modal.visible}
+        onOpenChange={handleOpenChange}
+        className="sm:max-w-md"
+      >
         <DialogContent>
           <DialogHeader>
             <div className="flex items-center gap-3">

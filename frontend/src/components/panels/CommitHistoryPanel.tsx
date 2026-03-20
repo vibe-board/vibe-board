@@ -44,7 +44,12 @@ interface CommitItemProps {
   onViewDiff?: (sha: string) => void;
 }
 
-function CommitItem({ commit, attemptId, repoId, onViewDiff }: CommitItemProps) {
+function CommitItem({
+  commit,
+  attemptId,
+  repoId,
+  onViewDiff,
+}: CommitItemProps) {
   const { t } = useTranslation('tasks');
   const queryClient = useQueryClient();
 
@@ -97,7 +102,8 @@ function CommitItem({ commit, attemptId, repoId, onViewDiff }: CommitItemProps) 
             -{commit.deletions}
           </span>
           <span>
-            ({commit.files_changed} {commit.files_changed === 1 ? 'file' : 'files'})
+            ({commit.files_changed}{' '}
+            {commit.files_changed === 1 ? 'file' : 'files'})
           </span>
         </div>
       </div>
@@ -131,9 +137,7 @@ function CommitItem({ commit, attemptId, repoId, onViewDiff }: CommitItemProps) 
                 <Undo2 className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {t('commit.revert')}
-            </TooltipContent>
+            <TooltipContent side="bottom">{t('commit.revert')}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </div>
@@ -147,10 +151,11 @@ export function CommitHistoryPanel({
   onViewDiff,
 }: CommitHistoryPanelProps) {
   const { t } = useTranslation('tasks');
-  const { data: commits, isLoading, error } = useCommitHistory(
-    selectedAttempt?.id ?? null,
-    repoId
-  );
+  const {
+    data: commits,
+    isLoading,
+    error,
+  } = useCommitHistory(selectedAttempt?.id ?? null, repoId);
 
   if (error) {
     return (

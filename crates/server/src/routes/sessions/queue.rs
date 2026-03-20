@@ -1,6 +1,8 @@
 use axum::{
-    Extension, Json, extract::State,
-    response::Json as ResponseJson, routing::{MethodRouter, get},
+    Extension, Json,
+    extract::State,
+    response::Json as ResponseJson,
+    routing::{MethodRouter, get},
 };
 use db::models::{scratch::DraftFollowUpData, session::Session};
 use deployment::Deployment;

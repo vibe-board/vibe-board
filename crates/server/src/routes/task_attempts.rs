@@ -46,9 +46,8 @@ use git::{CommitInfo, ConflictOp, GitCliError, GitService, GitServiceError};
 use git2::BranchType;
 use serde::{Deserialize, Serialize};
 use services::services::{
-    config::DEFAULT_COMMIT_MESSAGE_PROMPT,
-    container::ContainerService, diff_stream, remote_client::RemoteClientError, remote_sync,
-    workspace_manager::WorkspaceManager,
+    config::DEFAULT_COMMIT_MESSAGE_PROMPT, container::ContainerService, diff_stream,
+    remote_client::RemoteClientError, remote_sync, workspace_manager::WorkspaceManager,
 };
 use sqlx::Error as SqlxError;
 use ts_rs::TS;
@@ -56,8 +55,9 @@ use utils::response::ApiResponse;
 use uuid::Uuid;
 
 use crate::{
-    DeploymentImpl, error::ApiError, middleware::load_workspace_middleware,
-    middleware::load_workspace_middleware_with_extra_param,
+    DeploymentImpl,
+    error::ApiError,
+    middleware::{load_workspace_middleware, load_workspace_middleware_with_extra_param},
     routes::task_attempts::gh_cli_setup::GhCliSetupError,
 };
 
@@ -836,12 +836,7 @@ pub async fn merge_task_attempt(
                     .git()
                     .get_branch_oid(&repo.path, &workspace.branch)
                     .ok()
-                    .and_then(|sha| {
-                        deployment
-                            .git()
-                            .get_commit_subject(&repo.path, &sha)
-                            .ok()
-                    })
+                    .and_then(|sha| deployment.git().get_commit_subject(&repo.path, &sha).ok())
             } else {
                 None
             }
@@ -1359,7 +1354,9 @@ pub async fn revert_commit(
     let workspace_dir = Path::new(&container_ref);
     let worktree_path = repo_worktree_path(workspace_dir, &workspace, &repo);
 
-    deployment.git().revert_commit(&worktree_path, &params.sha)?;
+    deployment
+        .git()
+        .revert_commit(&worktree_path, &params.sha)?;
 
     Ok(ResponseJson(ApiResponse::success(())))
 }

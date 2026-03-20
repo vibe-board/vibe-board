@@ -1,10 +1,10 @@
+use std::{collections::HashMap, sync::Arc};
+
 use anyhow::{Context, Result};
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{error, info, warn};
 
@@ -159,8 +159,16 @@ pub async fn run_bridge(creds: &Credentials, local_port: u16) -> Result<()> {
                 let ws_conns = ws_connections.clone();
 
                 tokio::spawn(async move {
-                    if let Err(e) =
-                        handle_forward(payload, &client, &base, &crypto_content_pk, &crypto_content_sk, &tx, &ws_conns).await
+                    if let Err(e) = handle_forward(
+                        payload,
+                        &client,
+                        &base,
+                        &crypto_content_pk,
+                        &crypto_content_sk,
+                        &tx,
+                        &ws_conns,
+                    )
+                    .await
                     {
                         warn!("Forward handling error: {e}");
                     }
@@ -207,8 +215,8 @@ async fn handle_forward(
         return Ok(());
     }
 
-    let request: e2ee_core::BridgeRequest = serde_json::from_value(payload)
-        .context("Failed to parse BridgeRequest")?;
+    let request: e2ee_core::BridgeRequest =
+        serde_json::from_value(payload).context("Failed to parse BridgeRequest")?;
 
     match request {
         e2ee_core::BridgeRequest::HttpRequest {
@@ -240,17 +248,22 @@ async fn handle_forward(
                 .collect();
             let body_bytes = resp.bytes().await?;
 
-            send_response(tx, e2ee_core::BridgeResponse::HttpResponse {
-                id,
-                status,
-                headers: resp_headers,
-                body: BASE64.encode(&body_bytes),
-            });
+            send_response(
+                tx,
+                e2ee_core::BridgeResponse::HttpResponse {
+                    id,
+                    status,
+                    headers: resp_headers,
+                    body: BASE64.encode(&body_bytes),
+                },
+            );
         }
 
         e2ee_core::BridgeRequest::WsOpen { id, path, query } => {
             let ws_url = {
-                let base = local_base.replace("http://", "ws://").replace("https://", "wss://");
+                let base = local_base
+                    .replace("http://", "ws://")
+                    .replace("https://", "wss://");
                 match query {
                     Some(q) => format!("{base}{path}?{q}"),
                     None => format!("{base}{path}"),
@@ -277,16 +290,22 @@ async fn handle_forward(
                         while let Some(msg) = ws_recv.next().await {
                             match msg {
                                 Ok(Message::Text(text)) => {
-                                    send_response(&tx_recv, e2ee_core::BridgeResponse::WsData {
-                                        id,
-                                        data: BASE64.encode(text.as_bytes()),
-                                    });
+                                    send_response(
+                                        &tx_recv,
+                                        e2ee_core::BridgeResponse::WsData {
+                                            id,
+                                            data: BASE64.encode(text.as_bytes()),
+                                        },
+                                    );
                                 }
                                 Ok(Message::Binary(bin)) => {
-                                    send_response(&tx_recv, e2ee_core::BridgeResponse::WsData {
-                                        id,
-                                        data: BASE64.encode(&bin),
-                                    });
+                                    send_response(
+                                        &tx_recv,
+                                        e2ee_core::BridgeResponse::WsData {
+                                            id,
+                                            data: BASE64.encode(&bin),
+                                        },
+                                    );
                                 }
                                 Ok(Message::Close(_)) => break,
                                 Err(_) => break,
@@ -309,10 +328,13 @@ async fn handle_forward(
                 }
                 Err(e) => {
                     warn!("WS sub-connection failed for id={id}: {e}");
-                    send_response(tx, e2ee_core::BridgeResponse::Error {
-                        id,
-                        message: format!("WebSocket connect failed: {e}"),
-                    });
+                    send_response(
+                        tx,
+                        e2ee_core::BridgeResponse::Error {
+                            id,
+                            message: format!("WebSocket connect failed: {e}"),
+                        },
+                    );
                 }
             }
         }
@@ -340,10 +362,13 @@ async fn handle_forward(
         }
 
         e2ee_core::BridgeRequest::SseSubscribe { id, .. } => {
-            send_response(tx, e2ee_core::BridgeResponse::Error {
-                id,
-                message: "SSE not yet supported".to_string(),
-            });
+            send_response(
+                tx,
+                e2ee_core::BridgeResponse::Error {
+                    id,
+                    message: "SSE not yet supported".to_string(),
+                },
+            );
         }
 
         e2ee_core::BridgeRequest::SseUnsubscribe { .. } => {}

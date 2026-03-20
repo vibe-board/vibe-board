@@ -375,7 +375,10 @@ export function ProjectTasks() {
 
   const rawMode = searchParams.get('view') as LayoutMode;
   const mode: LayoutMode =
-    rawMode === 'preview' || rawMode === 'diffs' || rawMode === 'commits' || rawMode === 'terminal'
+    rawMode === 'preview' ||
+    rawMode === 'diffs' ||
+    rawMode === 'commits' ||
+    rawMode === 'terminal'
       ? rawMode
       : null;
 
@@ -568,7 +571,13 @@ export function ProjectTasks() {
    */
   const cycleView = useCallback(
     (direction: 'forward' | 'backward' = 'forward') => {
-      const order: LayoutMode[] = [null, 'preview', 'diffs', 'commits', 'terminal'];
+      const order: LayoutMode[] = [
+        null,
+        'preview',
+        'diffs',
+        'commits',
+        'terminal',
+      ];
       const idx = order.indexOf(mode);
       const next =
         direction === 'forward'
