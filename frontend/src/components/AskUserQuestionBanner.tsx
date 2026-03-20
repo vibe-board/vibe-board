@@ -189,16 +189,16 @@ export const AskUserQuestionBanner = forwardRef<
       {currentQuestion && (
         <div className="px-double pb-base">
           <div className="flex items-center gap-base mb-base">
-            <span className="text-xs font-medium text-low bg-secondary px-1 py-0.5 rounded">
+            <span className="text-sm font-medium text-low bg-secondary px-2 py-1 rounded">
               {currentQuestion.header}
             </span>
             {currentQuestion.multiSelect && (
-              <span className="text-xs text-low">
+              <span className="text-sm text-low">
                 {t('askQuestion.selectMultiple')}
               </span>
             )}
           </div>
-          <p className="text-sm font-medium text-normal mb-base">
+          <p className="text-base font-medium text-normal mb-base">
             {currentQuestion.question}
           </p>
           {currentQuestion.options.length > 0 ? (
@@ -215,7 +215,7 @@ export const AskUserQuestionBanner = forwardRef<
                       disabled={disabled}
                       onClick={() => handleSelectOption(opt.label)}
                       className={`
-                        group relative rounded-md border px-2.5 py-1.5 text-xs transition-all
+                        group relative rounded-md border px-4 py-2 text-sm transition-all
                         ${
                           isSelected
                             ? 'border-brand bg-brand/10 text-normal'
@@ -235,7 +235,7 @@ export const AskUserQuestionBanner = forwardRef<
                   type="button"
                   disabled={disabled}
                   onClick={handleConfirmMultiSelect}
-                  className="mt-2 rounded-md bg-brand px-3 py-1 text-xs font-medium text-white hover:bg-brand/90 transition-colors disabled:opacity-50"
+                  className="mt-4 rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand/90 transition-colors disabled:opacity-50"
                 >
                   {t('askQuestion.confirmSelection')}
                 </button>
@@ -255,13 +255,13 @@ export const AskUserQuestionBanner = forwardRef<
                 }}
                 disabled={disabled}
                 placeholder="Type your answer..."
-                className="flex-1 px-2 py-1.5 text-xs rounded-md border border-border bg-secondary text-normal placeholder:text-low focus:outline-none focus:ring-1 focus:ring-brand"
+                className="flex-1 px-3 py-2 text-sm rounded-md border border-border bg-secondary text-normal placeholder:text-low focus:outline-none focus:ring-1 focus:ring-brand"
               />
               <button
                 type="button"
                 disabled={disabled || !customInput.trim()}
                 onClick={handleSubmitCustomInput}
-                className="rounded-md bg-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-brand/90 transition-colors disabled:opacity-50"
+                className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand/90 transition-colors disabled:opacity-50"
               >
                 {t('askQuestion.submit', 'Submit')}
               </button>
