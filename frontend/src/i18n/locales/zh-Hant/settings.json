@@ -215,8 +215,11 @@
           "fileHelper": "選擇任務完成時播放的音效。點擊音量按鈕可預覽。"
         },
         "push": {
+          "deniedHelp": "Permission was denied. Please allow notifications for this site in your browser settings, then reload the page.",
+          "helper": "任務嘗試完成執行時顯示系統通知。",
           "label": "推播通知",
-          "helper": "任務嘗試完成執行時顯示系統通知。"
+          "permissionStatus": "Browser notification permission: {{status}}",
+          "resetPrompt": "Request permission"
         }
       },
       "messageInput": {
