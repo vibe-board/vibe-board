@@ -50,6 +50,12 @@ Use **Create & Start** to add the task and immediately create a task attempt wit
 To monitor your task as it executes, see [Monitoring Task Execution](/core-features/monitoring-task-execution). To understand when you might need multiple attempts, see [New Task Attempts](/core-features/new-task-attempts).
 </Note>
 
+### Retry on Executor Change
+
+When you send a follow-up message with a different executor selected, Vibe Kanban automatically detects the change and creates a new task carrying over the full conversation context from the previous task. A confirmation dialog appears before the retry happens, showing which executor and variant will be used.
+
+This is useful when you want to switch agents mid-task — for example, starting with a planning variant and switching to a coding variant, or moving from one agent to another entirely.
+
 ## Creating Tasks via MCP Clients
 
 <Warning>

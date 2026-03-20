@@ -82,7 +82,7 @@ After each coding agent turn, Vibe Kanban displays task duration statistics show
 
 ### 8. Agent Info Display
 
-When a task is running, the task panel displays the executor and agent information (e.g., which agent is running and which variant is being used). The agent and variant selectors are hidden while the task is executing to prevent accidental changes.
+When a task is running, the task panel displays the executor and agent information (e.g., which agent is running and which variant is being used). Task cards and the task panel also show the configuration variant (e.g., "default", "plan") alongside the executor name, so you can quickly see which configuration was used for each task.
 
 ## Interacting During Execution
 
@@ -140,6 +140,32 @@ When supported by your coding agent, you can edit previous messages in the conve
 <Warning>
 Editing a message reverts all subsequent agent work. Use this carefully when you need to correct or clarify earlier instructions.
 </Warning>
+
+## Terminal Panel
+
+Vibe Kanban includes an integrated terminal panel that gives you shell access directly within the task view. You can open it as a right-panel mode alongside the task conversation.
+
+**Opening the terminal:**
+Click the terminal icon in the panel switcher on the right side of the task view to open the terminal panel.
+
+**Terminal tabs:**
+Each tab runs a real PTY shell in the task's worktree. You can open multiple tabs for parallel work — for example, one for running a development server and another for running tests.
+
+**Persistent sessions:**
+Closing the terminal panel does not kill your shell sessions. When you reopen the panel, it reconnects to the same sessions and replays the full output history from a 1 MB ring buffer. This means you can close the panel to focus on the agent conversation and come back later without losing your place.
+
+**Auto-close on exit:**
+When a shell process terminates (e.g., you type `exit`), the tab automatically closes with a notification.
+
+**Tab management:**
+Closing a tab explicitly kills the associated session. Tab numbers increase strictly — tab 1, 2, 3 — and are never reused within a panel session.
+
+**Theme sync:**
+The terminal theme automatically follows the application's light or dark theme setting.
+
+<Tip>
+The terminal panel is especially useful for running commands you don't want to send through the agent — quick file checks, git status, or restarting a dev server.
+</Tip>
 
 ## Viewing Processes
 

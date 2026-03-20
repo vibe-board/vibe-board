@@ -40,6 +40,23 @@ Configure a dedicated agent profile for generating commit messages when merging 
 If not configured, Vibe Kanban uses the task's coding agent for commit message generation.
 </Info>
 
+### Custom Commit Message Prompt
+
+You can customise the prompt used to generate merge commit messages. Toggle **Use custom commit prompt** to enable editing, then modify the prompt text in the text area that appears.
+
+The prompt supports two template variables:
+
+- `{current_branch}` — the name of the branch being merged
+- `{target_branch}` — the name of the target branch
+
+When the toggle is off, Vibe Kanban uses the built-in default prompt.
+
+### Single-Commit Optimisation
+
+By default, when a task branch has exactly one commit ahead of the target branch, Vibe Kanban reuses that commit's message directly instead of invoking the AI. This avoids unnecessary token usage for simple changes.
+
+Toggle **Generate commit message for single commit** to force AI generation even for single-commit branches.
+
 ## Editor Integration
 
 Configure integration with your preferred code editor for a seamless development workflow.
@@ -114,7 +131,26 @@ Set a prefix for auto-generated branch names (e.g., `vk` results in `vk/task-nam
 
 ## Notifications
 
-Toggle sound effects and push notifications to stay informed about task status changes.
+Configure sound effects and browser push notifications to stay informed about task status changes.
+
+### Sound Notifications
+
+Enable or disable sound effects when tasks complete or require attention. You can select from several sound files and preview them using the play button next to the selector.
+
+### Browser Push Notifications
+
+Enable browser push notifications for task completion, approval requests, and cancellation events. When enabled, Vibe Kanban sends desktop notifications using the browser's Notification API.
+
+**Permission management:**
+
+- When you enable push notifications, the Settings page displays the current browser permission status
+- If permission is **default**, a button appears to request permission from the browser
+- If permission is **denied**, a warning is shown — you'll need to reset the permission in your browser's site settings
+- The app never auto-prompts for permission; you control when to grant it
+
+<Note>
+Browser push notifications are particularly useful when accessing Vibe Kanban remotely via E2EE gateway, as the web UI may be open in a background tab.
+</Note>
 
 ## Telemetry
 

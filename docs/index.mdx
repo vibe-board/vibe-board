@@ -36,10 +36,34 @@ This repository is a **fork of [vibe-kanban](https://github.com/BloopAI/vibe-kan
 
 This fork adds the following features on top of the legacy UI:
 
+### Agent Configuration
+
 - **ACP-based agents support** — Added 11 new agent executors: auggie, cline, fast_agent, goose, junie, kilo, kimi, mistral_vibe, nova, qoder, stakpak. All agents support MCP configuration.
-- **base_command_override for all agents** — All agents now support `base_command_override` to control the agent version, replacing executor-specific version fields.
-- **Generate merge commit message by agent** — Use an AI agent to draft merge commit messages for you.
-- **Commit after linter changed** — Automatically commit when the linter has made changes to your code.
+- **base_command_override for all agents** — All agents now support `base_command_override` to control the agent version, replacing executor-specific version fields. Usage: Set `base_command_override` in the agent configuration to specify a custom command or version.
+- **Kilo Agent Model Parameter** — Added `model` configuration parameter to the Kilo agent. Usage: Set the `model` field in Kilo agent configuration to specify which model to use.
+- **Cline Agent Model Parameter** — Added `model` parameter and updated version for Cline agent. Usage: Configure the `model` field in Cline agent settings.
+
+### Git & Commit Features
+
+- **Commit history panel** — View git commit history with diff viewing and revert support. Usage: Click the "Commit History" tab in the task panel to see all commits, view diffs, and revert changes if needed.
+- **Generate merge commit message by agent** — Use an AI agent to draft merge commit messages for you. Usage: When merging, click "Generate with AI" to create a commit message based on the changes.
+- **Custom commit message prompts** — Customise the AI prompt used to generate merge commit messages, with template variables `{current_branch}` and `{target_branch}`. Usage: Toggle "Use custom commit prompt" in Settings to edit the prompt, and enable "Generate commit message for single commit" to force AI generation for single-commit branches.
+- **Commit after linter changed** — Automatically commit when the linter has made changes to your code. Usage: Enable in settings to auto-commit linter fixes.
+
+### Terminal & Execution
+
+- **Terminal panel with persistent sessions** — Open multiple terminal tabs with real PTY shells. Sessions persist across panel toggles and reconnect with full history. Usage: Click the "Terminal" tab in the task panel to open a terminal session.
+- **Continue button** — Retry or continue failed/cancelled tasks directly from the action card. Usage: Click the "Continue" button on failed or cancelled tasks to retry execution.
+
+### Remote Access & Notifications
+
+- **E2EE gateway web UI** — End-to-end encrypted remote access with login, machine selection, and device pairing. Usage: Access the gateway URL, log in, select a machine, and enter your master secret to use the full interface.
+- **Browser notifications** — Push notifications for task completion, approval, and cancellation in SSH tunnel and remote scenarios. Usage: Enable push notifications in Settings and grant browser permission when prompted.
+
+### Task Management
+
+- **Task configuration variant display** — Display configuration variant on task cards and panels. Usage: View the configuration variant directly on task cards to quickly identify task settings.
+- **Copy worktree path button** — Copy worktree path button moved to shared task header for easier access. Usage: Click the copy button in the task header to copy the worktree path to clipboard.
 
 ## Need Help?
 
