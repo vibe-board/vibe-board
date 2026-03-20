@@ -215,8 +215,11 @@
           "fileHelper": "Elige el sonido que se reproducirá al completar las tareas. Haz clic en el botón de volumen para escucharlo."
         },
         "push": {
+          "deniedHelp": "Permission was denied. Please allow notifications for this site in your browser settings, then reload the page.",
+          "helper": "Muestra notificaciones del sistema cuando las tareas terminan de ejecutarse.",
           "label": "Notificaciones Push",
-          "helper": "Muestra notificaciones del sistema cuando las tareas terminan de ejecutarse."
+          "permissionStatus": "Browser notification permission: {{status}}",
+          "resetPrompt": "Request permission"
         }
       },
       "messageInput": {

@@ -215,8 +215,11 @@
           "fileHelper": "タスク完了時に再生する音声を選択してください。音量ボタンをクリックしてプレビューできます。"
         },
         "push": {
+          "deniedHelp": "Permission was denied. Please allow notifications for this site in your browser settings, then reload the page.",
+          "helper": "タスク試行の実行が完了したときにシステム通知を表示します。",
           "label": "プッシュ通知",
-          "helper": "タスク試行の実行が完了したときにシステム通知を表示します。"
+          "permissionStatus": "Browser notification permission: {{status}}",
+          "resetPrompt": "Request permission"
         }
       },
       "messageInput": {
