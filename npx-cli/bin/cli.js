@@ -175,6 +175,10 @@ async function main() {
   const isMcpMode = args.includes("--mcp");
   const isReviewMode = args[0] === "review";
   const isGatewayMode = args[0] === "gateway";
+  
+  // Check for server subcommands (login, logout, status) that should be passed to main binary
+  const serverSubcommands = ["login", "logout", "status"];
+  const isServerSubcommand = serverSubcommands.includes(args[0]);
 
   // Non-blocking update check (skip in MCP mode, local dev mode, and when GitHub repo not configured)
   const hasValidReleasesRepo = !GITHUB_RELEASES_REPO.startsWith("__");
@@ -227,12 +231,21 @@ async function main() {
       process.on("SIGTERM", () => proc.kill("SIGTERM"));
     });
   } else {
-    const modeLabel = LOCAL_DEV_MODE ? " (local dev)" : "";
-    console.log(`Starting vibe-kanban v${CLI_VERSION}${modeLabel}...`);
     await extractAndRun("vibe-kanban", (bin) => {
-      if (platform === "win32") {
-        execSync(`"${bin}"`, { stdio: "inherit" });
+      if (isServerSubcommand) {
+        // Pass subcommand and its arguments to the main binary
+        const proc = spawn(bin, args, { stdio: "inherit" });
+        proc.on("exit", (c) => process.exit(c || 0));
+        proc.on("error", (e) => {
+          console.error("Server error:", e.message);
+          process.exit(1);
+        });
+        process.on("SIGINT", () => proc.kill("SIGINT"));
+        process.on("SIGTERM", () => proc.kill("SIGTERM"));
       } else {
+        // Start server without arguments
+        const modeLabel = LOCAL_DEV_MODE ? " (local dev)" : "";
+        console.log(`Starting vibe-kanban v${CLI_VERSION}${modeLabel}...`);
         execSync(`"${bin}"`, { stdio: "inherit" });
       }
     });
