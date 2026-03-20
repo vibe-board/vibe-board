@@ -307,6 +307,38 @@
           "label": "Habilitar Beta de Workspaces",
           "helper": "Usa la nueva interfaz de workspaces al ver intentos de tareas. Las tareas se abrirán primero en la vista de tareas, y los intentos se abrirán en la nueva vista de workspaces."
         }
+      },
+      "e2ee": {
+        "title": "Configuración E2EE",
+        "description": "Configura el cifrado de extremo a extremo para acceso remoto.",
+        "gateway": {
+          "label": "Pasarela",
+          "urlPlaceholder": "URL de la pasarela (ej: https://gateway.example.com)",
+          "login": "Iniciar sesión",
+          "signup": "Registrarse",
+          "emailPlaceholder": "Correo electrónico",
+          "passwordPlaceholder": "Contraseña",
+          "namePlaceholder": "Nombre (opcional)",
+          "connecting": "Conectando...",
+          "createAccount": "Crear cuenta",
+          "loginButton": "Iniciar sesión",
+          "logout": "Cerrar sesión",
+          "userId": "ID de usuario"
+        },
+        "masterSecret": {
+          "label": "Secreto maestro",
+          "generating": "Generando secreto maestro y registrando dispositivo...",
+          "copy": "Copiar",
+          "copied": "¡Copiado!",
+          "hint": "Usa este secreto para vincular otros dispositivos o herramientas CLI.",
+          "connected": "Conectado",
+          "notConnected": "No conectado"
+        },
+        "machines": {
+          "label": "Dispositivos en línea",
+          "connect": "Conectar"
+        },
+        "close": "Cerrar"
       }
     },
     "agents": {

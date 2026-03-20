@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{error, info, warn};
 
@@ -51,34 +51,62 @@ fn backoff_delay(attempt: u32) -> Duration {
 /// Run the bridge with automatic reconnection on disconnect.
 ///
 /// Retries indefinitely with exponential backoff on transient failures (connection errors,
-/// gateway restarts). Returns immediately on permanent auth failures.
-pub async fn run_bridge(creds: &Credentials, local_port: u16) -> Result<()> {
+/// gateway restarts). Returns immediately on permanent auth failures or cancellation.
+pub async fn run_bridge(
+    creds: &Credentials,
+    local_port: u16,
+    mut cancel_rx: oneshot::Receiver<()>,
+) -> Result<()> {
     let crypto = BridgeCryptoService::from_master_secret_b64(&creds.master_secret)?;
 
     let mut attempt: u32 = 0;
     loop {
+        // Check for cancellation before each connection attempt
+        if cancel_rx.try_recv().is_ok() {
+            info!("Bridge cancelled, shutting down");
+            return Ok(());
+        }
+
         info!(
             "Connecting to gateway: {} (attempt {})",
             creds.gateway_url,
             attempt + 1
         );
 
-        match connect_and_run(&crypto, creds, local_port).await {
-            Ok(()) => {
-                warn!("Gateway connection ended unexpectedly, reconnecting...");
+        // Race the connection attempt against cancellation
+        tokio::select! {
+            result = connect_and_run(&crypto, creds, local_port) => {
+                match result {
+                    Ok(()) => {
+                        warn!("Gateway connection ended unexpectedly, reconnecting...");
+                    }
+                    Err(e) if is_auth_error(&e) => {
+                        error!("E2EE bridge auth failed permanently: {e}");
+                        return Err(e);
+                    }
+                    Err(e) => {
+                        warn!("Gateway connection error: {e}, reconnecting...");
+                    }
+                }
             }
-            Err(e) if is_auth_error(&e) => {
-                error!("E2EE bridge auth failed permanently: {e}");
-                return Err(e);
-            }
-            Err(e) => {
-                warn!("Gateway connection error: {e}, reconnecting...");
+            _ = &mut cancel_rx => {
+                info!("Bridge cancelled during connection, shutting down");
+                return Ok(());
             }
         }
 
         let delay = backoff_delay(attempt);
         info!("Reconnecting in {delay:?}...");
-        tokio::time::sleep(delay).await;
+
+        // Race the backoff sleep against cancellation
+        tokio::select! {
+            _ = tokio::time::sleep(delay) => {}
+            _ = &mut cancel_rx => {
+                info!("Bridge cancelled during backoff, shutting down");
+                return Ok(());
+            }
+        }
+
         attempt = attempt.saturating_add(1);
     }
 }

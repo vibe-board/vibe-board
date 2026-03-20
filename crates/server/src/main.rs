@@ -1,12 +1,10 @@
-mod e2ee_bridge;
-mod e2ee_config;
-mod e2ee_crypto;
+use std::sync::Arc;
 
 use anyhow::{self, Error as AnyhowError};
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use clap::{Parser, Subcommand};
 use deployment::{Deployment, DeploymentError};
-use server::{DeploymentImpl, routes};
+use server::{DeploymentImpl, e2ee_config, e2ee_crypto, e2ee_manager, routes};
 use services::services::container::ContainerService;
 use sqlx::Error as SqlxError;
 use strip_ansi_escapes::strip;
@@ -138,8 +136,6 @@ async fn cmd_server() -> Result<(), VibeKanbanError> {
         }
     });
 
-    let app_router = routes::router(deployment.clone());
-
     let port = std::env::var("BACKEND_PORT")
         .or_else(|_| std::env::var("PORT"))
         .ok()
@@ -160,30 +156,25 @@ async fn cmd_server() -> Result<(), VibeKanbanError> {
 
     tracing::info!("Server running on http://{host}:{actual_port}");
 
-    // If VK_GATEWAY_URL is set and we have credentials, spawn bridge as background task
-    if let Ok(gateway_url) = std::env::var("VK_GATEWAY_URL") {
-        match e2ee_config::load_credentials() {
-            Ok(creds) if creds.gateway_url == gateway_url => {
-                let local_port = actual_port;
-                tokio::spawn(async move {
-                    tracing::info!("Starting E2EE bridge to gateway: {gateway_url}");
-                    if let Err(e) = e2ee_bridge::run_bridge(&creds, local_port).await {
-                        tracing::error!("E2EE bridge error: {e}");
-                    }
-                });
-            }
-            Ok(_) => {
-                tracing::warn!(
-                    "VK_GATEWAY_URL is set but credentials are for a different gateway. Run `vibe-kanban login --gateway {gateway_url}` first."
-                );
-            }
-            Err(_) => {
-                tracing::warn!(
-                    "VK_GATEWAY_URL is set but no credentials found. Run `vibe-kanban login --gateway {gateway_url}` first."
-                );
-            }
+    // Create BridgeManager for E2EE gateway connection lifecycle
+    let bridge_manager = Arc::new(e2ee_manager::BridgeManager::new(actual_port));
+
+    // If we have stored credentials, start bridge immediately
+    match e2ee_config::load_credentials() {
+        Ok(creds) => {
+            bridge_manager.start(&creds).await;
+        }
+        Err(_) => {
+            tracing::info!("No gateway credentials found, bridge will not start");
         }
     }
+
+    // Watch credentials file for changes (e.g., from CLI login while server is running)
+    if let Err(e) = bridge_manager.clone().start_credentials_watcher().await {
+        tracing::warn!("Failed to start credentials file watcher: {e}");
+    }
+
+    let app_router = routes::router(deployment.clone(), bridge_manager.clone());
 
     // Production only: write port file for extension discovery and open browser
     if !cfg!(debug_assertions) {
@@ -302,6 +293,9 @@ async fn cmd_login(gateway_url: &str) -> anyhow::Result<()> {
     println!("  {master_secret_b64}");
     println!();
     println!("Enter this in WebUI Settings > E2EE > Pair Device");
+    println!();
+    println!("The server will automatically connect to the gateway.");
+    println!("If the server is already running, it will detect the new credentials and connect.");
 
     Ok(())
 }

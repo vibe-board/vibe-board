@@ -77,6 +77,9 @@ importers:
       '@noble/ciphers':
         specifier: ^2.1.1
         version: 2.1.1
+      '@noble/ed25519':
+        specifier: ^3.0.1
+        version: 3.0.1
       '@noble/hashes':
         specifier: ^2.0.1
         version: 2.0.1
@@ -1115,6 +1118,9 @@ packages:
   '@noble/ciphers@2.1.1':
     resolution: {integrity: sha512-bysYuiVfhxNJuldNXlFEitTVdNnYUc+XNJZd7Qm2a5j1vZHgY+fazadNFWFaMK/2vye0JVlxV3gHmC0WDfAOQw==}
     engines: {node: '>= 20.19.0'}
+
+  '@noble/ed25519@3.0.1':
+    resolution: {integrity: sha512-t/T8LuK0ym8ALQudCCQCtrRdMSxBnRgHXw+wg+YsSlE6d+on7sX3flqlSJ2mOs9xEuchM36kj9SuX5MG7pXQMA==}
 
   '@noble/hashes@2.0.1':
     resolution: {integrity: sha512-XlOlEbQcE9fmuXxrVTXCTlG2nlRXa9Rj3rr5Ue/+tX+nmkgbX720YHh0VR3hBF9xDvwnb8D2shVGOwNx+ulArw==}
@@ -4978,6 +4984,8 @@ snapshots:
   '@microsoft/fetch-event-source@2.0.1': {}
 
   '@noble/ciphers@2.1.1': {}
+
+  '@noble/ed25519@3.0.1': {}
 
   '@noble/hashes@2.0.1': {}
 

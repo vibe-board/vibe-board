@@ -307,6 +307,38 @@
           "label": "Enable Workspaces Beta",
           "helper": "Use the new workspaces interface when viewing task attempts. Tasks will open in task view first, and attempts will open in the new workspaces view."
         }
+      },
+      "e2ee": {
+        "title": "E2EE Settings",
+        "description": "Configure end-to-end encryption for remote access.",
+        "gateway": {
+          "label": "Gateway",
+          "urlPlaceholder": "Gateway URL (e.g., https://gateway.example.com)",
+          "login": "Login",
+          "signup": "Sign Up",
+          "emailPlaceholder": "Email",
+          "passwordPlaceholder": "Password",
+          "namePlaceholder": "Name (optional)",
+          "connecting": "Connecting...",
+          "createAccount": "Create Account",
+          "loginButton": "Login",
+          "logout": "Logout",
+          "userId": "User ID"
+        },
+        "masterSecret": {
+          "label": "Master Secret",
+          "generating": "Generating master secret and registering device...",
+          "copy": "Copy",
+          "copied": "Copied!",
+          "hint": "Use this secret to pair other devices or CLI tools.",
+          "connected": "Connected",
+          "notConnected": "Not connected"
+        },
+        "machines": {
+          "label": "Online Machines",
+          "connect": "Connect"
+        },
+        "close": "Close"
       }
     },
     "agents": {

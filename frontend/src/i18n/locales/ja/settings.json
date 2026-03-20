@@ -307,6 +307,38 @@
           "label": "ワークスペースベータを有効化",
           "helper": "タスク試行を表示する際に新しいワークスペースインターフェースを使用します。タスクは最初にタスクビューで開き、試行は新しいワークスペースビューで開きます。"
         }
+      },
+      "e2ee": {
+        "title": "E2EE 設定",
+        "description": "リモートアクセスのためのエンドツーエンド暗号化を設定します。",
+        "gateway": {
+          "label": "ゲートウェイ",
+          "urlPlaceholder": "ゲートウェイ URL（例: https://gateway.example.com）",
+          "login": "ログイン",
+          "signup": "サインアップ",
+          "emailPlaceholder": "メールアドレス",
+          "passwordPlaceholder": "パスワード",
+          "namePlaceholder": "名前（任意）",
+          "connecting": "接続中...",
+          "createAccount": "アカウント作成",
+          "loginButton": "ログイン",
+          "logout": "ログアウト",
+          "userId": "ユーザー ID"
+        },
+        "masterSecret": {
+          "label": "マスターシークレット",
+          "generating": "マスターシークレットの生成とデバイスの登録中...",
+          "copy": "コピー",
+          "copied": "コピーしました！",
+          "hint": "このシークレットを使用して他のデバイスやCLIツールをペアリングします。",
+          "connected": "接続済み",
+          "notConnected": "未接続"
+        },
+        "machines": {
+          "label": "オンラインデバイス",
+          "connect": "接続"
+        },
+        "close": "閉じる"
       }
     },
     "agents": {

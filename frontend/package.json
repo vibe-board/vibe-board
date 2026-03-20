@@ -36,6 +36,7 @@
     "@lexical/rich-text": "^0.36.2",
     "@lexical/table": "^0.36.2",
     "@noble/ciphers": "^2.1.1",
+    "@noble/ed25519": "^3.0.1",
     "@noble/hashes": "^2.0.1",
     "@phosphor-icons/react": "^2.1.10",
     "@pierre/diffs": "^1.0.8",

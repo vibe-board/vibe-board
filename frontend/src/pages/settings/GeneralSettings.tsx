@@ -26,6 +26,7 @@ import {
   Volume2,
   RotateCcw,
   AlertTriangle,
+  Shield,
 } from 'lucide-react';
 import { getNotificationPermission } from '@/hooks/useTaskNotifications';
 import {
@@ -46,6 +47,7 @@ import { useTheme } from '@/components/ThemeProvider';
 import { useUserSystem } from '@/components/ConfigProvider';
 import { TagManager } from '@/components/TagManager';
 import { FolderPickerDialog } from '@/components/dialogs/shared/FolderPickerDialog';
+import { E2EESettingsDialog } from '@/components/dialogs/E2EESettingsDialog';
 import ExecutorProfileSelector from '@/components/settings/ExecutorProfileSelector';
 
 export function GeneralSettings() {
@@ -898,6 +900,33 @@ export function GeneralSettings() {
                 {t('settings.general.privacy.telemetry.helper')}
               </p>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>E2EE Gateway</CardTitle>
+          <CardDescription>
+            Connect to a gateway for end-to-end encrypted remote access.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Shield className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">
+                Configure gateway login, device pairing, and machine
+                connectivity.
+              </span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => E2EESettingsDialog.show({})}
+            >
+              Configure
+            </Button>
           </div>
         </CardContent>
       </Card>

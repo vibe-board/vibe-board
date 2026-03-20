@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use utils::assets;
 
 /// Stored credentials for the bridge
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16,18 +17,14 @@ pub struct Credentials {
     pub user_id: String,
 }
 
-/// Get the credentials directory path (~/.vibe-kanban/)
+/// Get the credentials directory path (uses asset_dir which is environment-aware)
 pub fn credentials_dir() -> PathBuf {
-    dirs_or_default().join(".vibe-kanban")
+    assets::asset_dir()
 }
 
-/// Get the credentials file path (~/.vibe-kanban/credentials.json)
+/// Get the credentials file path
 pub fn credentials_path() -> PathBuf {
-    credentials_dir().join("credentials.json")
-}
-
-fn dirs_or_default() -> PathBuf {
-    dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
+    assets::credentials_path()
 }
 
 /// Load stored credentials from disk
