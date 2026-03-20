@@ -232,14 +232,16 @@ function VirtuosoMessageListInner<T, C>(
     return F ? <F /> : null;
   }, []);
 
+  const hasHeader = !!Header;
+  const hasFooter = !!Footer;
+
   const components = useMemo(() => {
     const c: Record<string, ComponentType> = {};
-    if (Header) c.Header = StableHeader;
-    if (Footer) c.Footer = StableFooter;
+    if (hasHeader) c.Header = StableHeader;
+    if (hasFooter) c.Footer = StableFooter;
     return c;
     // Only rebuild when Header/Footer *presence* changes (not identity)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [!!Header, !!Footer]);
+  }, [hasHeader, hasFooter, StableHeader, StableFooter]);
 
   // When data is null and no internal data exists, render an empty placeholder
   if (!dataWithModifier && items.length === 0) {
