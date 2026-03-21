@@ -32,6 +32,9 @@
     "prepack": "pnpm run build:npx",
     "gateway:build": "cd frontend && pnpm run build && cd .. && cargo build --release --bin e2ee-gateway",
     "gateway:dev": "RUST_LOG=debug cargo run --bin e2ee-gateway",
+    "app:dev": "cd tauri-app && pnpm run dev",
+    "app:build": "cd tauri-app && pnpm run build",
+    "app:check": "cd tauri-app && pnpm run check",
     "prepare": "husky"
   },
   "devDependencies": {
