@@ -155,9 +155,105 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  # --- Android APK build (separate job — different toolchain) ---
+  build-android:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- Linux dependencies (needed for Tauri CLI compilation) ---
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      # --- Node.js + pnpm ---
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Get pnpm store directory
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Cache pnpm
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install frontend dependencies
+        run: pnpm install
+
+      # --- Java + Android SDK + NDK ---
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r27
+          link-to-sdk: true
+
+      # --- Rust ---
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add Android Rust targets
+        run: rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
+
+      - name: Cache Rust dependencies
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './frontend/src-tauri -> target'
+          shared-key: tauri-build-android
+
+      # --- Build ---
+      - name: Initialize Tauri Android project
+        working-directory: frontend
+        run: pnpm tauri android init
+
+      - name: Build Android APK
+        working-directory: frontend
+        env:
+          NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          NODE_OPTIONS: '--max-old-space-size=8192'
+        run: pnpm tauri android build --ci --apk --target aarch64
+
+      # --- Upload artifacts ---
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: vibe-board-android-arm64
+          path: |
+            frontend/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: warn
+          retention-days: 14
+
   # --- Summary job: collect all download links ---
   summary:
-    needs: build-tauri
+    needs: [build-tauri, build-android]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -175,5 +271,6 @@ jobs:
           echo "| macOS x64 (Intel) | \`vibe-board-macos-x64\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Linux x64 (.deb/.rpm/.AppImage) | \`vibe-board-linux-x64\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Windows x64 (.msi/.exe) | \`vibe-board-windows-x64\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Android ARM64 (.apk) | \`vibe-board-android-arm64\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "🔗 [Download all artifacts]($RUN_URL#artifacts)" >> $GITHUB_STEP_SUMMARY
