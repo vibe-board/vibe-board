@@ -1,8 +1,5 @@
 import { useMemo } from 'react';
-import {
-  detectPlatform,
-  type Platform,
-} from '@/lib/platform';
+import { detectPlatform, type Platform } from '@/lib/platform';
 
 export function usePlatform() {
   const platform = useMemo<Platform>(() => detectPlatform(), []);
