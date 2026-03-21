@@ -338,7 +338,11 @@
           "label": "Appareils en ligne",
           "connect": "Connecter"
         },
-        "close": "Fermer"
+        "close": "Fermer",
+        "cardTitle": "Passerelle E2EE",
+        "cardDescription": "Connectez-vous à une passerelle pour un accès distant chiffré de bout en bout.",
+        "cardHelper": "Configurez la connexion à la passerelle, l'appairage des appareils et la connectivité des machines.",
+        "configure": "Configurer"
       }
     },
     "agents": {

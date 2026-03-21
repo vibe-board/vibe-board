@@ -906,9 +906,9 @@ export function GeneralSettings() {
 
       <Card>
         <CardHeader>
-          <CardTitle>E2EE Gateway</CardTitle>
+          <CardTitle>{t('settings.general.e2ee.cardTitle')}</CardTitle>
           <CardDescription>
-            Connect to a gateway for end-to-end encrypted remote access.
+            {t('settings.general.e2ee.cardDescription')}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -916,8 +916,7 @@ export function GeneralSettings() {
             <div className="flex items-center gap-2">
               <Shield className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">
-                Configure gateway login, device pairing, and machine
-                connectivity.
+                {t('settings.general.e2ee.cardHelper')}
               </span>
             </div>
             <Button
@@ -925,7 +924,7 @@ export function GeneralSettings() {
               size="sm"
               onClick={() => E2EESettingsDialog.show({})}
             >
-              Configure
+              {t('settings.general.e2ee.configure')}
             </Button>
           </div>
         </CardContent>

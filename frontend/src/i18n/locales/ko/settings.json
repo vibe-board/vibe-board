@@ -338,7 +338,11 @@
           "label": "온라인 기기",
           "connect": "연결"
         },
-        "close": "닫기"
+        "close": "닫기",
+        "cardTitle": "E2EE 게이트웨이",
+        "cardDescription": "종단간 암호화된 원격 액세스를 위해 게이트웨이에 연결합니다.",
+        "cardHelper": "게이트웨이 로그인, 디바이스 페어링, 머신 연결을 설정합니다.",
+        "configure": "설정"
       }
     },
     "agents": {

@@ -338,7 +338,11 @@
           "label": "Dispositivos en línea",
           "connect": "Conectar"
         },
-        "close": "Cerrar"
+        "close": "Cerrar",
+        "cardTitle": "Pasarela E2EE",
+        "cardDescription": "Conéctate a una pasarela para acceso remoto cifrado de extremo a extremo.",
+        "cardHelper": "Configura el inicio de sesión de la pasarela, el emparejamiento de dispositivos y la conectividad de máquinas.",
+        "configure": "Configurar"
       }
     },
     "agents": {
