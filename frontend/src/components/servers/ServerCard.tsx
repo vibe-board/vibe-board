@@ -1,4 +1,7 @@
-import type { ServerConfig, ServerConnectionStatus } from '@/lib/servers/types';
+import type {
+  ServerConfig,
+  ServerConnectionStatus,
+} from '@/lib/servers/types';
 import { getServerAddress } from '@/lib/servers/types';
 import { useServerManager } from '@/contexts/ServerManagerContext';
 import { Button } from '@/components/ui/button';
@@ -51,17 +54,17 @@ export function ServerCard({
           : 'bg-muted-foreground/30';
 
   return (
-    <div className="flex items-center gap-3 rounded-md border bg-background p-3">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted">
+    <div className="flex items-center gap-2 sm:gap-3 rounded-md border bg-background p-2.5 sm:p-3">
+      <div className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-md bg-muted">
         {config.type === 'direct' ? (
-          <Server className="h-5 w-5 text-muted-foreground" />
+          <Server className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
         ) : (
-          <Cloud className="h-5 w-5 text-muted-foreground" />
+          <Cloud className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
         )}
       </div>
 
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <span className="font-medium text-sm text-foreground truncate">
             {config.name}
           </span>
@@ -75,21 +78,27 @@ export function ServerCard({
         </p>
       </div>
 
-      <div className="flex items-center gap-1 shrink-0">
+      <div className="flex items-center gap-0.5 shrink-0">
         {isActive && connectionStatus === 'connected' ? (
-          <Button variant="ghost" size="xs" onClick={handleDisconnect}>
-            <Unplug className="h-3.5 w-3.5 mr-1" />
-            Disconnect
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={handleDisconnect}
+            title="Disconnect"
+          >
+            <Unplug className="h-3.5 w-3.5" />
           </Button>
         ) : (
           <Button
             variant="outline"
-            size="xs"
+            size="icon"
+            className="h-8 w-8"
             onClick={handleConnect}
             disabled={connectionStatus === 'connecting'}
+            title="Connect"
           >
-            <Plug className="h-3.5 w-3.5 mr-1" />
-            Connect
+            <Plug className="h-3.5 w-3.5" />
           </Button>
         )}
         <Button
@@ -97,6 +106,7 @@ export function ServerCard({
           size="icon"
           className="h-8 w-8 text-muted-foreground hover:text-destructive"
           onClick={handleDelete}
+          title="Remove"
         >
           <Trash2 className="h-3.5 w-3.5" />
         </Button>

@@ -89,7 +89,7 @@ export function E2EEServerSetup({ onDone, onBack }: E2EEServerSetupProps) {
         the server management page.
       </p>
 
-      <div className="flex items-center gap-2 pt-2">
+      <div className="flex flex-wrap items-center gap-2 pt-2">
         <Button variant="ghost" size="sm" onClick={onBack}>
           <ArrowLeft className="h-3.5 w-3.5 mr-1" />
           Back
@@ -105,7 +105,7 @@ export function E2EEServerSetup({ onDone, onBack }: E2EEServerSetupProps) {
           Test
         </Button>
         <Button size="sm" onClick={handleSave} disabled={!testOk}>
-          Save & Connect
+          Save
         </Button>
       </div>
     </div>

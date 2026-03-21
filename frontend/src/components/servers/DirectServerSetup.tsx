@@ -121,7 +121,7 @@ export function DirectServerSetup({ onDone, onBack }: DirectServerSetupProps) {
         </div>
       )}
 
-      <div className="flex items-center gap-2 pt-2">
+      <div className="flex flex-wrap items-center gap-2 pt-2">
         <Button variant="ghost" size="sm" onClick={onBack}>
           Cancel
         </Button>
@@ -133,10 +133,10 @@ export function DirectServerSetup({ onDone, onBack }: DirectServerSetupProps) {
           disabled={!canTest || testing}
         >
           {testing && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
-          Test Connection
+          Test
         </Button>
         <Button size="sm" onClick={handleSave} disabled={!canSave}>
-          Save & Connect
+          Save
         </Button>
       </div>
     </div>
