@@ -1,7 +1,4 @@
-import type {
-  ServerConfig,
-  ServerConnectionStatus,
-} from '@/lib/servers/types';
+import type { ServerConfig, ServerConnectionStatus } from '@/lib/servers/types';
 import { getServerAddress } from '@/lib/servers/types';
 import { useServerManager } from '@/contexts/ServerManagerContext';
 import { Button } from '@/components/ui/button';
