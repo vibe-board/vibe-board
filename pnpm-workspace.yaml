@@ -1,5 +1,6 @@
 packages:
   - frontend
+  - app
 
 onlyBuiltDependencies:
   - '@sentry/cli'

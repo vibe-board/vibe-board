@@ -1,0 +1,93 @@
+@import 'tailwindcss';
+@import './theme.css';
+
+@theme {
+  --color-background: var(--color-bg-0);
+  --color-surface: var(--color-bg-1);
+  --color-surface-2: var(--color-bg-2);
+  --color-surface-3: var(--color-bg-3);
+  --color-foreground: var(--color-fg);
+  --color-muted: var(--color-fg-secondary);
+  --color-subtle: var(--color-fg-tertiary);
+  --color-accent: var(--color-accent);
+  --color-accent-hover: var(--color-accent-hover);
+  --color-accent-subtle: var(--color-accent-subtle);
+  --color-border: var(--color-border);
+  --color-border-strong: var(--color-border-strong);
+  --color-danger: var(--color-danger);
+  --color-danger-hover: var(--color-danger-hover);
+  --color-inverse: var(--color-fg-inverse);
+
+  --color-status-todo: var(--color-status-todo);
+  --color-status-inprogress: var(--color-status-inprogress);
+  --color-status-inreview: var(--color-status-inreview);
+  --color-status-done: var(--color-status-done);
+  --color-status-cancelled: var(--color-status-cancelled);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --text-xs: var(--text-xs);
+  --text-sm: var(--text-sm);
+  --text-base: var(--text-base);
+  --text-md: var(--text-md);
+  --text-lg: var(--text-lg);
+  --text-xl: var(--text-xl);
+  --text-2xl: var(--text-2xl);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-full: var(--radius-full);
+
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-popover: var(--shadow-popover);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-fg-tertiary);
+}
+
+/* Selection */
+::selection {
+  background: var(--color-accent);
+  color: white;
+}

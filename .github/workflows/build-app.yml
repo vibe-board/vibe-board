@@ -1,0 +1,213 @@
+name: Build Tauri App
+
+on:
+  push:
+    branches: [vb/5407-app]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '10.13.1'
+  RUST_TOOLCHAIN: 'stable'
+
+jobs:
+  build-desktop:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            args: ''
+            name: linux-x64
+          - platform: macos-latest
+            args: '--target aarch64-apple-darwin'
+            name: macos-arm64
+          - platform: macos-latest
+            args: '--target x86_64-apple-darwin'
+            name: macos-x64
+          - platform: windows-latest
+            args: ''
+            name: windows-x64
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './app/src-tauri -> target'
+          shared-key: tauri-${{ matrix.name }}
+
+      - name: Install dependencies (Ubuntu)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: pnpm install
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: app
+          tauriScript: pnpm tauri
+          args: ${{ matrix.args }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vibe-board-${{ matrix.name }}
+          path: |
+            app/src-tauri/target/release/bundle/deb/*.deb
+            app/src-tauri/target/release/bundle/rpm/*.rpm
+            app/src-tauri/target/release/bundle/appimage/*.AppImage
+            app/src-tauri/target/release/bundle/dmg/*.dmg
+            app/src-tauri/target/release/bundle/macos/*.app
+            app/src-tauri/target/release/bundle/nsis/*.exe
+            app/src-tauri/target/release/bundle/msi/*.msi
+            app/src-tauri/target/*/release/bundle/dmg/*.dmg
+            app/src-tauri/target/*/release/bundle/macos/*.app
+          if-no-files-found: warn
+
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        run: sdkmanager "ndk;27.0.12077973"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './app/src-tauri -> target'
+          shared-key: tauri-android
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2.0" --locked
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: pnpm install
+
+      - name: Initialize Android project
+        working-directory: app
+        run: cargo tauri android init
+        env:
+          NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.0.12077973
+
+      - name: Build Android APK
+        working-directory: app
+        run: cargo tauri android build --apk
+        env:
+          NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.0.12077973
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: vibe-board-android
+          path: |
+            app/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: warn
+
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,x86_64-apple-ios,aarch64-apple-ios-sim
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './app/src-tauri -> target'
+          shared-key: tauri-ios
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2.0" --locked
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: pnpm install
+
+      - name: Initialize iOS project
+        working-directory: app
+        run: cargo tauri ios init
+
+      - name: Build iOS (unsigned)
+        working-directory: app
+        run: cargo tauri ios build --export-method debugging
+        continue-on-error: true
+
+      - name: Upload iOS build
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vibe-board-ios
+          path: |
+            app/src-tauri/gen/apple/build/**/*.ipa
+            app/src-tauri/gen/apple/build/**/*.app
+          if-no-files-found: warn
