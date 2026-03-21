@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { produce } from 'immer';
 import type { Operation } from 'rfc6902';
 import { applyUpsertPatch } from '@/utils/jsonPatch';
-import { getGatewayConnection } from '@/lib/gatewayMode';
+import { createServerWebSocket } from '@/lib/serverConnection';
 import type { RemoteWs } from '@/lib/e2ee/remoteWs';
 
 type WsJsonPatchMsg = { JsonPatch: Operation[] };
@@ -108,20 +108,8 @@ export const useJsonPatchWsStream = <T extends object>(
       // Reset finished flag for new connection
       finishedRef.current = false;
 
-      // In gateway mode, use E2EE connection for remote WebSocket
-      const conn = getGatewayConnection();
-      let ws: WebSocket | RemoteWs;
-      if (conn) {
-        const url = new URL(endpoint, window.location.origin);
-        ws = conn.openWsStream(
-          url.pathname,
-          url.search?.substring(1) || undefined
-        );
-      } else {
-        // Convert HTTP endpoint to WebSocket endpoint
-        const wsEndpoint = endpoint.replace(/^http/, 'ws');
-        ws = new WebSocket(wsEndpoint);
-      }
+      // Route through active server (E2EE, direct, or same-origin)
+      const ws: WebSocket | RemoteWs = createServerWebSocket(endpoint);
 
       ws.onopen = () => {
         setError(null);

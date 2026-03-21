@@ -33,6 +33,7 @@ import { DisclaimerDialog } from '@/components/dialogs/global/DisclaimerDialog';
 import { OnboardingDialog } from '@/components/dialogs/global/OnboardingDialog';
 
 import { ClickedElementsProvider } from './contexts/ClickedElementsProvider';
+import { Servers } from '@/pages/Servers';
 
 // Design scope components
 import { LegacyDesignScope } from '@/components/legacy-design/LegacyDesignScope';
@@ -143,6 +144,7 @@ function AppContent() {
                   path="/mcp-servers"
                   element={<Navigate to="/settings/mcp" replace />}
                 />
+                <Route path="/servers" element={<Servers />} />
                 <Route
                   path="/local-projects/:projectId/tasks/:taskId"
                   element={<ProjectTasks />}

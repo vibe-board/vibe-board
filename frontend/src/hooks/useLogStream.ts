@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import type { PatchType } from 'shared/types';
-import { getGatewayConnection } from '@/lib/gatewayMode';
+import { createServerWebSocket } from '@/lib/serverConnection';
 import type { RemoteWs } from '@/lib/e2ee/remoteWs';
 
 type LogEntry = Extract<PatchType, { type: 'STDOUT' } | { type: 'STDERR' }>;
@@ -36,20 +36,10 @@ export const useLogStream = (processId: string): UseLogStreamResult => {
       // Capture processId at the time of opening the WebSocket
       const capturedProcessId = processId;
 
-      // In gateway mode, use E2EE connection for remote WebSocket
-      const conn = getGatewayConnection();
-      let ws: WebSocket | RemoteWs;
-      if (conn) {
-        ws = conn.openWsStream(
-          `/api/execution-processes/${processId}/raw-logs/ws`
-        );
-      } else {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.host;
-        ws = new WebSocket(
-          `${protocol}//${host}/api/execution-processes/${processId}/raw-logs/ws`
-        );
-      }
+      // Route through active server (E2EE, direct, or same-origin)
+      const ws: WebSocket | RemoteWs = createServerWebSocket(
+        `/api/execution-processes/${processId}/raw-logs/ws`
+      );
       wsRef.current = ws;
       isIntentionallyClosed.current = false;
 

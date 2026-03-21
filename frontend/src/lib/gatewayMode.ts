@@ -1,15 +1,17 @@
 /**
  * Gateway mode detection and connection singleton.
  *
- * Provides runtime detection of whether the frontend is running on an
- * E2EE gateway (vs a local vibe-board server), and a module-level
- * accessor for the E2EE connection (usable outside React).
+ * Backward-compatible shim — delegates to activeServer.ts internally.
+ * Browser-mode GatewayProvider still calls setGatewayConnection/getGatewayConnection.
  */
 import type { E2EEConnection } from '@/lib/e2ee';
+import {
+  setActiveServer,
+  getActiveServer,
+} from '@/lib/activeServer';
 
 let gatewayMode: boolean | null = null;
 let detectPromise: Promise<boolean> | null = null;
-let currentConnection: E2EEConnection | null = null;
 
 /**
  * Detect whether the frontend is served by an E2EE gateway.
@@ -44,10 +46,14 @@ export function isGatewayMode(): boolean {
 
 /** Set the active E2EE connection (called by GatewayProvider when connected). */
 export function setGatewayConnection(conn: E2EEConnection | null): void {
-  currentConnection = conn;
+  if (conn) {
+    setActiveServer({ type: 'e2ee', connection: conn });
+  } else {
+    setActiveServer(null);
+  }
 }
 
 /** Get the active E2EE connection (used by makeRequest in api.ts). */
 export function getGatewayConnection(): E2EEConnection | null {
-  return currentConnection;
+  return getActiveServer()?.connection ?? null;
 }

@@ -40,9 +40,14 @@ import {
 import { OAuthDialog } from '@/components/dialogs/global/OAuthDialog';
 import { useUserSystem } from '@/components/ConfigProvider';
 import { oauthApi } from '@/lib/api';
+import { isTauri } from '@/lib/platform';
+import { ServerStatusIndicator } from '@/components/servers/ServerStatusIndicator';
 
 const INTERNAL_NAV = [
   { label: 'Projects', icon: FolderOpen, to: '/local-projects' },
+  ...(isTauri()
+    ? [{ label: 'Servers', icon: Settings, to: '/servers' }]
+    : []),
 ];
 
 const EXTERNAL_LINKS = [
@@ -149,6 +154,11 @@ export function Navbar() {
             <Link to="/local-projects">
               <Logo />
             </Link>
+            {isTauri() && (
+              <div className="ml-2">
+                <ServerStatusIndicator />
+              </div>
+            )}
             <a
               href="https://discord.gg/AC4nwVtJM3"
               target="_blank"

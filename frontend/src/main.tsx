@@ -5,6 +5,10 @@ import App from './App.tsx';
 import { ClickToComponent } from 'click-to-react-component';
 import { GatewayProvider } from '@/contexts/GatewayContext';
 import { GatewayGate } from '@/components/gateway/GatewayGate';
+import { ServerManagerProvider } from '@/contexts/ServerManagerContext';
+import { TauriAppGate } from '@/components/TauriAppGate';
+import { isTauri } from '@/lib/platform';
+import { initDeepLinkHandler } from '@/lib/deepLink';
 import {
   QueryClient,
   QueryClientProvider,
@@ -77,6 +81,15 @@ export const queryClient = new QueryClient({
   },
 });
 
+// Initialize deep link handler for Tauri
+if (isTauri()) {
+  initDeepLinkHandler((payload) => {
+    console.log('[DeepLink] Received:', payload);
+    // Deep link handling will be connected to ServerManagerContext
+    // For now, log the payload for future integration
+  });
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
@@ -86,11 +99,19 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           showDialog
         >
           <ClickToComponent />
-          <GatewayProvider>
-            <GatewayGate>
-              <App />
-            </GatewayGate>
-          </GatewayProvider>
+          {isTauri() ? (
+            <ServerManagerProvider>
+              <TauriAppGate>
+                <App />
+              </TauriAppGate>
+            </ServerManagerProvider>
+          ) : (
+            <GatewayProvider>
+              <GatewayGate>
+                <App />
+              </GatewayGate>
+            </GatewayProvider>
+          )}
           {/*<TanStackDevtools plugins={[FormDevtoolsPlugin()]} />*/}
           {/* <ReactQueryDevtools initialIsOpen={false} /> */}
         </Sentry.ErrorBoundary>

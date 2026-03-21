@@ -1,7 +1,7 @@
 // streamJsonPatchEntries.ts - WebSocket JSON patch streaming utility
 import type { Operation } from 'rfc6902';
 import { applyUpsertPatch } from '@/utils/jsonPatch';
-import { getGatewayConnection } from '@/lib/gatewayMode';
+import { createServerWebSocket } from '@/lib/serverConnection';
 import type { RemoteWs } from '@/lib/e2ee/remoteWs';
 
 type PatchContainer<E = unknown> = { entries: E[] };
@@ -48,20 +48,8 @@ export function streamJsonPatchEntries<E = unknown>(
   const subscribers = new Set<(entries: E[]) => void>();
   if (opts.onEntries) subscribers.add(opts.onEntries);
 
-  // In gateway mode, use E2EE connection for remote WebSocket
-  const conn = getGatewayConnection();
-  let ws: WebSocket | RemoteWs;
-  if (conn) {
-    const parsed = new URL(url, window.location.origin);
-    ws = conn.openWsStream(
-      parsed.pathname,
-      parsed.search?.substring(1) || undefined
-    );
-  } else {
-    // Convert HTTP endpoint to WebSocket endpoint
-    const wsUrl = url.replace(/^http/, 'ws');
-    ws = new WebSocket(wsUrl);
-  }
+  // Route through active server (E2EE, direct, or same-origin)
+  const ws: WebSocket | RemoteWs = createServerWebSocket(url);
 
   const notify = () => {
     for (const cb of subscribers) {

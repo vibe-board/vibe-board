@@ -1,4 +1,5 @@
 // Import all necessary types from shared types
+import { resolveApiUrl } from '@/lib/serverConnection';
 
 import {
   ApprovalStatus,
@@ -123,13 +124,20 @@ const makeRequest = async (url: string, options: RequestInit = {}) => {
     headers.set('Content-Type', 'application/json');
   }
 
-  // In gateway mode, route through E2EE connection to the remote daemon
-  const { getGatewayConnection } = await import('@/lib/gatewayMode');
-  const conn = getGatewayConnection();
-  if (conn) {
-    return conn.remoteFetch(url, { ...options, headers });
+  const { getActiveServer } = await import('@/lib/activeServer');
+  const server = getActiveServer();
+
+  // E2EE mode: proxy through encrypted WebSocket
+  if (server?.connection) {
+    return server.connection.remoteFetch(url, { ...options, headers });
   }
 
+  // Direct mode (Tauri): prefix with server base URL
+  if (server?.baseUrl) {
+    return fetch(`${server.baseUrl}${url}`, { ...options, headers });
+  }
+
+  // Same-origin browser mode
   return fetch(url, {
     ...options,
     headers,
@@ -1136,17 +1144,18 @@ export const profilesApi = {
   },
 };
 
-/** Upload helper: routes FormData through E2EE in gateway mode */
+/** Upload helper: routes FormData through active server connection */
 const uploadFormData = async (
   url: string,
   formData: FormData
 ): Promise<Response> => {
-  const { getGatewayConnection } = await import('@/lib/gatewayMode');
-  const conn = getGatewayConnection();
-  if (conn) {
-    return conn.remoteFetch(url, { method: 'POST', body: formData });
+  const { getActiveServer } = await import('@/lib/activeServer');
+  const server = getActiveServer();
+  if (server?.connection) {
+    return server.connection.remoteFetch(url, { method: 'POST', body: formData });
   }
-  return fetch(url, { method: 'POST', body: formData, credentials: 'include' });
+  const target = server?.baseUrl ? `${server.baseUrl}${url}` : url;
+  return fetch(target, { method: 'POST', body: formData, credentials: 'include' });
 };
 
 // Images API
@@ -1231,7 +1240,7 @@ export const imagesApi = {
   },
 
   getImageUrl: (imageId: string): string => {
-    return `/api/images/${imageId}/file`;
+    return resolveApiUrl(`/api/images/${imageId}/file`);
   },
 };
 

@@ -6,7 +6,7 @@ import '@xterm/xterm/css/xterm.css';
 
 import { useTheme } from '@/components/ThemeProvider';
 import { getTerminalTheme } from '@/utils/terminalTheme';
-import { getGatewayConnection } from '@/lib/gatewayMode';
+import { createServerWebSocket } from '@/lib/serverConnection';
 import type { RemoteWs } from '@/lib/e2ee/remoteWs';
 
 interface XTermInstanceProps {
@@ -186,18 +186,8 @@ export function XTermInstance({
         }
       };
 
-      // Create WebSocket - route through E2EE gateway if connected
-      const conn = getGatewayConnection();
-      let ws: WebSocket | RemoteWs;
-      if (conn) {
-        const url = new URL(endpoint);
-        ws = conn.openWsStream(
-          url.pathname,
-          url.search?.substring(1) || undefined
-        );
-      } else {
-        ws = new WebSocket(endpoint);
-      }
+      // Route through active server (E2EE, direct, or same-origin)
+      const ws: WebSocket | RemoteWs = createServerWebSocket(endpoint);
       wsRef.current = ws;
 
       ws.onmessage = (event) => {
