@@ -1,5 +1,6 @@
-use crate::state::{AppState, ServerConfig};
 use tauri::State;
+
+use crate::state::{AppState, ServerConfig};
 
 #[tauri::command]
 pub async fn save_server_configs(
@@ -12,9 +13,7 @@ pub async fn save_server_configs(
 }
 
 #[tauri::command]
-pub async fn load_server_configs(
-    state: State<'_, AppState>,
-) -> Result<Vec<ServerConfig>, String> {
+pub async fn load_server_configs(state: State<'_, AppState>) -> Result<Vec<ServerConfig>, String> {
     let servers = state.servers.lock().map_err(|e| e.to_string())?;
     Ok(servers.clone())
 }
