@@ -3,6 +3,7 @@ import NiceModal, { useModal } from '@ebay/nice-modal-react';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -32,13 +33,6 @@ const AddServerDialogImpl = NiceModal.create(() => {
     modal.hide();
   };
 
-  const title =
-    step === 'choose-type'
-      ? 'Add Server'
-      : step === 'direct'
-        ? 'Direct Connection'
-        : 'E2EE Gateway';
-
   return (
     <Dialog
       open={modal.visible}
@@ -48,35 +42,59 @@ const AddServerDialogImpl = NiceModal.create(() => {
       className="sm:max-w-md"
     >
       <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-        </DialogHeader>
-
         {step === 'choose-type' && (
-          <TypeSelection onSelect={(t) => setStep(t)} />
+          <>
+            <DialogHeader>
+              <DialogTitle>Add Server</DialogTitle>
+              <DialogDescription>
+                Choose how to connect to a Vibe Board server.
+              </DialogDescription>
+            </DialogHeader>
+            <TypeSelection onSelect={(t) => setStep(t)} />
+          </>
         )}
 
         {step === 'direct' && (
-          <DirectServerSetup
-            onDone={handleServerAdded}
-            onBack={() => setStep('choose-type')}
-          />
+          <>
+            <DialogHeader>
+              <DialogTitle>Direct Connection</DialogTitle>
+              <DialogDescription>
+                Connect to a server on your local network via HTTP.
+              </DialogDescription>
+            </DialogHeader>
+            <DirectServerSetup
+              onDone={handleServerAdded}
+              onBack={() => setStep('choose-type')}
+            />
+          </>
         )}
 
         {step === 'e2ee' && (
-          <E2EEServerSetup
-            onDone={handleServerAdded}
-            onBack={() => setStep('choose-type')}
-          />
+          <>
+            <DialogHeader>
+              <DialogTitle>E2EE Gateway</DialogTitle>
+              <DialogDescription>
+                Connect via an end-to-end encrypted relay gateway.
+              </DialogDescription>
+            </DialogHeader>
+            <E2EEServerSetup
+              onDone={handleServerAdded}
+              onBack={() => setStep('choose-type')}
+            />
+          </>
         )}
       </DialogContent>
     </Dialog>
   );
 });
 
-function TypeSelection({ onSelect }: { onSelect: (type: ServerType) => void }) {
+function TypeSelection({
+  onSelect,
+}: {
+  onSelect: (type: ServerType) => void;
+}) {
   return (
-    <div className="grid gap-3 py-2">
+    <div className="grid gap-3">
       <button
         className="flex items-center gap-3 rounded-md border p-3 text-left hover:bg-muted transition-colors active:bg-muted"
         onClick={() => onSelect('direct')}
