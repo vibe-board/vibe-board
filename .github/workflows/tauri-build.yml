@@ -206,15 +206,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Setup Android NDK
-        uses: nttld/setup-ndk@v1
-        id: setup-ndk
-        with:
-          ndk-version: r27
-          link-to-sdk: true
+      - name: Setup Android SDK and NDK
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;29.0.14206865"
 
       # --- Rust ---
       - name: Install Rust stable
@@ -234,12 +229,12 @@ jobs:
         working-directory: frontend
         run: pnpm tauri android init
 
-      - name: Build Android APK
+      - name: Build Android APK (debug-signed)
         working-directory: frontend
         env:
-          NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/29.0.14206865
           NODE_OPTIONS: '--max-old-space-size=8192'
-        run: pnpm tauri android build --ci --apk --target aarch64
+        run: pnpm tauri android build --ci --apk --target aarch64 --debug
 
       # --- Upload artifacts ---
       - name: Upload Android APK
