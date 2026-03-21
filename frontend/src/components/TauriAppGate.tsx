@@ -83,7 +83,7 @@ export function TauriAppGate({ children }: { children: ReactNode }) {
 function TauriGateShell({ children }: { children: ReactNode }) {
   return (
     <LegacyDesignScope>
-      <div className="fixed inset-0 flex items-center justify-center bg-background">
+      <div className="fixed inset-0 flex items-center justify-center bg-background pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
         {children}
       </div>
     </LegacyDesignScope>
@@ -96,7 +96,7 @@ import { Servers } from '@/pages/Servers';
 function ServersPageLazy({ errorMessage }: { errorMessage?: string | null }) {
   return (
     <LegacyDesignScope>
-      <div className="fixed inset-0 overflow-auto bg-background">
+      <div className="fixed inset-0 flex flex-col bg-background pt-[env(safe-area-inset-top)]">
         <Servers errorMessage={errorMessage} />
       </div>
     </LegacyDesignScope>
