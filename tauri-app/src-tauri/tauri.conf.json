@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/nicegui-org/nicegui/main/nicegui/static/nicegui.json",
+  "$schema": "https://schema.tauri.app/config/2.0.0",
   "productName": "Vibe Board",
   "version": "0.1.0",
   "identifier": "com.vibe-board.app",
@@ -41,7 +41,7 @@
       },
       "mobile": [
         {
-          "scheme": "vibe-board"
+          "scheme": ["vibe-board"]
         }
       ]
     }
