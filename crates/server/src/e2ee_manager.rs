@@ -86,6 +86,7 @@ impl BridgeManager {
         }
 
         let manager = self.clone();
+        let rt_handle = tokio::runtime::Handle::current();
         let debouncer = new_debouncer(
             Duration::from_millis(500),
             None,
@@ -98,7 +99,7 @@ impl BridgeManager {
                             .any(|event| event.paths.iter().any(|p| p == &creds_path));
                         if creds_changed {
                             let mgr = manager.clone();
-                            tokio::spawn(async move {
+                            rt_handle.spawn(async move {
                                 info!("Credentials file changed, reloading bridge");
                                 match e2ee_config::load_credentials() {
                                     Ok(creds) => {
