@@ -39,10 +39,7 @@ const AddServerDialogImpl = NiceModal.create(() => {
           <DialogTitle>Add Server</DialogTitle>
         </DialogHeader>
 
-        <DirectServerSetup
-          onDone={handleServerAdded}
-          onBack={handleClose}
-        />
+        <DirectServerSetup onDone={handleServerAdded} onBack={handleClose} />
       </DialogContent>
     </Dialog>
   );
