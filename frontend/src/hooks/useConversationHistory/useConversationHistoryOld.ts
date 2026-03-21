@@ -899,16 +899,41 @@ export const useConversationHistoryOld = ({
     prevStatusMapRef.current = nextMap;
   }, [attempt.id, idStatusKey, executionProcessesRaw]);
 
-  // Initial load when attempt changes
+  // Reset + initial load when attempt changes.
+  // These MUST be in the same effect to guarantee reset runs before load,
+  // preventing a race where the load effect runs first, sets
+  // loadedInitialEntries=true, then the reset effect clears entries —
+  // leaving the list empty with no way to recover (loadedInitialEntries
+  // is already true, so the load effect's guard prevents re-running).
   useEffect(() => {
     let cancelled = false;
+
+    // --- Reset ---
+    displayedExecutionProcesses.current = {};
+    loadedInitialEntries.current = false;
+    streamingProcessIdsRef.current.clear();
+    loadedProcessIds.current.clear();
+    evictedProcessIds.current.clear();
+    allHistoricProcesses.current = [];
+    preloadedEntries.current.clear();
+    isPreloadingRef.current = false;
+    isLoadingMoreRef.current = false;
+    hasReceivedRealDataRef.current = false;
+    prevFirstKeyRef.current = null;
+    hasMoreRef.current = false;
+    wantMoreRef.current = false;
+    setHasMore(false);
+    setIsLoadingMore(false);
+    setEntries([]);
+    setFirstItemIndex(FIRST_ITEM_INDEX_BASE);
+    setScrollIntent('none');
+    setInitialLoading(true);
+
+    // --- Initial load ---
     (async () => {
       // Waiting for execution processes to load
-      if (
-        executionProcesses?.current.length === 0 ||
-        loadedInitialEntries.current
-      )
-        return;
+      if (executionProcesses?.current.length === 0) return;
+      if (cancelled) return;
 
       // Initial entries
       const allInitialEntries = await loadInitialEntries();
@@ -972,29 +997,6 @@ export const useConversationHistoryOld = ({
       });
     }
   }, [attempt.id, idListKey, executionProcessesRaw]);
-
-  // Reset state when attempt changes
-  useEffect(() => {
-    displayedExecutionProcesses.current = {};
-    loadedInitialEntries.current = false;
-    streamingProcessIdsRef.current.clear();
-    loadedProcessIds.current.clear();
-    evictedProcessIds.current.clear();
-    allHistoricProcesses.current = [];
-    preloadedEntries.current.clear();
-    isPreloadingRef.current = false;
-    isLoadingMoreRef.current = false;
-    hasReceivedRealDataRef.current = false;
-    prevFirstKeyRef.current = null;
-    hasMoreRef.current = false;
-    wantMoreRef.current = false;
-    setHasMore(false);
-    setIsLoadingMore(false);
-    setEntries([]);
-    setFirstItemIndex(FIRST_ITEM_INDEX_BASE);
-    setScrollIntent('none');
-    setInitialLoading(true);
-  }, [attempt.id]);
 
   // Track unmount for cancelling background retries
   useEffect(() => {
