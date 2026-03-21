@@ -338,7 +338,11 @@
           "label": "線上裝置",
           "connect": "連線"
         },
-        "close": "關閉"
+        "close": "關閉",
+        "cardTitle": "E2EE 閘道",
+        "cardDescription": "連接到閘道以實現端對端加密的遠端存取。",
+        "cardHelper": "設定閘道登入、裝置配對和機器連線。",
+        "configure": "設定"
       }
     },
     "agents": {

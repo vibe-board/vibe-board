@@ -338,7 +338,11 @@
           "label": "Online Machines",
           "connect": "Connect"
         },
-        "close": "Close"
+        "close": "Close",
+        "cardTitle": "E2EE Gateway",
+        "cardDescription": "Connect to a gateway for end-to-end encrypted remote access.",
+        "cardHelper": "Configure gateway login, device pairing, and machine connectivity.",
+        "configure": "Configure"
       }
     },
     "agents": {

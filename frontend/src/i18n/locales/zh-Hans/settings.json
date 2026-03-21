@@ -338,7 +338,11 @@
           "label": "在线设备",
           "connect": "连接"
         },
-        "close": "关闭"
+        "close": "关闭",
+        "cardTitle": "E2EE 网关",
+        "cardDescription": "连接到网关以实现端到端加密的远程访问。",
+        "cardHelper": "配置网关登录、设备配对和机器连接。",
+        "configure": "配置"
       }
     },
     "agents": {
