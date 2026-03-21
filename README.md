@@ -11,7 +11,7 @@
 <p align="center">A fork of Vibe Kanban — an orchestration platform for AI coding agents with the legacy UI and enhanced features.</p>
 <p align="center">
   <a href="https://www.npmjs.com/package/vibe-board"><img alt="npm" src="https://img.shields.io/npm/v/vibe-board?style=flat-square" /></a>
-  <a href="https://github.com/WqyJh/vibe-board/actions/workflows/pre-release.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/WqyJh/vibe-board/.github%2Fworkflows%2Fpre-release.yml" /></a>
+  <a href="https://github.com/vibe-board/vibe-board/actions/workflows/pre-release.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/WqyJh/vibe-board/.github%2Fworkflows%2Fpre-release.yml" /></a>
 </p>
 
 ![](frontend/public/vibe-board-screenshot-overview.png)

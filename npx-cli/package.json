@@ -10,7 +10,7 @@
   "author": "WqyJh",
   "repository": {
     "type": "git",
-    "url": "https://github.com/WqyJh/vibe-board"
+    "url": "https://github.com/vibe-board/vibe-board"
   },
   "license": "",
   "description": "NPX wrapper around vibe-board, vibe-board-mcp, vibe-board-review, and vibe-board-gateway",
