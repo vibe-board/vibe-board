@@ -88,11 +88,7 @@ const AddServerDialogImpl = NiceModal.create(() => {
   );
 });
 
-function TypeSelection({
-  onSelect,
-}: {
-  onSelect: (type: ServerType) => void;
-}) {
+function TypeSelection({ onSelect }: { onSelect: (type: ServerType) => void }) {
   return (
     <div className="grid gap-3">
       <button
