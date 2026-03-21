@@ -10,7 +10,7 @@ use workspace_utils::msg_store::MsgStore;
 
 use crate::{
     command::{CmdOverrides, CommandBuildError, CommandBuilder, apply_overrides},
-    env::{ExecutionEnv, remove_vibe_kanban_port_env},
+    env::{ExecutionEnv, remove_vibe_board_port_env},
     executors::{
         AppendPrompt, ExecutorError, SpawnedChild, StandardCodingAgentExecutor,
         claude::{ClaudeLogProcessor, HistoryStrategy},
@@ -69,7 +69,7 @@ impl StandardCodingAgentExecutor for Amp {
         env.clone()
             .with_profile(&self.cmd)
             .apply_to_command(&mut command);
-        remove_vibe_kanban_port_env(&mut command);
+        remove_vibe_board_port_env(&mut command);
 
         let mut child = command.group_spawn()?;
 
@@ -146,7 +146,7 @@ impl StandardCodingAgentExecutor for Amp {
         env.clone()
             .with_profile(&self.cmd)
             .apply_to_command(&mut command);
-        remove_vibe_kanban_port_env(&mut command);
+        remove_vibe_board_port_env(&mut command);
 
         let mut child = command.group_spawn()?;
 

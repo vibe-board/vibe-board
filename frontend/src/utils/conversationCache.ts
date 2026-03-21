@@ -1,6 +1,6 @@
 import type { PatchTypeWithKey } from '@/hooks/useConversationHistory/types';
 
-const DB_NAME = 'vibe-kanban-conversation-cache';
+const DB_NAME = 'vibe-board-conversation-cache';
 const DB_VERSION = 2;
 const STORE_NAME = 'process-entries';
 const MAX_CACHED_PROCESSES = 200;

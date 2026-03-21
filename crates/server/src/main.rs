@@ -18,7 +18,7 @@ use utils::{
 };
 
 #[derive(Parser)]
-#[command(name = "vibe-kanban", about = "Vibe Kanban — local-first Kanban board")]
+#[command(name = "vibe-board", about = "Vibe Board — local-first Kanban board")]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -44,7 +44,7 @@ enum Commands {
 }
 
 #[derive(Debug, Error)]
-pub enum VibeKanbanError {
+pub enum VibeBoardError {
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
@@ -56,17 +56,17 @@ pub enum VibeKanbanError {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), VibeKanbanError> {
+async fn main() -> Result<(), VibeBoardError> {
     let cli = Cli::parse();
 
     match cli.command {
         None | Some(Commands::Server) => cmd_server().await,
         Some(Commands::Login { gateway }) => {
             init_tracing_simple();
-            cmd_login(&gateway).await.map_err(VibeKanbanError::Other)
+            cmd_login(&gateway).await.map_err(VibeBoardError::Other)
         }
-        Some(Commands::Logout) => cmd_logout().map_err(VibeKanbanError::Other),
-        Some(Commands::Status) => cmd_status().map_err(VibeKanbanError::Other),
+        Some(Commands::Logout) => cmd_logout().map_err(VibeBoardError::Other),
+        Some(Commands::Status) => cmd_status().map_err(VibeBoardError::Other),
     }
 }
 
@@ -80,7 +80,7 @@ fn init_tracing_simple() {
 }
 
 /// The original server main logic
-async fn cmd_server() -> Result<(), VibeKanbanError> {
+async fn cmd_server() -> Result<(), VibeBoardError> {
     // Install rustls crypto provider before any TLS operations
     rustls::crypto::aws_lc_rs::default_provider()
         .install_default()
@@ -313,7 +313,7 @@ fn cmd_status() -> anyhow::Result<()> {
         }
         Err(_) => {
             println!("Status: Not configured");
-            println!("  Run `vibe-kanban login --gateway <url>` to set up");
+            println!("  Run `vibe-board login --gateway <url>` to set up");
         }
     }
     Ok(())

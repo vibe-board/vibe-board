@@ -70,7 +70,7 @@ jobs:
         id: version
         run: |
           # Get the latest version from npm registry (scoped package)
-          latest_npm_version=$(npm view @wqyjh/vibe-kanban version 2>/dev/null || echo "0.0.0")
+          latest_npm_version=$(npm view @wqyjh/vibe-board version 2>/dev/null || echo "0.0.0")
           echo "Latest npm version: $latest_npm_version"
 
           # Get current repo version
@@ -123,16 +123,12 @@ jobs:
           echo "new_version=$new_version" >> $GITHUB_OUTPUT
           echo "new_tag=$new_tag" >> $GITHUB_OUTPUT
 
-      - name: Update remote crate lockfile
-        run: cargo generate-lockfile --manifest-path crates/remote/Cargo.toml
-
       - name: Commit changes and create tag
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add package.json pnpm-lock.yaml npx-cli/package.json frontend/package.json Cargo.lock
           git add $(find . -name Cargo.toml)
-          [ -f crates/remote/Cargo.lock ] && git add crates/remote/Cargo.lock || true
           git commit -m "chore: bump version to ${{ steps.version.outputs.new_version }}"
           git tag -a ${{ steps.version.outputs.new_tag }} -m "Release ${{ steps.version.outputs.new_tag }}"
           git push
@@ -142,7 +138,6 @@ jobs:
     needs: bump-version
     runs-on: ubuntu-latest
     env:
-      VITE_VK_SHARED_API_BASE: ${{ secrets.VK_SHARED_API_BASE }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -297,7 +292,6 @@ jobs:
         env:
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
           POSTHOG_API_ENDPOINT: ${{ secrets.POSTHOG_API_ENDPOINT }}
-          VK_SHARED_API_BASE: ${{ secrets.VK_SHARED_API_BASE }}
 
       - name: Build backend (macOS)
         if: runner.os == 'macOS'
@@ -311,7 +305,6 @@ jobs:
         env:
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
           POSTHOG_API_ENDPOINT: ${{ secrets.POSTHOG_API_ENDPOINT }}
-          VK_SHARED_API_BASE: ${{ secrets.VK_SHARED_API_BASE }}
 
       - name: Build backend (Windows native)
         if: runner.os == 'Windows'
@@ -319,7 +312,6 @@ jobs:
         env:
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
           POSTHOG_API_ENDPOINT: ${{ secrets.POSTHOG_API_ENDPOINT }}
-          VK_SHARED_API_BASE: ${{ secrets.VK_SHARED_API_BASE }}
 
       - name: Setup Sentry CLI
         continue-on-error: true
@@ -340,32 +332,32 @@ jobs:
         run: |
           mkdir -p dist
           if [[ "${{ matrix.name }}" == *"windows"* ]]; then
-            cp target/${{ matrix.target }}/release/server.exe dist/vibe-kanban-${{ matrix.name }}.exe
-            cp target/${{ matrix.target }}/release/mcp_task_server.exe dist/vibe-kanban-mcp-${{ matrix.name }}.exe
-            cp target/${{ matrix.target }}/release/review.exe dist/vibe-kanban-review-${{ matrix.name }}.exe
-            cp target/${{ matrix.target }}/release/e2ee-gateway.exe dist/vibe-kanban-gateway-${{ matrix.name }}.exe
+            cp target/${{ matrix.target }}/release/server.exe dist/vibe-board-${{ matrix.name }}.exe
+            cp target/${{ matrix.target }}/release/mcp_task_server.exe dist/vibe-board-mcp-${{ matrix.name }}.exe
+            cp target/${{ matrix.target }}/release/review.exe dist/vibe-board-review-${{ matrix.name }}.exe
+            cp target/${{ matrix.target }}/release/e2ee-gateway.exe dist/vibe-board-gateway-${{ matrix.name }}.exe
           else
-            cp target/${{ matrix.target }}/release/server dist/vibe-kanban-${{ matrix.name }}
-            cp target/${{ matrix.target }}/release/mcp_task_server dist/vibe-kanban-mcp-${{ matrix.name }}
-            cp target/${{ matrix.target }}/release/review dist/vibe-kanban-review-${{ matrix.name }}
-            cp target/${{ matrix.target }}/release/e2ee-gateway dist/vibe-kanban-gateway-${{ matrix.name }}
+            cp target/${{ matrix.target }}/release/server dist/vibe-board-${{ matrix.name }}
+            cp target/${{ matrix.target }}/release/mcp_task_server dist/vibe-board-mcp-${{ matrix.name }}
+            cp target/${{ matrix.target }}/release/review dist/vibe-board-review-${{ matrix.name }}
+            cp target/${{ matrix.target }}/release/e2ee-gateway dist/vibe-board-gateway-${{ matrix.name }}
           fi
 
       # macOS: prepare unsigned zips first (fallback when signing skipped); signing overwrites dist/ if successful
-      # Zip entries must be named vibe-kanban, vibe-kanban-mcp, vibe-kanban-review (CLI expects these after extract)
+      # Zip entries must be named vibe-board, vibe-board-mcp, vibe-board-review (CLI expects these after extract)
       - name: Prepare unsigned binaries (macOS)
         if: runner.os == 'macOS'
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/server vibe-kanban
-          cp target/${{ matrix.target }}/release/mcp_task_server vibe-kanban-mcp
-          cp target/${{ matrix.target }}/release/review vibe-kanban-review
-          cp target/${{ matrix.target }}/release/e2ee-gateway vibe-kanban-gateway
-          zip -j dist/vibe-kanban-${{ matrix.name }}.zip vibe-kanban
-          zip -j dist/vibe-kanban-mcp-${{ matrix.name }}.zip vibe-kanban-mcp
-          zip -j dist/vibe-kanban-review-${{ matrix.name }}.zip vibe-kanban-review
-          zip -j dist/vibe-kanban-gateway-${{ matrix.name }}.zip vibe-kanban-gateway
-          rm -f vibe-kanban vibe-kanban-mcp vibe-kanban-review vibe-kanban-gateway
+          cp target/${{ matrix.target }}/release/server vibe-board
+          cp target/${{ matrix.target }}/release/mcp_task_server vibe-board-mcp
+          cp target/${{ matrix.target }}/release/review vibe-board-review
+          cp target/${{ matrix.target }}/release/e2ee-gateway vibe-board-gateway
+          zip -j dist/vibe-board-${{ matrix.name }}.zip vibe-board
+          zip -j dist/vibe-board-mcp-${{ matrix.name }}.zip vibe-board-mcp
+          zip -j dist/vibe-board-review-${{ matrix.name }}.zip vibe-board-review
+          zip -j dist/vibe-board-gateway-${{ matrix.name }}.zip vibe-board-gateway
+          rm -f vibe-board vibe-board-mcp vibe-board-review vibe-board-gateway
 
       # Code signing for macOS only (optional when cert secrets not set)
       - name: Prepare Apple certificate (macOS)
@@ -387,7 +379,7 @@ jobs:
         uses: BloopAI/apple-code-sign-action@v1
         with:
           input_path: target/${{ matrix.target }}/release/server
-          output_path: vibe-kanban
+          output_path: vibe-board
           p12_file: certificate.p12
           p12_password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           sign: true
@@ -396,7 +388,7 @@ jobs:
       - name: Package main binary (macOS)
         if: runner.os == 'macOS'
         continue-on-error: true
-        run: zip vibe-kanban.zip vibe-kanban
+        run: zip vibe-board.zip vibe-board
 
       - name: Sign MCP binary (macOS)
         if: runner.os == 'macOS'
@@ -404,7 +396,7 @@ jobs:
         uses: BloopAI/apple-code-sign-action@v1
         with:
           input_path: target/${{ matrix.target }}/release/mcp_task_server
-          output_path: vibe-kanban-mcp
+          output_path: vibe-board-mcp
           p12_file: certificate.p12
           p12_password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           sign: true
@@ -413,7 +405,7 @@ jobs:
       - name: Package MCP binary (macOS)
         if: runner.os == 'macOS'
         continue-on-error: true
-        run: zip vibe-kanban-mcp.zip vibe-kanban-mcp
+        run: zip vibe-board-mcp.zip vibe-board-mcp
 
       - name: Sign Review binary (macOS)
         if: runner.os == 'macOS'
@@ -421,7 +413,7 @@ jobs:
         uses: BloopAI/apple-code-sign-action@v1
         with:
           input_path: target/${{ matrix.target }}/release/review
-          output_path: vibe-kanban-review
+          output_path: vibe-board-review
           p12_file: certificate.p12
           p12_password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           sign: true
@@ -430,7 +422,7 @@ jobs:
       - name: Package Review binary (macOS)
         if: runner.os == 'macOS'
         continue-on-error: true
-        run: zip vibe-kanban-review.zip vibe-kanban-review
+        run: zip vibe-board-review.zip vibe-board-review
 
       - name: Sign Gateway binary (macOS)
         if: runner.os == 'macOS'
@@ -438,7 +430,7 @@ jobs:
         uses: BloopAI/apple-code-sign-action@v1
         with:
           input_path: target/${{ matrix.target }}/release/e2ee-gateway
-          output_path: vibe-kanban-gateway
+          output_path: vibe-board-gateway
           p12_file: certificate.p12
           p12_password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           sign: true
@@ -447,7 +439,7 @@ jobs:
       - name: Package Gateway binary (macOS)
         if: runner.os == 'macOS'
         continue-on-error: true
-        run: zip vibe-kanban-gateway.zip vibe-kanban-gateway
+        run: zip vibe-board-gateway.zip vibe-board-gateway
 
       - name: Notarize signed binaries (macOS)
         if: runner.os == 'macOS'
@@ -455,10 +447,10 @@ jobs:
         continue-on-error: true
         with:
           input_path: |
-            vibe-kanban.zip
-            vibe-kanban-mcp.zip
-            vibe-kanban-review.zip
-            vibe-kanban-gateway.zip
+            vibe-board.zip
+            vibe-board-mcp.zip
+            vibe-board-review.zip
+            vibe-board-gateway.zip
           sign: false
           notarize: true
           app_store_connect_api_key_json_file: app_store_key.json
@@ -468,10 +460,10 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p dist
-          cp vibe-kanban.zip dist/vibe-kanban-${{ matrix.name }}.zip
-          cp vibe-kanban-mcp.zip dist/vibe-kanban-mcp-${{ matrix.name }}.zip
-          cp vibe-kanban-review.zip dist/vibe-kanban-review-${{ matrix.name }}.zip
-          cp vibe-kanban-gateway.zip dist/vibe-kanban-gateway-${{ matrix.name }}.zip
+          cp vibe-board.zip dist/vibe-board-${{ matrix.name }}.zip
+          cp vibe-board-mcp.zip dist/vibe-board-mcp-${{ matrix.name }}.zip
+          cp vibe-board-review.zip dist/vibe-board-review-${{ matrix.name }}.zip
+          cp vibe-board-gateway.zip dist/vibe-board-gateway-${{ matrix.name }}.zip
 
       - name: Clean up certificates (macOS)
         if: runner.os == 'macOS'
@@ -504,40 +496,40 @@ jobs:
         include:
           - target: x86_64-unknown-linux-musl
             name: linux-x64
-            binary: vibe-kanban
-            mcp_binary: vibe-kanban-mcp
-            review_binary: vibe-kanban-review
-            gateway_binary: vibe-kanban-gateway
+            binary: vibe-board
+            mcp_binary: vibe-board-mcp
+            review_binary: vibe-board-review
+            gateway_binary: vibe-board-gateway
           - target: x86_64-pc-windows-msvc
             name: windows-x64
-            binary: vibe-kanban.exe
-            mcp_binary: vibe-kanban-mcp.exe
-            review_binary: vibe-kanban-review.exe
-            gateway_binary: vibe-kanban-gateway.exe
+            binary: vibe-board.exe
+            mcp_binary: vibe-board-mcp.exe
+            review_binary: vibe-board-review.exe
+            gateway_binary: vibe-board-gateway.exe
           - target: x86_64-apple-darwin
             name: macos-x64
-            binary: vibe-kanban
-            mcp_binary: vibe-kanban-mcp
-            review_binary: vibe-kanban-review
-            gateway_binary: vibe-kanban-gateway
+            binary: vibe-board
+            mcp_binary: vibe-board-mcp
+            review_binary: vibe-board-review
+            gateway_binary: vibe-board-gateway
           - target: aarch64-apple-darwin
             name: macos-arm64
-            binary: vibe-kanban
-            mcp_binary: vibe-kanban-mcp
-            review_binary: vibe-kanban-review
-            gateway_binary: vibe-kanban-gateway
+            binary: vibe-board
+            mcp_binary: vibe-board-mcp
+            review_binary: vibe-board-review
+            gateway_binary: vibe-board-gateway
           - target: aarch64-pc-windows-msvc
             name: windows-arm64
-            binary: vibe-kanban.exe
-            mcp_binary: vibe-kanban-mcp.exe
-            review_binary: vibe-kanban-review.exe
-            gateway_binary: vibe-kanban-gateway.exe
+            binary: vibe-board.exe
+            mcp_binary: vibe-board-mcp.exe
+            review_binary: vibe-board-review.exe
+            gateway_binary: vibe-board-gateway.exe
           - target: aarch64-unknown-linux-musl
             name: linux-arm64
-            binary: vibe-kanban
-            mcp_binary: vibe-kanban-mcp
-            review_binary: vibe-kanban-review
-            gateway_binary: vibe-kanban-gateway
+            binary: vibe-board
+            mcp_binary: vibe-board-mcp
+            review_binary: vibe-board-review
+            gateway_binary: vibe-board-gateway
     steps:
       - uses: actions/checkout@v6
         with:
@@ -564,30 +556,30 @@ jobs:
         if: matrix.name != 'macos-arm64' && matrix.name != 'macos-x64'
         run: |
           mkdir -p npx-cli/dist/${{ matrix.name }}
-          mkdir vibe-kanban-${{ matrix.name }}
-          mkdir vibe-kanban-mcp-${{ matrix.name }}
-          mkdir vibe-kanban-review-${{ matrix.name }}
-          mkdir vibe-kanban-gateway-${{ matrix.name }}
+          mkdir vibe-board-${{ matrix.name }}
+          mkdir vibe-board-mcp-${{ matrix.name }}
+          mkdir vibe-board-review-${{ matrix.name }}
+          mkdir vibe-board-gateway-${{ matrix.name }}
 
-          cp dist/vibe-kanban-${{ matrix.name }}* vibe-kanban-${{ matrix.name }}/${{ matrix.binary }}
-          cp dist/vibe-kanban-mcp-${{ matrix.name }}* vibe-kanban-mcp-${{ matrix.name }}/${{ matrix.mcp_binary }}
-          cp dist/vibe-kanban-review-${{ matrix.name }}* vibe-kanban-review-${{ matrix.name }}/${{ matrix.review_binary }}
-          cp dist/vibe-kanban-gateway-${{ matrix.name }}* vibe-kanban-gateway-${{ matrix.name }}/${{ matrix.gateway_binary }}
+          cp dist/vibe-board-${{ matrix.name }}* vibe-board-${{ matrix.name }}/${{ matrix.binary }}
+          cp dist/vibe-board-mcp-${{ matrix.name }}* vibe-board-mcp-${{ matrix.name }}/${{ matrix.mcp_binary }}
+          cp dist/vibe-board-review-${{ matrix.name }}* vibe-board-review-${{ matrix.name }}/${{ matrix.review_binary }}
+          cp dist/vibe-board-gateway-${{ matrix.name }}* vibe-board-gateway-${{ matrix.name }}/${{ matrix.gateway_binary }}
 
-          zip -j npx-cli/dist/${{ matrix.name }}/vibe-kanban.zip vibe-kanban-${{ matrix.name }}/${{ matrix.binary }}
-          zip -j npx-cli/dist/${{ matrix.name }}/vibe-kanban-mcp.zip vibe-kanban-mcp-${{ matrix.name }}/${{ matrix.mcp_binary }}
-          zip -j npx-cli/dist/${{ matrix.name }}/vibe-kanban-review.zip vibe-kanban-review-${{ matrix.name }}/${{ matrix.review_binary }}
-          zip -j npx-cli/dist/${{ matrix.name }}/vibe-kanban-gateway.zip vibe-kanban-gateway-${{ matrix.name }}/${{ matrix.gateway_binary }}
+          zip -j npx-cli/dist/${{ matrix.name }}/vibe-board.zip vibe-board-${{ matrix.name }}/${{ matrix.binary }}
+          zip -j npx-cli/dist/${{ matrix.name }}/vibe-board-mcp.zip vibe-board-mcp-${{ matrix.name }}/${{ matrix.mcp_binary }}
+          zip -j npx-cli/dist/${{ matrix.name }}/vibe-board-review.zip vibe-board-review-${{ matrix.name }}/${{ matrix.review_binary }}
+          zip -j npx-cli/dist/${{ matrix.name }}/vibe-board-gateway.zip vibe-board-gateway-${{ matrix.name }}/${{ matrix.gateway_binary }}
 
       - name: Create platform package (macOS)
         if: matrix.name == 'macos-arm64' || matrix.name == 'macos-x64'
         run: |
           mkdir -p npx-cli/dist/${{ matrix.name }}
-          mkdir vibe-kanban-${{ matrix.name }}
-          cp dist/vibe-kanban-${{ matrix.name }}* npx-cli/dist/${{ matrix.name }}/vibe-kanban.zip
-          cp dist/vibe-kanban-mcp-${{ matrix.name }}* npx-cli/dist/${{ matrix.name }}/vibe-kanban-mcp.zip
-          cp dist/vibe-kanban-review-${{ matrix.name }}* npx-cli/dist/${{ matrix.name }}/vibe-kanban-review.zip
-          cp dist/vibe-kanban-gateway-${{ matrix.name }}* npx-cli/dist/${{ matrix.name }}/vibe-kanban-gateway.zip
+          mkdir vibe-board-${{ matrix.name }}
+          cp dist/vibe-board-${{ matrix.name }}* npx-cli/dist/${{ matrix.name }}/vibe-board.zip
+          cp dist/vibe-board-mcp-${{ matrix.name }}* npx-cli/dist/${{ matrix.name }}/vibe-board-mcp.zip
+          cp dist/vibe-board-review-${{ matrix.name }}* npx-cli/dist/${{ matrix.name }}/vibe-board-review.zip
+          cp dist/vibe-board-gateway-${{ matrix.name }}* npx-cli/dist/${{ matrix.name }}/vibe-board-gateway.zip
 
       - name: Upload platform package artifact
         uses: actions/upload-artifact@v6
@@ -630,7 +622,7 @@ jobs:
           mkdir -p release-assets
           # Copy binaries with unique names for GitHub Release (one asset per file)
           for platform in linux-x64 linux-arm64 windows-x64 windows-arm64 macos-x64 macos-arm64; do
-            for binary in vibe-kanban vibe-kanban-mcp vibe-kanban-review vibe-kanban-gateway; do
+            for binary in vibe-board vibe-board-mcp vibe-board-review vibe-board-gateway; do
               if [ -f "binaries/$platform/$binary.zip" ]; then
                 cp "binaries/$platform/$binary.zip" "release-assets/${binary}-${platform}.zip"
               fi
@@ -642,7 +634,7 @@ jobs:
             const crypto = require('crypto');
             const manifest = { version: '$TAG', platforms: {} };
             const platforms = ['linux-x64', 'linux-arm64', 'windows-x64', 'windows-arm64', 'macos-x64', 'macos-arm64'];
-            const binaries = ['vibe-kanban', 'vibe-kanban-mcp', 'vibe-kanban-review', 'vibe-kanban-gateway'];
+            const binaries = ['vibe-board', 'vibe-board-mcp', 'vibe-board-review', 'vibe-board-gateway'];
 
             for (const platform of platforms) {
               manifest.platforms[platform] = {};
@@ -664,9 +656,9 @@ jobs:
 
       - name: Zip frontend
         run: |
-          mkdir vibe-kanban-${{ needs.bump-version.outputs.new_tag }}
-          mv frontend/dist vibe-kanban-${{ needs.bump-version.outputs.new_tag }}
-          zip -r vibe-kanban-${{ needs.bump-version.outputs.new_tag }}.zip vibe-kanban-${{ needs.bump-version.outputs.new_tag }}
+          mkdir vibe-board-${{ needs.bump-version.outputs.new_tag }}
+          mv frontend/dist vibe-board-${{ needs.bump-version.outputs.new_tag }}
+          zip -r vibe-board-${{ needs.bump-version.outputs.new_tag }}.zip vibe-board-${{ needs.bump-version.outputs.new_tag }}
 
       - name: Setup Node for npm pack
         uses: ./.github/actions/setup-node
@@ -686,7 +678,7 @@ jobs:
           prerelease: true
           generate_release_notes: true
           files: |
-            vibe-kanban-${{ needs.bump-version.outputs.new_tag }}.zip
+            vibe-board-${{ needs.bump-version.outputs.new_tag }}.zip
             npx-cli/*.tgz
             release-assets/binaries-manifest.json
             release-assets/*.zip

@@ -21,7 +21,6 @@ pub mod health;
 pub mod images;
 pub mod migration;
 pub mod oauth;
-pub mod organizations;
 pub mod projects;
 pub mod repo;
 pub mod scratch;
@@ -47,7 +46,6 @@ pub fn router(
         .merge(execution_processes::router(&deployment))
         .merge(tags::router(&deployment))
         .merge(oauth::router())
-        .merge(organizations::router())
         .merge(filesystem::router())
         .merge(repo::router())
         .merge(events::router(&deployment))

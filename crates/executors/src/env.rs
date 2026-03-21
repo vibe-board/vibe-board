@@ -139,16 +139,16 @@ impl ExecutionEnv {
     }
 }
 
-/// Remove vibe-kanban's port-related environment variables from a command.
+/// Remove vibe-board's port-related environment variables from a command.
 ///
 /// This prevents child processes (code agents, dev servers) from inheriting
-/// vibe-kanban's port configuration, which could cause port conflicts when
+/// vibe-board's port configuration, which could cause port conflicts when
 /// the child process tries to start its own server.
 ///
-/// - `PORT` / `BACKEND_PORT`: used by vibe-kanban's Rust backend
-/// - `FRONTEND_PORT`: used by vibe-kanban's Vite dev server
-/// - `HOST`: used by vibe-kanban to bind its server address
-pub fn remove_vibe_kanban_port_env(command: &mut Command) {
+/// - `PORT` / `BACKEND_PORT`: used by vibe-board's Rust backend
+/// - `FRONTEND_PORT`: used by vibe-board's Vite dev server
+/// - `HOST`: used by vibe-board to bind its server address
+pub fn remove_vibe_board_port_env(command: &mut Command) {
     command.env_remove("PORT");
     command.env_remove("BACKEND_PORT");
     command.env_remove("FRONTEND_PORT");
@@ -162,7 +162,7 @@ mod tests {
     #[test]
     fn profile_overrides_runtime_env() {
         let mut base = ExecutionEnv::new(RepoContext::default(), false, String::new());
-        base.insert("VK_PROJECT_NAME", "runtime");
+        base.insert("VB_PROJECT_NAME", "runtime");
         base.insert("FOO", "runtime");
 
         let mut profile = HashMap::new();
@@ -171,7 +171,7 @@ mod tests {
 
         let merged = base.with_overrides(&profile);
 
-        assert_eq!(merged.vars.get("VK_PROJECT_NAME").unwrap(), "runtime");
+        assert_eq!(merged.vars.get("VB_PROJECT_NAME").unwrap(), "runtime");
         assert_eq!(merged.vars.get("FOO").unwrap(), "profile"); // overrides
         assert_eq!(merged.vars.get("BAR").unwrap(), "profile");
     }

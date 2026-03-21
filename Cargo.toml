@@ -14,7 +14,6 @@ members = [
     "crates/e2ee-core",
     "crates/e2ee-gateway",
 ]
-exclude = ["crates/remote"]
 
 [workspace.dependencies]
 tokio = { version = "1.0", features = ["full"] }

@@ -1,21 +1,21 @@
 # End-to-End Encryption (E2EE) — Remote Access
 
-Vibe Kanban supports end-to-end encrypted remote access, allowing you to securely use the Web UI from any browser to manage a Kanban board running on a remote machine. The gateway server acts as a zero-knowledge message router — **it never has access to your data**. All content is encrypted between your browser and the machine running `vibe-kanban`.
+Vibe Board supports end-to-end encrypted remote access, allowing you to securely use the Web UI from any browser to manage a Kanban board running on a remote machine. The gateway server acts as a zero-knowledge message router — **it never has access to your data**. All content is encrypted between your browser and the machine running `vibe-board`.
 
 ## Architecture
 
 ```
-Browser (holds keys)  ←──HTTPS──→  Gateway (zero-knowledge)  ←──WSS──→  Your Machine (vibe-kanban)
+Browser (holds keys)  ←──HTTPS──→  Gateway (zero-knowledge)  ←──WSS──→  Your Machine (vibe-board)
 ```
 
 ```
 ┌──────────────┐                              ┌──────────────────────┐
 │  Machine A   │◄── Encrypted messages ──────►│                      │
-│  (vibe-kanban│                              │     Gateway          │
+│  (vibe-board│                              │     Gateway          │
 │   server)    │                              │     (e2ee-gateway)   │
 ├──────────────┤                              │                      │
 │  Machine B   │◄── Encrypted messages ──────►│  - Serves Web UI     │
-│  (vibe-kanban│                              │  - User accounts     │
+│  (vibe-board│                              │  - User accounts     │
 │   server)    │                              │  - Message routing   │
 └──────────────┘                              └──────────┬───────────┘
                                                          │
@@ -27,7 +27,7 @@ Browser (holds keys)  ←──HTTPS──→  Gateway (zero-knowledge)  ←─�
 
 **Key properties:**
 - The gateway cannot decrypt any content — it only routes encrypted messages
-- The gateway serves the complete vibe-kanban Web UI — no local installation needed on the client
+- The gateway serves the complete vibe-board Web UI — no local installation needed on the client
 - Multiple machines can register to the same gateway
 - The browser derives the same encryption keys from a shared master secret
 - All operations are scoped per-user — users cannot access each other's machines
@@ -58,10 +58,10 @@ The first user to sign up automatically becomes the admin. After that, registrat
 
 ### 2. Connect Your Machine to the Gateway
 
-On the machine running `vibe-kanban`, first authenticate:
+On the machine running `vibe-board`, first authenticate:
 
 ```bash
-vibe-kanban login --gateway https://your-gateway.example.com
+vibe-board login --gateway https://your-gateway.example.com
 ```
 
 This will:
@@ -83,10 +83,10 @@ Your master secret (for pairing):
   K7x2m9QaB3nF8pLw... (base64)
 ```
 
-Then start the server with the gateway URL:
+Then start the server:
 
 ```bash
-VK_GATEWAY_URL=https://your-gateway.example.com vibe-kanban
+vibe-board
 ```
 
 The server connects to the gateway automatically. You should see in the logs:
@@ -101,7 +101,7 @@ Open `https://your-gateway.example.com` in any browser. You will see the gateway
 1. **Log in** — use the email and password you registered with
 2. **Enter your master secret** — paste the base64 string from step 2
 3. **Select your machine** — you'll see a list of your online machines
-4. **Done** — the full vibe-kanban interface loads, all data is end-to-end encrypted
+4. **Done** — the full vibe-board interface loads, all data is end-to-end encrypted
 
 All API calls, WebSocket streams, and file uploads are transparently encrypted in your browser. The gateway only sees encrypted data.
 
@@ -113,10 +113,10 @@ If the connection drops (network issues, server restart, etc.), the browser will
 
 | Command | Description |
 |---------|-------------|
-| `vibe-kanban server` | Start the server (default if no subcommand given) |
-| `vibe-kanban login --gateway <url>` | Authenticate with a gateway and generate master secret |
-| `vibe-kanban logout` | Delete stored gateway credentials |
-| `vibe-kanban status` | Show gateway connection status |
+| `vibe-board server` | Start the server (default if no subcommand given) |
+| `vibe-board login --gateway <url>` | Authenticate with a gateway and generate master secret |
+| `vibe-board logout` | Delete stored gateway credentials |
+| `vibe-board status` | Show gateway connection status |
 
 ## Components
 
@@ -184,7 +184,7 @@ The gateway exposes two WebSocket endpoints:
 
 ### Daemon endpoint: `GET /ws/daemon`
 
-Used by `vibe-kanban` servers to connect to the gateway.
+Used by `vibe-board` servers to connect to the gateway.
 
 **Authentication:** Ed25519 signed token passed as `?token=<base64(json)>` query parameter.
 
@@ -268,7 +268,7 @@ sessions (token, user_id, created_at, expires_at)
 
 ## Credential Storage
 
-Credentials are stored at `~/.vibe-kanban/credentials.json` with `0600` permissions (owner read/write only):
+Credentials are stored at `~/.vibe-board/credentials.json` with `0600` permissions (owner read/write only):
 
 ```json
 {
@@ -279,7 +279,7 @@ Credentials are stored at `~/.vibe-kanban/credentials.json` with `0600` permissi
 }
 ```
 
-Delete with `vibe-kanban logout`.
+Delete with `vibe-board logout`.
 
 ## Frontend Integration (Developer Reference)
 
@@ -315,20 +315,20 @@ The module `frontend/src/lib/gateway-mode.ts` provides:
 
 ## Troubleshooting
 
-**"VK_GATEWAY_URL is set but no credentials found"**
-Run `vibe-kanban login --gateway <url>` to authenticate and generate a master secret.
+**"No gateway credentials found"**
+Run `vibe-board login --gateway <url>` to authenticate and generate a master secret.
 
-**"VK_GATEWAY_URL is set but credentials are for a different gateway"**
-Run `vibe-kanban login --gateway <url>` again with the correct gateway URL.
+**"Credentials are for a different gateway"**
+Run `vibe-board login --gateway <url>` again with the correct gateway URL.
 
 **No machines appear after logging in to the gateway**
-Check that the `vibe-kanban` server is running with `VK_GATEWAY_URL` set. Look at the server logs for connection messages.
+Check that the `vibe-board` server is running and credentials are configured (`vibe-board status`). Look at the server logs for connection messages.
 
 **Pairing fails / "Invalid master secret"**
 Ensure you're pasting the complete base64 master secret (exactly 44 characters for a 32-byte secret).
 
 **Request timeout**
-Check that the remote `vibe-kanban` server is running and connected to the gateway. The default timeout is 30s for normal requests and 120s for file uploads.
+Check that the remote `vibe-board` server is running and connected to the gateway. The default timeout is 30s for normal requests and 120s for file uploads.
 
 **Connection keeps dropping**
 The browser automatically reconnects up to 5 times with exponential backoff. If it keeps failing, check the gateway server logs and network connectivity between the gateway and the machine.

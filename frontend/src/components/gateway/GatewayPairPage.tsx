@@ -18,10 +18,10 @@ export function GatewayPairPage() {
       <div className="text-center space-y-2">
         <h1 className="text-xl font-bold text-foreground">Pair Device</h1>
         <p className="text-sm opacity-70">
-          Enter the master secret from your vibe-kanban server.
+          Enter the master secret from your vibe-board server.
         </p>
         <div className="gateway-code-block">
-          Run <code>vibe-kanban login --gateway {window.location.origin}</code>{' '}
+          Run <code>vibe-board login --gateway {window.location.origin}</code>{' '}
           on your server to get the master secret.
         </div>
       </div>

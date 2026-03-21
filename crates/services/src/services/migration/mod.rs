@@ -3,15 +3,11 @@ mod types;
 
 use std::collections::HashSet;
 
-use api_types::{
-    BulkMigrateRequest, BulkMigrateResponse, MigrateIssueRequest, MigrateProjectRequest,
-    MigratePullRequestRequest, MigrateWorkspaceRequest,
-};
 use db::models::{
-    merge::{Merge, MergeStatus, PrMerge},
+    merge::{Merge, PrMerge},
     migration_state::{CreateMigrationState, EntityType, MigrationState, MigrationStatus},
     project::Project,
-    task::{Task, TaskStatus},
+    task::Task,
     workspace::Workspace,
 };
 pub use error::MigrationError;
@@ -20,21 +16,15 @@ use tracing::info;
 pub use types::*;
 use uuid::Uuid;
 
-use crate::services::remote_client::RemoteClient;
-
 const BATCH_SIZE: usize = 100;
 
 pub struct MigrationService {
     sqlite_pool: SqlitePool,
-    remote_client: RemoteClient,
 }
 
 impl MigrationService {
-    pub fn new(sqlite_pool: SqlitePool, remote_client: RemoteClient) -> Self {
-        Self {
-            sqlite_pool,
-            remote_client,
-        }
+    pub fn new(sqlite_pool: SqlitePool) -> Self {
+        Self { sqlite_pool }
     }
 
     pub async fn run_migration(
@@ -150,9 +140,9 @@ impl MigrationService {
 
     async fn migrate_project_batch(
         &self,
-        organization_id: Uuid,
+        _organization_id: Uuid,
         projects: &[Project],
-        report: &mut MigrationReport,
+        _report: &mut MigrationReport,
     ) -> Result<(), MigrationError> {
         for project in projects {
             MigrationState::upsert(
@@ -163,39 +153,6 @@ impl MigrationService {
                 },
             )
             .await?;
-        }
-
-        let requests: Vec<MigrateProjectRequest> = projects
-            .iter()
-            .enumerate()
-            .map(|(i, p)| MigrateProjectRequest {
-                organization_id,
-                name: p.name.clone(),
-                color: generate_hsl_color(i),
-                created_at: p.created_at,
-            })
-            .collect();
-
-        let response: BulkMigrateResponse = self
-            .remote_client
-            .post_authed(
-                "/v1/migration/projects",
-                Some(&BulkMigrateRequest { items: requests }),
-            )
-            .await?;
-
-        for (project, remote_id) in projects.iter().zip(response.ids.iter()) {
-            MigrationState::mark_migrated(
-                &self.sqlite_pool,
-                EntityType::Project,
-                project.id,
-                *remote_id,
-            )
-            .await?;
-
-            Project::set_remote_project_id(&self.sqlite_pool, project.id, Some(*remote_id)).await?;
-
-            report.projects.migrated += 1;
         }
 
         Ok(())
@@ -235,7 +192,7 @@ impl MigrationService {
     async fn migrate_task_batch(
         &self,
         tasks: &[Task],
-        report: &mut MigrationReport,
+        _report: &mut MigrationReport,
     ) -> Result<(), MigrationError> {
         for task in tasks {
             MigrationState::upsert(
@@ -246,68 +203,6 @@ impl MigrationService {
                 },
             )
             .await?;
-        }
-
-        let mut requests = Vec::new();
-        let mut request_task_ids = Vec::new();
-
-        for task in tasks {
-            let remote_project_id = MigrationState::get_remote_id(
-                &self.sqlite_pool,
-                EntityType::Project,
-                task.project_id,
-            )
-            .await?;
-
-            match remote_project_id {
-                Some(project_id) => {
-                    requests.push(MigrateIssueRequest {
-                        project_id,
-                        status_name: map_task_status(&task.status),
-                        title: task.title.clone(),
-                        description: task.description.clone(),
-                        created_at: task.created_at,
-                    });
-                    request_task_ids.push(task.id);
-                }
-                None => {
-                    let error_msg = format!("Project {} not migrated", task.project_id);
-                    MigrationState::mark_skipped(
-                        &self.sqlite_pool,
-                        EntityType::Task,
-                        task.id,
-                        &error_msg,
-                    )
-                    .await?;
-                    report.tasks.skipped += 1;
-                    report
-                        .warnings
-                        .push(format!("Skipped task {}: {}", task.id, error_msg));
-                }
-            }
-        }
-
-        if requests.is_empty() {
-            return Ok(());
-        }
-
-        let response: BulkMigrateResponse = self
-            .remote_client
-            .post_authed(
-                "/v1/migration/issues",
-                Some(&BulkMigrateRequest { items: requests }),
-            )
-            .await?;
-
-        for (task_id, remote_id) in request_task_ids.iter().zip(response.ids.iter()) {
-            MigrationState::mark_migrated(
-                &self.sqlite_pool,
-                EntityType::Task,
-                *task_id,
-                *remote_id,
-            )
-            .await?;
-            report.tasks.migrated += 1;
         }
 
         Ok(())
@@ -355,7 +250,7 @@ impl MigrationService {
     async fn migrate_pr_merge_batch(
         &self,
         pr_merges: &[PrMerge],
-        report: &mut MigrationReport,
+        _report: &mut MigrationReport,
     ) -> Result<(), MigrationError> {
         for pr_merge in pr_merges {
             MigrationState::upsert(
@@ -366,76 +261,6 @@ impl MigrationService {
                 },
             )
             .await?;
-        }
-
-        let mut requests = Vec::new();
-        let mut request_merge_ids = Vec::new();
-
-        for pr_merge in pr_merges {
-            let workspace = Workspace::find_by_id(&self.sqlite_pool, pr_merge.workspace_id).await?;
-
-            let issue_id = match workspace {
-                Some(ws) => {
-                    MigrationState::get_remote_id(&self.sqlite_pool, EntityType::Task, ws.task_id)
-                        .await?
-                }
-                None => None,
-            };
-
-            match issue_id {
-                Some(remote_issue_id) => {
-                    requests.push(MigratePullRequestRequest {
-                        url: pr_merge.pr_info.url.clone(),
-                        number: pr_merge.pr_info.number as i32,
-                        status: map_merge_status(&pr_merge.pr_info.status),
-                        merged_at: pr_merge.pr_info.merged_at,
-                        merge_commit_sha: pr_merge.pr_info.merge_commit_sha.clone(),
-                        target_branch_name: pr_merge.target_branch_name.clone(),
-                        issue_id: remote_issue_id,
-                    });
-                    request_merge_ids.push(pr_merge.id);
-                }
-                None => {
-                    let error_msg = format!(
-                        "Cannot resolve issue for PR merge {} (workspace: {})",
-                        pr_merge.id, pr_merge.workspace_id
-                    );
-                    MigrationState::mark_skipped(
-                        &self.sqlite_pool,
-                        EntityType::PrMerge,
-                        pr_merge.id,
-                        &error_msg,
-                    )
-                    .await?;
-                    report.pr_merges.skipped += 1;
-                    report
-                        .warnings
-                        .push(format!("Skipped PR {}: {}", pr_merge.id, error_msg));
-                }
-            }
-        }
-
-        if requests.is_empty() {
-            return Ok(());
-        }
-
-        let response: BulkMigrateResponse = self
-            .remote_client
-            .post_authed(
-                "/v1/migration/pull_requests",
-                Some(&BulkMigrateRequest { items: requests }),
-            )
-            .await?;
-
-        for (merge_id, remote_id) in request_merge_ids.iter().zip(response.ids.iter()) {
-            MigrationState::mark_migrated(
-                &self.sqlite_pool,
-                EntityType::PrMerge,
-                *merge_id,
-                *remote_id,
-            )
-            .await?;
-            report.pr_merges.migrated += 1;
         }
 
         Ok(())
@@ -484,7 +309,7 @@ impl MigrationService {
     async fn migrate_workspace_batch(
         &self,
         workspaces: &[Workspace],
-        report: &mut MigrationReport,
+        _report: &mut MigrationReport,
     ) -> Result<(), MigrationError> {
         for workspace in workspaces {
             MigrationState::upsert(
@@ -495,111 +320,6 @@ impl MigrationService {
                 },
             )
             .await?;
-        }
-
-        let mut requests = Vec::new();
-        let mut request_workspace_ids = Vec::new();
-
-        for workspace in workspaces {
-            let task = match Task::find_by_id(&self.sqlite_pool, workspace.task_id).await? {
-                Some(t) => t,
-                None => {
-                    let error_msg = format!("Task {} not found for workspace", workspace.task_id);
-                    MigrationState::mark_skipped(
-                        &self.sqlite_pool,
-                        EntityType::Workspace,
-                        workspace.id,
-                        &error_msg,
-                    )
-                    .await?;
-                    report.workspaces.skipped += 1;
-                    report
-                        .warnings
-                        .push(format!("Skipped workspace {}: {}", workspace.id, error_msg));
-                    continue;
-                }
-            };
-
-            let remote_project_id = MigrationState::get_remote_id(
-                &self.sqlite_pool,
-                EntityType::Project,
-                task.project_id,
-            )
-            .await?;
-
-            let remote_project_id = match remote_project_id {
-                Some(id) => id,
-                None => {
-                    let error_msg = format!("Project {} not migrated", task.project_id);
-                    MigrationState::mark_skipped(
-                        &self.sqlite_pool,
-                        EntityType::Workspace,
-                        workspace.id,
-                        &error_msg,
-                    )
-                    .await?;
-                    report.workspaces.skipped += 1;
-                    report
-                        .warnings
-                        .push(format!("Skipped workspace {}: {}", workspace.id, error_msg));
-                    continue;
-                }
-            };
-
-            let remote_issue_id = MigrationState::get_remote_id(
-                &self.sqlite_pool,
-                EntityType::Task,
-                workspace.task_id,
-            )
-            .await?;
-
-            if remote_issue_id.is_none() {
-                let error_msg = format!("Task {} not migrated", workspace.task_id);
-                MigrationState::mark_skipped(
-                    &self.sqlite_pool,
-                    EntityType::Workspace,
-                    workspace.id,
-                    &error_msg,
-                )
-                .await?;
-                report.workspaces.skipped += 1;
-                report
-                    .warnings
-                    .push(format!("Skipped workspace {}: {}", workspace.id, error_msg));
-                continue;
-            }
-
-            requests.push(MigrateWorkspaceRequest {
-                project_id: remote_project_id,
-                issue_id: remote_issue_id,
-                local_workspace_id: workspace.id,
-                archived: workspace.archived,
-                created_at: workspace.created_at,
-            });
-            request_workspace_ids.push(workspace.id);
-        }
-
-        if requests.is_empty() {
-            return Ok(());
-        }
-
-        let response: BulkMigrateResponse = self
-            .remote_client
-            .post_authed(
-                "/v1/migration/workspaces",
-                Some(&BulkMigrateRequest { items: requests }),
-            )
-            .await?;
-
-        for (workspace_id, remote_id) in request_workspace_ids.iter().zip(response.ids.iter()) {
-            MigrationState::mark_migrated(
-                &self.sqlite_pool,
-                EntityType::Workspace,
-                *workspace_id,
-                *remote_id,
-            )
-            .await?;
-            report.workspaces.migrated += 1;
         }
 
         Ok(())
@@ -630,31 +350,4 @@ impl MigrationService {
 
         report
     }
-}
-
-fn map_task_status(status: &TaskStatus) -> String {
-    match status {
-        TaskStatus::Todo => "To do".to_string(),
-        TaskStatus::InProgress => "In progress".to_string(),
-        TaskStatus::InReview => "In review".to_string(),
-        TaskStatus::Done => "Done".to_string(),
-        TaskStatus::Cancelled => "Cancelled".to_string(),
-    }
-}
-
-fn map_merge_status(status: &MergeStatus) -> String {
-    match status {
-        MergeStatus::Open => "open".to_string(),
-        MergeStatus::Merged => "merged".to_string(),
-        MergeStatus::Closed => "closed".to_string(),
-        MergeStatus::Unknown => "open".to_string(),
-    }
-}
-
-fn generate_hsl_color(index: usize) -> String {
-    let hues = [217, 142, 38, 258, 0, 180, 300, 60];
-    let h = hues[index % hues.len()];
-    let s = 70 + (index / hues.len()) % 20;
-    let l = 50 + (index / hues.len()) % 15;
-    format!("{} {}% {}%", h, s, l)
 }

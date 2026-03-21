@@ -12,7 +12,7 @@ When you start a task, the main panel provides real-time visibility into everyth
 
 ## What Happens During Execution
 
-When you start a task attempt, Vibe Kanban orchestrates several steps to create an isolated environment and execute your task:
+When you start a task attempt, Vibe Board orchestrates several steps to create an isolated environment and execute your task:
 
 1. **Git Worktree Creation**: An isolated environment is created for this task attempt
 2. **Setup Scripts Run**: Any setup script defined in your project settings runs automatically
@@ -22,7 +22,7 @@ When you start a task attempt, Vibe Kanban orchestrates several steps to create 
 
 ### Git Worktrees
 
-Vibe Kanban uses Git worktrees to create isolated environments for each task attempt. These environments are ephemeral and automatically cleaned up after execution completes.
+Vibe Board uses Git worktrees to create isolated environments for each task attempt. These environments are ephemeral and automatically cleaned up after execution completes.
 
 <Info>
 Worktrees ensure task attempts don't interfere with each other or your main working directory.
@@ -78,7 +78,7 @@ You can configure a specific agent profile for commit message generation in **Se
 
 ### 7. Task Duration Statistics
 
-After each coding agent turn, Vibe Kanban displays task duration statistics showing how long the agent spent working. This helps you understand agent performance and identify slow operations.
+After each coding agent turn, Vibe Board displays task duration statistics showing how long the agent spent working. This helps you understand agent performance and identify slow operations.
 
 ### 8. Agent Info Display
 
@@ -143,7 +143,7 @@ Editing a message reverts all subsequent agent work. Use this carefully when you
 
 ## Terminal Panel
 
-Vibe Kanban includes an integrated terminal panel that gives you shell access directly within the task view. You can open it as a right-panel mode alongside the task conversation.
+Vibe Board includes an integrated terminal panel that gives you shell access directly within the task view. You can open it as a right-panel mode alongside the task conversation.
 
 **Opening the terminal:**
 Click the terminal icon in the panel switcher on the right side of the task view to open the terminal panel.
@@ -198,7 +198,7 @@ This helps you understand agent costs and optimise your task descriptions.
 
 ## Conversation History
 
-Vibe Kanban loads conversation history with progressive pagination for long conversations:
+Vibe Board loads conversation history with progressive pagination for long conversations:
 
 - Initial load shows the most recent messages
 - Scroll up to load older messages automatically

@@ -42,10 +42,6 @@ fi
 echo "🔍 Detected platform: $PLATFORM"
 echo "🔧 Using target directory: $CARGO_TARGET_DIR"
 
-# Set API base URL for remote features
-export VK_SHARED_API_BASE="https://api.vibekanban.com"
-export VITE_VK_SHARED_API_BASE="https://api.vibekanban.com"
-
 echo "🧹 Cleaning previous builds..."
 rm -rf npx-cli/dist
 mkdir -p npx-cli/dist/$PLATFORM
@@ -61,35 +57,35 @@ cargo build --release --bin e2ee-gateway --manifest-path Cargo.toml
 echo "📦 Creating distribution package..."
 
 # Copy the main binary
-cp ${CARGO_TARGET_DIR}/release/server vibe-kanban
-zip -q vibe-kanban.zip vibe-kanban
-rm -f vibe-kanban 
-mv vibe-kanban.zip npx-cli/dist/$PLATFORM/vibe-kanban.zip
+cp ${CARGO_TARGET_DIR}/release/server vibe-board
+zip -q vibe-board.zip vibe-board
+rm -f vibe-board
+mv vibe-board.zip npx-cli/dist/$PLATFORM/vibe-board.zip
 
 # Copy the MCP binary
-cp ${CARGO_TARGET_DIR}/release/mcp_task_server vibe-kanban-mcp
-zip -q vibe-kanban-mcp.zip vibe-kanban-mcp
-rm -f vibe-kanban-mcp
-mv vibe-kanban-mcp.zip npx-cli/dist/$PLATFORM/vibe-kanban-mcp.zip
+cp ${CARGO_TARGET_DIR}/release/mcp_task_server vibe-board-mcp
+zip -q vibe-board-mcp.zip vibe-board-mcp
+rm -f vibe-board-mcp
+mv vibe-board-mcp.zip npx-cli/dist/$PLATFORM/vibe-board-mcp.zip
 
 # Copy the Review CLI binary
-cp ${CARGO_TARGET_DIR}/release/review vibe-kanban-review
-zip -q vibe-kanban-review.zip vibe-kanban-review
-rm -f vibe-kanban-review
-mv vibe-kanban-review.zip npx-cli/dist/$PLATFORM/vibe-kanban-review.zip
+cp ${CARGO_TARGET_DIR}/release/review vibe-board-review
+zip -q vibe-board-review.zip vibe-board-review
+rm -f vibe-board-review
+mv vibe-board-review.zip npx-cli/dist/$PLATFORM/vibe-board-review.zip
 
 # Copy the Gateway binary
-cp ${CARGO_TARGET_DIR}/release/e2ee-gateway vibe-kanban-gateway
-zip -q vibe-kanban-gateway.zip vibe-kanban-gateway
-rm -f vibe-kanban-gateway
-mv vibe-kanban-gateway.zip npx-cli/dist/$PLATFORM/vibe-kanban-gateway.zip
+cp ${CARGO_TARGET_DIR}/release/e2ee-gateway vibe-board-gateway
+zip -q vibe-board-gateway.zip vibe-board-gateway
+rm -f vibe-board-gateway
+mv vibe-board-gateway.zip npx-cli/dist/$PLATFORM/vibe-board-gateway.zip
 
 echo "✅ Build complete!"
 echo "📁 Files created:"
-echo "   - npx-cli/dist/$PLATFORM/vibe-kanban.zip"
-echo "   - npx-cli/dist/$PLATFORM/vibe-kanban-mcp.zip"
-echo "   - npx-cli/dist/$PLATFORM/vibe-kanban-review.zip"
-echo "   - npx-cli/dist/$PLATFORM/vibe-kanban-gateway.zip"
+echo "   - npx-cli/dist/$PLATFORM/vibe-board.zip"
+echo "   - npx-cli/dist/$PLATFORM/vibe-board-mcp.zip"
+echo "   - npx-cli/dist/$PLATFORM/vibe-board-review.zip"
+echo "   - npx-cli/dist/$PLATFORM/vibe-board-gateway.zip"
 echo ""
 echo "🚀 To test locally, run:"
 echo "   cd npx-cli && node bin/cli.js"

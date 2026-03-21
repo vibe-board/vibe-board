@@ -4,23 +4,8 @@ export {
   OnboardingDialog,
   type OnboardingResult,
 } from './global/OnboardingDialog';
-export { ReleaseNotesDialog } from './global/ReleaseNotesDialog';
-export { OAuthDialog } from './global/OAuthDialog';
 
-// Organization dialogs
-export {
-  CreateOrganizationDialog,
-  type CreateOrganizationResult,
-} from './org/CreateOrganizationDialog';
-export {
-  InviteMemberDialog,
-  type InviteMemberResult,
-} from './org/InviteMemberDialog';
-export {
-  CreateRemoteProjectDialog,
-  type CreateRemoteProjectDialogProps,
-  type CreateRemoteProjectResult,
-} from './org/CreateRemoteProjectDialog';
+export { OAuthDialog } from './global/OAuthDialog';
 
 // Project-related dialogs
 export {

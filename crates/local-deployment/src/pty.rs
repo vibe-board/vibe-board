@@ -204,7 +204,7 @@ impl PtyService {
             } else {
                 // Unix shells: -i makes the shell interactive (loads .bashrc/.zshrc, shows prompt)
                 cmd.arg("-i");
-                cmd.env("VIBE_KANBAN_TERMINAL", "1");
+                cmd.env("VIBE_BOARD_TERMINAL", "1");
 
                 if shell_name == "bash" {
                     cmd.env("PROMPT_COMMAND", r#"PS1='$ '; unset PROMPT_COMMAND"#);
@@ -218,7 +218,7 @@ impl PtyService {
             cmd.env("TERM", "xterm-256color");
             cmd.env("COLORTERM", "truecolor");
 
-            // Remove vibe-kanban port env vars to prevent conflicts
+            // Remove vibe-board port env vars to prevent conflicts
             // when the shell starts its own servers (same as dev server / agent executor)
             cmd.env_remove("PORT");
             cmd.env_remove("BACKEND_PORT");

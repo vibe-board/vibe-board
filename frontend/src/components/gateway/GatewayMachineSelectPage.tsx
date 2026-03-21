@@ -23,8 +23,8 @@ export function GatewayMachineSelectPage() {
         <div className="text-center py-6 space-y-2">
           <p className="opacity-70">No machines online.</p>
           <div className="gateway-code-block">
-            Make sure your vibe-kanban server is running with{' '}
-            <code>VK_GATEWAY_URL={window.location.origin}</code>
+            Make sure your vibe-board server is running and connected to this
+            gateway.
           </div>
         </div>
       ) : (

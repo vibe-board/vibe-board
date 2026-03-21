@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use api_types::LoginStatus;
 use async_trait::async_trait;
 use db::DBService;
-use deployment::{Deployment, DeploymentError, RemoteClientNotConfigured};
+use deployment::{Deployment, DeploymentError};
 use executors::profile::ExecutorConfigs;
 use git::GitService;
 use services::services::{
@@ -20,7 +20,6 @@ use services::services::{
     pr_monitor::PrMonitorService,
     project::ProjectService,
     queued_message::QueuedMessageService,
-    remote_client::{RemoteClient, RemoteClientError},
     repo::RepoService,
     worktree_manager::WorktreeManager,
 };
@@ -53,7 +52,6 @@ pub struct LocalDeployment {
     file_search_cache: Arc<FileSearchCache>,
     approvals: Approvals,
     queued_message_service: QueuedMessageService,
-    remote_client: Result<RemoteClient, RemoteClientNotConfigured>,
     auth_context: AuthContext,
     oauth_handoffs: Arc<RwLock<HashMap<Uuid, PendingHandoff>>>,
     pty: PtyService,
@@ -77,19 +75,7 @@ impl Deployment for LocalDeployment {
             raw_config.executor_profile = recommended_executor;
         }
 
-        // Check if app version has changed and set release notes flag
-        {
-            let current_version = utils::version::APP_VERSION;
-            let stored_version = raw_config.last_app_version.as_deref();
-
-            if stored_version != Some(current_version) {
-                // Show release notes only if this is an upgrade (not first install)
-                raw_config.show_release_notes = stored_version.is_some();
-                raw_config.last_app_version = Some(current_version.to_string());
-            }
-        }
-
-        // Always save config (may have been migrated or version updated)
+        // Always save config (may have been migrated)
         save_config_to_file(&raw_config, &config_path()).await?;
 
         if let Some(workspace_dir) = &raw_config.workspace_dir {
@@ -142,27 +128,6 @@ impl Deployment for LocalDeployment {
         let profile_cache = Arc::new(RwLock::new(None));
         let auth_context = AuthContext::new(oauth_credentials.clone(), profile_cache.clone());
 
-        let api_base = std::env::var("VK_SHARED_API_BASE")
-            .ok()
-            .or_else(|| option_env!("VK_SHARED_API_BASE").map(|s| s.to_string()));
-
-        let remote_client = match api_base {
-            Some(url) => match RemoteClient::new(&url, auth_context.clone()) {
-                Ok(client) => {
-                    tracing::info!("Remote client initialized with URL: {}", url);
-                    Ok(client)
-                }
-                Err(e) => {
-                    tracing::error!(?e, "failed to create remote client");
-                    Err(RemoteClientNotConfigured)
-                }
-            },
-            None => {
-                tracing::info!("VK_SHARED_API_BASE not set; remote features disabled");
-                Err(RemoteClientNotConfigured)
-            }
-        };
-
         let oauth_handoffs = Arc::new(RwLock::new(HashMap::new()));
 
         // We need to make analytics accessible to the ContainerService
@@ -180,7 +145,6 @@ impl Deployment for LocalDeployment {
             analytics_ctx,
             approvals.clone(),
             queued_message_service.clone(),
-            remote_client.clone().ok(),
         )
         .await;
 
@@ -196,8 +160,7 @@ impl Deployment for LocalDeployment {
                 analytics_service: s.clone(),
             });
             let container = container.clone();
-            let rc = remote_client.clone().ok();
-            PrMonitorService::spawn(db, analytics, container, rc).await;
+            PrMonitorService::spawn(db, analytics, container).await;
         }
 
         let deployment = Self {
@@ -215,7 +178,6 @@ impl Deployment for LocalDeployment {
             file_search_cache,
             approvals,
             queued_message_service,
-            remote_client,
             auth_context,
             oauth_handoffs,
             pty,
@@ -286,10 +248,6 @@ impl Deployment for LocalDeployment {
 }
 
 impl LocalDeployment {
-    pub fn remote_client(&self) -> Result<RemoteClient, RemoteClientNotConfigured> {
-        self.remote_client.clone()
-    }
-
     pub async fn get_login_status(&self) -> LoginStatus {
         if self.auth_context.get_credentials().await.is_none() {
             self.auth_context.clear_profile().await;
@@ -302,22 +260,7 @@ impl LocalDeployment {
             };
         }
 
-        let Ok(client) = self.remote_client() else {
-            return LoginStatus::LoggedOut;
-        };
-
-        match client.profile().await {
-            Ok(profile) => {
-                self.auth_context.set_profile(profile.clone()).await;
-                LoginStatus::LoggedIn { profile }
-            }
-            Err(RemoteClientError::Auth) => {
-                let _ = self.auth_context.clear_credentials().await;
-                self.auth_context.clear_profile().await;
-                LoginStatus::LoggedOut
-            }
-            Err(_) => LoginStatus::LoggedOut,
-        }
+        LoginStatus::LoggedOut
     }
 
     pub async fn store_oauth_handoff(

@@ -8,7 +8,7 @@ import {
   ReactNode,
 } from 'react';
 
-const STORAGE_KEY = 'vibe-kanban:terminal-sessions';
+const STORAGE_KEY = 'vibe-board:terminal-sessions';
 
 function loadPersistedState(): TerminalState {
   try {

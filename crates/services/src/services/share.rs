@@ -7,10 +7,7 @@ pub use publisher::{SharePublisher, SharedTaskDetails};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::{
-    RemoteClientError,
-    services::{git::GitServiceError, git_host::GitHostError},
-};
+use crate::services::{git::GitServiceError, git_host::GitHostError};
 
 #[derive(Debug, Error)]
 pub enum ShareError {
@@ -46,6 +43,4 @@ pub enum ShareError {
     InvalidUserId,
     #[error("invalid organization ID format")]
     InvalidOrganizationId,
-    #[error(transparent)]
-    RemoteClientError(#[from] RemoteClientError),
 }

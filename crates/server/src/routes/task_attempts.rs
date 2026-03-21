@@ -10,7 +10,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use api_types::CreateWorkspaceRequest;
 use axum::{
     Extension, Json, Router,
     extract::{
@@ -46,8 +45,8 @@ use git::{CommitInfo, ConflictOp, GitCliError, GitService, GitServiceError};
 use git2::BranchType;
 use serde::{Deserialize, Serialize};
 use services::services::{
-    config::DEFAULT_COMMIT_MESSAGE_PROMPT, container::ContainerService, diff_stream,
-    remote_client::RemoteClientError, remote_sync, workspace_manager::WorkspaceManager,
+    config::DEFAULT_COMMIT_MESSAGE_PROMPT, container::ContainerService,
+    workspace_manager::WorkspaceManager,
 };
 use sqlx::Error as SqlxError;
 use ts_rs::TS;
@@ -123,12 +122,6 @@ pub struct DeleteWorkspaceQuery {
     pub delete_branches: bool,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct LinkWorkspaceRequest {
-    pub project_id: Uuid,
-    pub issue_id: Uuid,
-}
-
 /// Get the filesystem path for a repo within a workspace.
 /// For Direct single-repo mode, the workspace root IS the repo path.
 /// For Worktree mode (or Direct multi-repo), repos are subdirectories.
@@ -182,27 +175,6 @@ pub async fn update_workspace(
     let updated = Workspace::find_by_id(pool, workspace.id)
         .await?
         .ok_or(WorkspaceError::TaskNotFound)?;
-
-    // Sync to remote if archived or name changed
-    if (request.archived.is_some() || request.name.is_some())
-        && let Ok(client) = deployment.remote_client()
-    {
-        let ws = updated.clone();
-        let name = request.name.clone();
-        let archived = request.archived;
-        let stats =
-            diff_stream::compute_diff_stats(&deployment.db().pool, deployment.git(), &ws).await;
-        tokio::spawn(async move {
-            remote_sync::sync_workspace_to_remote(
-                &client,
-                ws.id,
-                name.map(Some),
-                archived,
-                stats.as_ref(),
-            )
-            .await;
-        });
-    }
 
     if is_archiving && let Err(e) = deployment.container().archive_workspace(workspace.id).await {
         tracing::error!("Failed to archive workspace {}: {}", workspace.id, e);
@@ -2274,29 +2246,6 @@ pub async fn delete_workspace(
         )
         .await;
 
-    // Attempt remote workspace deletion if requested
-    if query.delete_remote {
-        if let Ok(client) = deployment.remote_client() {
-            match client.delete_workspace(workspace.id).await {
-                Ok(()) => {
-                    tracing::info!("Deleted remote workspace for {}", workspace.id);
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        "Failed to delete remote workspace for {}: {}",
-                        workspace.id,
-                        e
-                    );
-                }
-            }
-        } else {
-            tracing::debug!(
-                "Remote client not available, skipping remote deletion for {}",
-                workspace.id
-            );
-        }
-    }
-
     // Spawn background cleanup task for filesystem resources
     if let Some(workspace_dir) = workspace_dir {
         let workspace_id = workspace.id;
@@ -2368,92 +2317,46 @@ pub async fn mark_seen(
     Ok(ResponseJson(ApiResponse::success(())))
 }
 
-/// Links a local workspace to the remote server, associating it with a remote issue.
-pub async fn link_workspace(
-    Extension(workspace): Extension<Workspace>,
-    State(deployment): State<DeploymentImpl>,
-    Json(payload): Json<LinkWorkspaceRequest>,
-) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
-    let client = deployment.remote_client()?;
-
-    let stats =
-        diff_stream::compute_diff_stats(&deployment.db().pool, deployment.git(), &workspace).await;
-
-    client
-        .create_workspace(CreateWorkspaceRequest {
-            project_id: payload.project_id,
-            local_workspace_id: workspace.id,
-            issue_id: payload.issue_id,
-            name: workspace.name.clone(),
-            archived: Some(workspace.archived),
-            files_changed: stats.as_ref().map(|s| s.files_changed as i32),
-            lines_added: stats.as_ref().map(|s| s.lines_added as i32),
-            lines_removed: stats.as_ref().map(|s| s.lines_removed as i32),
-        })
-        .await?;
-
-    Ok(ResponseJson(ApiResponse::success(())))
-}
-
-/// Unlinks a local workspace from the remote server by deleting the remote workspace.
-pub async fn unlink_workspace(
-    AxumPath(workspace_id): AxumPath<uuid::Uuid>,
-    State(deployment): State<DeploymentImpl>,
-) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
-    let client = deployment.remote_client()?;
-
-    match client.delete_workspace(workspace_id).await {
-        Ok(()) => Ok(ResponseJson(ApiResponse::success(()))),
-        Err(RemoteClientError::Http { status: 404, .. }) => {
-            Ok(ResponseJson(ApiResponse::success(())))
-        }
-        Err(e) => Err(e.into()),
-    }
-}
-
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
-    let task_attempt_id_router = Router::new()
-        .route("/unlink", post(unlink_workspace))
-        .merge(
-            Router::new()
-                .route(
-                    "/",
-                    get(get_task_attempt)
-                        .put(update_workspace)
-                        .delete(delete_workspace),
-                )
-                .route("/run-agent-setup", post(run_agent_setup))
-                .route("/gh-cli-setup", post(gh_cli_setup_handler))
-                .route("/start-dev-server", post(start_dev_server))
-                .route("/run-setup-script", post(run_setup_script))
-                .route("/run-cleanup-script", post(run_cleanup_script))
-                .route("/run-archive-script", post(run_archive_script))
-                .route("/branch-status", get(get_task_attempt_branch_status))
-                .route("/diff/ws", get(stream_task_attempt_diff_ws))
-                .route("/commits", get(get_commit_history))
-                .route("/merge", post(merge_task_attempt))
-                .route("/push", post(push_task_attempt_branch))
-                .route("/push/force", post(force_push_task_attempt_branch))
-                .route("/rebase", post(rebase_task_attempt))
-                .route("/rebase/continue", post(continue_rebase_task_attempt))
-                .route("/conflicts/abort", post(abort_conflicts_task_attempt))
-                .route("/pr", post(pr::create_pr))
-                .route("/pr/attach", post(pr::attach_existing_pr))
-                .route("/pr/comments", get(pr::get_pr_comments))
-                .route("/open-editor", post(open_task_attempt_in_editor))
-                .route("/children", get(get_task_attempt_children))
-                .route("/stop", post(stop_task_attempt_execution))
-                .route("/change-target-branch", post(change_target_branch))
-                .route("/rename-branch", post(rename_branch))
-                .route("/repos", get(get_task_attempt_repos))
-                .route("/first-message", get(get_first_user_message))
-                .route("/mark-seen", put(mark_seen))
-                .route("/link", post(link_workspace))
-                .layer(from_fn_with_state(
-                    deployment.clone(),
-                    load_workspace_middleware,
-                )),
-        );
+    let task_attempt_id_router = Router::new().merge(
+        Router::new()
+            .route(
+                "/",
+                get(get_task_attempt)
+                    .put(update_workspace)
+                    .delete(delete_workspace),
+            )
+            .route("/run-agent-setup", post(run_agent_setup))
+            .route("/gh-cli-setup", post(gh_cli_setup_handler))
+            .route("/start-dev-server", post(start_dev_server))
+            .route("/run-setup-script", post(run_setup_script))
+            .route("/run-cleanup-script", post(run_cleanup_script))
+            .route("/run-archive-script", post(run_archive_script))
+            .route("/branch-status", get(get_task_attempt_branch_status))
+            .route("/diff/ws", get(stream_task_attempt_diff_ws))
+            .route("/commits", get(get_commit_history))
+            .route("/merge", post(merge_task_attempt))
+            .route("/push", post(push_task_attempt_branch))
+            .route("/push/force", post(force_push_task_attempt_branch))
+            .route("/rebase", post(rebase_task_attempt))
+            .route("/rebase/continue", post(continue_rebase_task_attempt))
+            .route("/conflicts/abort", post(abort_conflicts_task_attempt))
+            .route("/pr", post(pr::create_pr))
+            .route("/pr/attach", post(pr::attach_existing_pr))
+            .route("/pr/comments", get(pr::get_pr_comments))
+            .route("/open-editor", post(open_task_attempt_in_editor))
+            .route("/children", get(get_task_attempt_children))
+            .route("/stop", post(stop_task_attempt_execution))
+            .route("/change-target-branch", post(change_target_branch))
+            .route("/rename-branch", post(rename_branch))
+            .route("/repos", get(get_task_attempt_repos))
+            .route("/first-message", get(get_first_user_message))
+            .route("/mark-seen", put(mark_seen))
+            .layer(from_fn_with_state(
+                deployment.clone(),
+                load_workspace_middleware,
+            )),
+    );
 
     let commit_sha_router = Router::new()
         .route("/diff", get(get_commit_diff))

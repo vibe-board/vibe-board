@@ -99,7 +99,7 @@ export default defineConfig({
         ],
       },
     }),
-    sentryVitePlugin({ org: 'bloop-ai', project: 'vibe-kanban' }),
+    sentryVitePlugin({ org: 'wqyjh', project: 'vibe-board' }),
     executorSchemasPlugin(),
   ],
   resolve: {
