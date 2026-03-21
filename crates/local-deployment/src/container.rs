@@ -1507,8 +1507,9 @@ impl ContainerService for LocalContainerService {
         let container_ref = self.ensure_container_exists(workspace).await?;
         let workspace_root = PathBuf::from(container_ref);
 
-        for repo in repositories {
-            let worktree_path = workspace_root.join(&repo.name);
+        for repo in &repositories {
+            let worktree_path =
+                repo_worktree_path(&workspace_root, workspace, &repositories, repo);
             let branch = &workspace.branch;
 
             let Some(target_branch) = target_branches.get(&repo.id) else {
