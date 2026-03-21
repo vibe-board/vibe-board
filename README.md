@@ -10,7 +10,7 @@
 
 <p align="center">A fork of Vibe Kanban — an orchestration platform for AI coding agents with the legacy UI and enhanced features.</p>
 <p align="center">
-  <a href="https://www.npmjs.com/package/@wqyjh/vibe-board"><img alt="npm" src="https://img.shields.io/npm/v/@wqyjh/vibe-board?style=flat-square" /></a>
+  <a href="https://www.npmjs.com/package/vibe-board"><img alt="npm" src="https://img.shields.io/npm/v/vibe-board?style=flat-square" /></a>
   <a href="https://github.com/WqyJh/vibe-board/actions/workflows/pre-release.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/WqyJh/vibe-board/.github%2Fworkflows%2Fpre-release.yml" /></a>
 </p>
 
@@ -71,7 +71,7 @@ This fork adds the following features on top of the legacy UI:
 Make sure you have authenticated with your favourite coding agent. A full list of supported coding agents can be found in the [docs](https://vibeboard.cloud/docs). Then in your terminal run:
 
 ```bash
-npx @wqyjh/vibe-board
+npx vibe-board
 ```
 
 ## E2EE Remote Access
