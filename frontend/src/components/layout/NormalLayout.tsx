@@ -13,7 +13,7 @@ export function NormalLayout() {
 
   return (
     <>
-      <div className="flex flex-col h-screen">
+      <div className="flex flex-col h-dvh">
         <DevBanner />
         <OfflineIndicator />
         {!shouldHideNavbar && !isMobile && <Navbar />}

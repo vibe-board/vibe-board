@@ -8,8 +8,7 @@
  */
 import { useEffect, useRef, type ReactNode } from 'react';
 import { useServerManager } from '@/contexts/ServerManagerContext';
-
-import '@/styles/legacy/index.css';
+import { LegacyDesignScope } from '@/components/legacy-design/LegacyDesignScope';
 
 export function TauriAppGate({ children }: { children: ReactNode }) {
   const {
@@ -53,7 +52,6 @@ export function TauriAppGate({ children }: { children: ReactNode }) {
 
   // No servers configured → show server setup
   if (servers.length === 0) {
-    // Lazy-import to avoid circular deps
     return <ServersPageLazy />;
   }
 
@@ -84,9 +82,11 @@ export function TauriAppGate({ children }: { children: ReactNode }) {
 
 function TauriGateShell({ children }: { children: ReactNode }) {
   return (
-    <div className="legacy-design min-h-screen flex items-center justify-center bg-background">
-      {children}
-    </div>
+    <LegacyDesignScope>
+      <div className="fixed inset-0 flex items-center justify-center bg-background">
+        {children}
+      </div>
+    </LegacyDesignScope>
   );
 }
 
@@ -95,8 +95,10 @@ import { Servers } from '@/pages/Servers';
 
 function ServersPageLazy({ errorMessage }: { errorMessage?: string | null }) {
   return (
-    <div className="legacy-design min-h-screen bg-background">
-      <Servers errorMessage={errorMessage} />
-    </div>
+    <LegacyDesignScope>
+      <div className="fixed inset-0 overflow-auto bg-background">
+        <Servers errorMessage={errorMessage} />
+      </div>
+    </LegacyDesignScope>
   );
 }
