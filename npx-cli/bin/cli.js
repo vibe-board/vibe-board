@@ -102,7 +102,7 @@ async function extractAndRun(baseName, launch) {
       fs.unlinkSync(binPath);
     }
   } catch (err) {
-    if (process.env.VIBE_KANBAN_DEBUG) {
+    if (process.env.VIBE_BOARD_DEBUG) {
       console.warn(`Warning: Could not delete existing binary: ${err.message}`);
     }
   }
@@ -135,10 +135,10 @@ async function extractAndRun(baseName, launch) {
 
   // Fallback: older releases (e.g. unsigned macOS) shipped zip with binary named server / mcp_task_server / review
   const fallbackNames = {
-    "vibe-kanban": "server",
-    "vibe-kanban-mcp": "mcp_task_server",
-    "vibe-kanban-review": "review",
-    "vibe-kanban-gateway": "e2ee-gateway",
+    "vibe-board": "server",
+    "vibe-board-mcp": "mcp_task_server",
+    "vibe-board-review": "review",
+    "vibe-board-gateway": "e2ee-gateway",
   };
   let resolvedPath = binPath;
   if (!fs.existsSync(binPath)) {
@@ -188,7 +188,7 @@ async function main() {
         if (latest && latest !== BINARY_TAG) {
           setTimeout(() => {
             console.log(`\nUpdate available: ${BINARY_TAG} -> ${latest}`);
-            console.log(`Run: npx vibe-kanban@latest`);
+            console.log(`Run: npx vibe-board@latest`);
           }, 2000);
         }
       })
@@ -196,7 +196,7 @@ async function main() {
   }
 
   if (isMcpMode) {
-    await extractAndRun("vibe-kanban-mcp", (bin) => {
+    await extractAndRun("vibe-board-mcp", (bin) => {
       const proc = spawn(bin, [], { stdio: "inherit" });
       proc.on("exit", (c) => process.exit(c || 0));
       proc.on("error", (e) => {
@@ -209,7 +209,7 @@ async function main() {
       process.on("SIGTERM", () => proc.kill("SIGTERM"));
     });
   } else if (isReviewMode) {
-    await extractAndRun("vibe-kanban-review", (bin) => {
+    await extractAndRun("vibe-board-review", (bin) => {
       const reviewArgs = args.slice(1);
       const proc = spawn(bin, reviewArgs, { stdio: "inherit" });
       proc.on("exit", (c) => process.exit(c || 0));
@@ -219,7 +219,7 @@ async function main() {
       });
     });
   } else if (isGatewayMode) {
-    await extractAndRun("vibe-kanban-gateway", (bin) => {
+    await extractAndRun("vibe-board-gateway", (bin) => {
       const gatewayArgs = args.slice(1);
       const proc = spawn(bin, gatewayArgs, { stdio: "inherit" });
       proc.on("exit", (c) => process.exit(c || 0));
@@ -231,7 +231,7 @@ async function main() {
       process.on("SIGTERM", () => proc.kill("SIGTERM"));
     });
   } else {
-    await extractAndRun("vibe-kanban", (bin) => {
+    await extractAndRun("vibe-board", (bin) => {
       if (isServerSubcommand) {
         // Pass subcommand and its arguments to the main binary
         const proc = spawn(bin, args, { stdio: "inherit" });
@@ -245,7 +245,7 @@ async function main() {
       } else {
         // Start server without arguments
         const modeLabel = LOCAL_DEV_MODE ? " (local dev)" : "";
-        console.log(`Starting vibe-kanban v${CLI_VERSION}${modeLabel}...`);
+        console.log(`Starting vibe-board v${CLI_VERSION}${modeLabel}...`);
         execSync(`"${bin}"`, { stdio: "inherit" });
       }
     });
@@ -254,7 +254,7 @@ async function main() {
 
 main().catch((err) => {
   console.error("Fatal error:", err.message);
-  if (process.env.VIBE_KANBAN_DEBUG) {
+  if (process.env.VIBE_BOARD_DEBUG) {
     console.error(err.stack);
   }
   process.exit(1);

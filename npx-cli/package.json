@@ -1,19 +1,19 @@
 {
-  "name": "@wqyjh/vibe-kanban",
+  "name": "@wqyjh/vibe-board",
   "private": false,
   "version": "0.1.9-main.5",
   "main": "index.js",
   "bin": {
-    "vibe-kanban": "bin/cli.js"
+    "vibe-board": "bin/cli.js"
   },
   "keywords": [],
   "author": "WqyJh",
   "repository": {
     "type": "git",
-    "url": "https://github.com/WqyJh/vibe-kanban"
+    "url": "https://github.com/WqyJh/vibe-board"
   },
   "license": "",
-  "description": "NPX wrapper around vibe-kanban, vibe-kanban-mcp, vibe-kanban-review, and vibe-kanban-gateway",
+  "description": "NPX wrapper around vibe-board, vibe-board-mcp, vibe-board-review, and vibe-board-gateway",
   "dependencies": {
     "adm-zip": "^0.5.16"
   },

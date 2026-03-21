@@ -22,7 +22,7 @@ use super::{AcpClient, SessionManager};
 use crate::{
     approvals::ExecutorApprovalService,
     command::{CmdOverrides, CommandParts},
-    env::{ExecutionEnv, remove_vibe_kanban_port_env},
+    env::{ExecutionEnv, remove_vibe_board_port_env},
     executors::{ExecutorError, ExecutorExitResult, SpawnedChild, acp::AcpEvent},
 };
 
@@ -94,8 +94,8 @@ impl AcpAgentHarness {
             .with_profile(cmd_overrides)
             .apply_to_command(&mut command);
 
-        // Remove vibe-kanban's port env vars to prevent conflicts
-        remove_vibe_kanban_port_env(&mut command);
+        // Remove vibe-board's port env vars to prevent conflicts
+        remove_vibe_board_port_env(&mut command);
 
         let mut child = command.group_spawn()?;
 
@@ -150,8 +150,8 @@ impl AcpAgentHarness {
             .with_profile(cmd_overrides)
             .apply_to_command(&mut command);
 
-        // Remove vibe-kanban's port env vars to prevent conflicts
-        remove_vibe_kanban_port_env(&mut command);
+        // Remove vibe-board's port env vars to prevent conflicts
+        remove_vibe_board_port_env(&mut command);
 
         let mut child = command.group_spawn()?;
 

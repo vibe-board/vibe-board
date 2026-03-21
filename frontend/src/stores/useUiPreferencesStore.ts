@@ -6,8 +6,7 @@ export type RepoAction =
   | 'change-target'
   | 'rebase'
   | 'push';
-import type { IssuePriority } from 'shared/remote-types';
-
+type IssuePriority = 'urgent' | 'high' | 'medium' | 'low';
 export const RIGHT_MAIN_PANEL_MODES = {
   CHANGES: 'changes',
   LOGS: 'logs',

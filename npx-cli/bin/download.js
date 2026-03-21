@@ -6,12 +6,12 @@ const crypto = require("crypto");
 // Replaced during npm pack by workflow
 const GITHUB_RELEASES_REPO = "__GITHUB_RELEASES_REPO__"; // e.g. owner/repo
 const BINARY_TAG = "__BINARY_TAG__"; // e.g., v0.0.135-20251215122030
-const CACHE_DIR = path.join(require("os").homedir(), ".vibe-kanban", "bin");
+const CACHE_DIR = path.join(require("os").homedir(), ".vibe-board", "bin");
 
 // Local development mode: use binaries from npx-cli/dist/ instead of GitHub Release
 // Only activate if dist/ exists (i.e., running from source after local-build.sh)
 const LOCAL_DIST_DIR = path.join(__dirname, "..", "dist");
-const LOCAL_DEV_MODE = fs.existsSync(LOCAL_DIST_DIR) || process.env.VIBE_KANBAN_LOCAL === "1";
+const LOCAL_DEV_MODE = fs.existsSync(LOCAL_DIST_DIR) || process.env.VIBE_BOARD_LOCAL === "1";
 
 async function fetchJson(url, options = {}) {
   return new Promise((resolve, reject) => {
@@ -135,7 +135,7 @@ async function ensureBinary(platform, binaryName, onProgress) {
 async function getLatestVersion() {
   const apiUrl = `https://api.github.com/repos/${GITHUB_RELEASES_REPO}/releases?per_page=1`;
   const releases = await fetchJson(apiUrl, {
-    headers: { "User-Agent": "vibe-kanban-cli" },
+    headers: { "User-Agent": "vibe-board-cli" },
   });
   if (!Array.isArray(releases) || releases.length === 0) return null;
   return releases[0].tag_name || null;

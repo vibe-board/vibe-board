@@ -36,7 +36,7 @@ use self::{
 use crate::{
     approvals::ExecutorApprovalService,
     command::{CmdOverrides, CommandBuildError, CommandBuilder, CommandParts, apply_overrides},
-    env::{ExecutionEnv, remove_vibe_kanban_port_env},
+    env::{ExecutionEnv, remove_vibe_board_port_env},
     executors::{
         AppendPrompt, AvailabilityInfo, ExecutorError, SpawnedChild, StandardCodingAgentExecutor,
         codex::client::LogWriter, utils::reorder_slash_commands,
@@ -371,8 +371,8 @@ impl ClaudeCode {
             .with_profile(&self.cmd)
             .apply_to_command(&mut command);
 
-        // Remove vibe-kanban's port env vars to prevent conflicts
-        remove_vibe_kanban_port_env(&mut command);
+        // Remove vibe-board's port env vars to prevent conflicts
+        remove_vibe_board_port_env(&mut command);
 
         // Remove ANTHROPIC_API_KEY if disable_api_key is enabled
         if self.disable_api_key.unwrap_or(false) {

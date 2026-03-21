@@ -18,10 +18,9 @@ async fn start_migration(
     State(deployment): State<DeploymentImpl>,
     Json(request): Json<MigrationRequest>,
 ) -> Result<ResponseJson<ApiResponse<MigrationResponse>>, ApiError> {
-    let remote_client = deployment.remote_client()?;
     let sqlite_pool = deployment.db().pool.clone();
 
-    let service = MigrationService::new(sqlite_pool, remote_client);
+    let service = MigrationService::new(sqlite_pool);
     let project_ids = request.project_id_set();
     let report = service
         .run_migration(request.organization_id, project_ids)

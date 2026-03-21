@@ -29,7 +29,6 @@ use services::services::{
     image::{ImageError, ImageService},
     project::ProjectService,
     queued_message::QueuedMessageService,
-    remote_client::RemoteClient,
     repo::RepoService,
     worktree_manager::WorktreeError,
 };
@@ -37,10 +36,6 @@ use sqlx::Error as SqlxError;
 use thiserror::Error;
 use tokio::sync::RwLock;
 use utils::sentry as sentry_utils;
-
-#[derive(Debug, Clone, Copy, Error)]
-#[error("Remote client not configured")]
-pub struct RemoteClientNotConfigured;
 
 #[derive(Debug, Error)]
 pub enum DeploymentError {
@@ -70,8 +65,6 @@ pub enum DeploymentError {
     Event(#[from] EventError),
     #[error(transparent)]
     Config(#[from] ConfigError),
-    #[error("Remote client not configured")]
-    RemoteClientNotConfigured,
     #[error(transparent)]
     Other(#[from] AnyhowError),
 }
@@ -109,10 +102,6 @@ pub trait Deployment: Clone + Send + Sync + 'static {
     fn queued_message_service(&self) -> &QueuedMessageService;
 
     fn auth_context(&self) -> &AuthContext;
-
-    fn remote_client(&self) -> Result<RemoteClient, RemoteClientNotConfigured> {
-        Err(RemoteClientNotConfigured)
-    }
 
     async fn update_sentry_scope(&self) -> Result<(), DeploymentError> {
         let user_id = self.user_id();

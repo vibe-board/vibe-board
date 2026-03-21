@@ -16,7 +16,6 @@ bindings/
 
 # Environment variables
 .env
-.env.remote
 .env.local
 .env.development.local
 .env.test.local
@@ -72,14 +71,13 @@ coverage/
 
 .env
 frontend/dist
-remote-frontend/dist
 
 build-npm-package-codesign.sh
 
 npx-cli/dist
 npx-cli/package-lock.json
-npx-cli/vibe-kanban-*
-vibe-kanban-*.tgz
+npx-cli/vibe-board-*
+vibe-board-*.tgz
 
 # Development ports file
 .dev-ports.json
@@ -88,7 +86,7 @@ dev_assets
 /frontend/.env.sentry-build-plugin
 .ssh
 
-vibe-kanban-cloud/
+vibe-board-cloud/
 
 .jj
 .sisyphus/

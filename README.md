@@ -1,37 +1,37 @@
 <p align="center">
-  <a href="https://vibekanban.com">
+  <a href="https://vibeboard.cloud">
     <picture>
-      <source srcset="frontend/public/vibe-kanban-logo-dark.svg" media="(prefers-color-scheme: dark)">
-      <source srcset="frontend/public/vibe-kanban-logo.svg" media="(prefers-color-scheme: light)">
-      <img src="frontend/public/vibe-kanban-logo.svg" alt="Vibe Kanban Logo">
+      <source srcset="frontend/public/vibe-board-logo-dark.svg" media="(prefers-color-scheme: dark)">
+      <source srcset="frontend/public/vibe-board-logo.svg" media="(prefers-color-scheme: light)">
+      <img src="frontend/public/vibe-board-logo.svg" alt="Vibe Board Logo">
     </picture>
   </a>
 </p>
 
 <p align="center">A fork of Vibe Kanban — an orchestration platform for AI coding agents with the legacy UI and enhanced features.</p>
 <p align="center">
-  <a href="https://www.npmjs.com/package/@wqyjh/vibe-kanban"><img alt="npm" src="https://img.shields.io/npm/v/@wqyjh/vibe-kanban?style=flat-square" /></a>
-  <a href="https://github.com/WqyJh/vibe-kanban/actions/workflows/pre-release.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/WqyJh/vibe-kanban/.github%2Fworkflows%2Fpre-release.yml" /></a>
+  <a href="https://www.npmjs.com/package/@wqyjh/vibe-board"><img alt="npm" src="https://img.shields.io/npm/v/@wqyjh/vibe-board?style=flat-square" /></a>
+  <a href="https://github.com/WqyJh/vibe-board/actions/workflows/pre-release.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/WqyJh/vibe-board/.github%2Fworkflows%2Fpre-release.yml" /></a>
 </p>
 
-![](frontend/public/vibe-kanban-screenshot-overview.png)
+![](frontend/public/vibe-board-screenshot-overview.png)
 
 ## Overview
 
-AI coding agents are increasingly writing the world's code and human engineers now spend the majority of their time planning, reviewing, and orchestrating tasks. Vibe Kanban streamlines this process, enabling you to:
+AI coding agents are increasingly writing the world's code and human engineers now spend the majority of their time planning, reviewing, and orchestrating tasks. Vibe Board streamlines this process, enabling you to:
 
 - Easily switch between different coding agents
 - Orchestrate the execution of multiple coding agents in parallel or in sequence
 - Quickly review work and start dev servers
 - Track the status of tasks that your coding agents are working on
 - Centralise configuration of coding agent MCP configs
-- Open projects remotely via SSH when running Vibe Kanban on a remote server
+- Open projects remotely via SSH when running Vibe Board on a remote server
 
 You can watch a video overview [here](https://youtu.be/TFT3KnZOOAk).
 
 ## About This Fork
 
-This repository is a **fork of [vibe-kanban](https://github.com/BloopAI/vibe-kanban)**. The upstream project introduced a new UI that we found too complex for our workflow. We prefer the **legacy UI** for its simplicity and ease of use. This fork maintains a version of Vibe Kanban based on the **legacy UI**, so you can continue using the interface you're familiar with.
+This repository is a **fork of [vibe-kanban](https://github.com/BloopAI/vibe-kanban)**. The upstream project introduced a new UI that we found too complex for our workflow. We prefer the **legacy UI** for its simplicity and ease of use. This fork maintains a version of Vibe Board based on the **legacy UI**, so you can continue using the interface you're familiar with.
 
 ## New Features in This Fork
 
@@ -68,31 +68,31 @@ This fork adds the following features on top of the legacy UI:
 
 ## Installation
 
-Make sure you have authenticated with your favourite coding agent. A full list of supported coding agents can be found in the [docs](https://vibekanban.com/docs). Then in your terminal run:
+Make sure you have authenticated with your favourite coding agent. A full list of supported coding agents can be found in the [docs](https://vibeboard.cloud/docs). Then in your terminal run:
 
 ```bash
-npx @wqyjh/vibe-kanban
+npx @wqyjh/vibe-board
 ```
 
 ## E2EE Remote Access
 
-Vibe Kanban supports end-to-end encrypted remote access. You can securely access your Kanban board from any browser, even when your machine is behind a firewall. The gateway server only sees encrypted data — your content is never exposed.
+Vibe Board supports end-to-end encrypted remote access. You can securely access your board from any browser, even when your machine is behind a firewall. The gateway server only sees encrypted data — your content is never exposed.
 
 ```
-Browser (holds keys)  ←──HTTPS──→  Gateway (zero-knowledge)  ←──WSS──→  Your Machine (vibe-kanban)
+Browser (holds keys)  ←──HTTPS──→  Gateway (zero-knowledge)  ←──WSS──→  Your Machine (vibe-board)
 ```
 
 **How it works:**
 
 1. **Deploy the Gateway** on a public server — it serves the Web UI and handles encrypted message routing
-2. **Connect your machine** — the local `vibe-kanban` server connects to the gateway automatically
-3. **Open the Gateway URL in a browser** — log in, enter your master secret, select your machine, and use the full vibe-kanban interface
+2. **Connect your machine** — the local `vibe-board` server connects to the gateway automatically
+3. **Open the Gateway URL in a browser** — log in, enter your master secret, select your machine, and use the full vibe-board interface
 
 All API calls and WebSocket streams are transparently encrypted in the browser before being sent through the gateway. See the [E2EE documentation](development/E2EE.md) for details.
 
 ## Documentation
 
-Please head to the [website](https://vibekanban.com/docs) for the latest documentation and user guides.
+Please head to the [website](https://vibeboard.cloud/docs) for the latest documentation and user guides.
 
 ## Support
 
@@ -159,27 +159,27 @@ The following environment variables can be configured at build time or runtime:
 | `MCP_HOST` | Runtime | Value of `HOST` | MCP server connection host (use `127.0.0.1` when `HOST=0.0.0.0` on Windows) |
 | `MCP_PORT` | Runtime | Value of `BACKEND_PORT` | MCP server connection port |
 | `DISABLE_WORKTREE_CLEANUP` | Runtime | Not set | Disable all git worktree cleanup including orphan and expired workspace cleanup (for debugging) |
-| `VK_ALLOWED_ORIGINS` | Runtime | Not set | Comma-separated list of origins that are allowed to make backend API requests (e.g., `https://my-vibekanban-frontend.com`) |
+| `VB_ALLOWED_ORIGINS` | Runtime | Not set | Comma-separated list of origins that are allowed to make backend API requests (e.g., `https://my-vibekanban-frontend.com`) |
 
 **Build-time variables** must be set when running `pnpm run build`. **Runtime variables** are read when the application starts.
 
 #### Self-Hosting with a Reverse Proxy or Custom Domain
 
-When running Vibe Kanban behind a reverse proxy (e.g., nginx, Caddy, Traefik) or on a custom domain, you must set the `VK_ALLOWED_ORIGINS` environment variable. Without this, the browser's Origin header won't match the backend's expected host, and API requests will be rejected with a 403 Forbidden error.
+When running Vibe Board behind a reverse proxy (e.g., nginx, Caddy, Traefik) or on a custom domain, you must set the `VB_ALLOWED_ORIGINS` environment variable. Without this, the browser's Origin header won't match the backend's expected host, and API requests will be rejected with a 403 Forbidden error.
 
 Set it to the full origin URL(s) where your frontend is accessible:
 
 ```bash
 # Single origin
-VK_ALLOWED_ORIGINS=https://vk.example.com
+VB_ALLOWED_ORIGINS=https://vk.example.com
 
 # Multiple origins (comma-separated)
-VK_ALLOWED_ORIGINS=https://vk.example.com,https://vk-staging.example.com
+VB_ALLOWED_ORIGINS=https://vk.example.com,https://vk-staging.example.com
 ```
 
 ### Remote Deployment
 
-When running Vibe Kanban on a remote server (e.g., via systemctl, Docker, or cloud hosting), you can configure your editor to open projects via SSH:
+When running Vibe Board on a remote server (e.g., via systemctl, Docker, or cloud hosting), you can configure your editor to open projects via SSH:
 
 1. **Access via tunnel**: Use Cloudflare Tunnel, ngrok, or similar to expose the web UI
 2. **Configure remote SSH** in Settings → Editor Integration:
@@ -192,4 +192,4 @@ When running Vibe Kanban on a remote server (e.g., via systemctl, Docker, or clo
 
 When configured, the "Open in VSCode" buttons will generate URLs like `vscode://vscode-remote/ssh-remote+user@host/path` that open your local editor and connect to the remote server.
 
-See the [documentation](https://vibekanban.com/docs/configuration-customisation/global-settings#remote-ssh-configuration) for detailed setup instructions.
+See the [documentation](https://vibeboard.cloud/docs/configuration-customisation/global-settings#remote-ssh-configuration) for detailed setup instructions.

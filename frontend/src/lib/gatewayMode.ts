@@ -2,7 +2,7 @@
  * Gateway mode detection and connection singleton.
  *
  * Provides runtime detection of whether the frontend is running on an
- * E2EE gateway (vs a local vibe-kanban server), and a module-level
+ * E2EE gateway (vs a local vibe-board server), and a module-level
  * accessor for the E2EE connection (usable outside React).
  */
 import type { E2EEConnection } from '@/lib/e2ee';

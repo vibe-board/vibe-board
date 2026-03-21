@@ -5,7 +5,6 @@ import i18n from '@/i18n';
 import { Projects } from '@/pages/Projects';
 import { ProjectTasks } from '@/pages/ProjectTasks';
 import { FullAttemptLogsPage } from '@/pages/FullAttemptLogs';
-import { Migration } from '@/pages/Migration';
 import { NormalLayout } from '@/components/layout/NormalLayout';
 import { usePostHog } from 'posthog-js/react';
 import { useAuth } from '@/hooks';
@@ -15,7 +14,6 @@ import {
   AgentSettings,
   GeneralSettings,
   McpSettings,
-  OrganizationSettings,
   ProjectSettings,
   ReposSettings,
   SettingsLayout,
@@ -33,7 +31,7 @@ import * as Sentry from '@sentry/react';
 
 import { DisclaimerDialog } from '@/components/dialogs/global/DisclaimerDialog';
 import { OnboardingDialog } from '@/components/dialogs/global/OnboardingDialog';
-import { ReleaseNotesDialog } from '@/components/dialogs/global/ReleaseNotesDialog';
+
 import { ClickedElementsProvider } from './contexts/ClickedElementsProvider';
 
 // Design scope components
@@ -91,16 +89,6 @@ function AppContent() {
         OnboardingDialog.hide();
         return;
       }
-
-      // 3) Release notes - last step
-      if (config.show_release_notes) {
-        await ReleaseNotesDialog.show();
-        if (!cancelled) {
-          await updateAndSaveConfig({ show_release_notes: false });
-        }
-        ReleaseNotesDialog.hide();
-        return;
-      }
     };
 
     showNextStep();
@@ -139,7 +127,6 @@ function AppContent() {
                   path="/local-projects/:projectId"
                   element={<Projects />}
                 />
-                <Route path="/migration" element={<Migration />} />
                 <Route
                   path="/local-projects/:projectId/tasks"
                   element={<ProjectTasks />}
@@ -149,10 +136,6 @@ function AppContent() {
                   <Route path="general" element={<GeneralSettings />} />
                   <Route path="projects" element={<ProjectSettings />} />
                   <Route path="repos" element={<ReposSettings />} />
-                  <Route
-                    path="organizations"
-                    element={<OrganizationSettings />}
-                  />
                   <Route path="agents" element={<AgentSettings />} />
                   <Route path="mcp" element={<McpSettings />} />
                 </Route>

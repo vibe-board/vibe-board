@@ -1,7 +1,5 @@
 use thiserror::Error;
 
-use crate::services::remote_client::RemoteClientError;
-
 #[derive(Debug, Error)]
 pub enum MigrationError {
     #[error(transparent)]
@@ -12,9 +10,6 @@ pub enum MigrationError {
 
     #[error(transparent)]
     Workspace(#[from] db::models::workspace::WorkspaceError),
-
-    #[error(transparent)]
-    RemoteClient(#[from] RemoteClientError),
 
     #[error("not authenticated - please log in first")]
     NotAuthenticated,

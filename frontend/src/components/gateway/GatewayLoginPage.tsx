@@ -24,7 +24,7 @@ export function GatewayLoginPage() {
       {/* Header */}
       <div className="text-center space-y-2">
         <h1 className="text-xl font-bold text-foreground">
-          Vibe Kanban Gateway
+          Vibe Board Gateway
         </h1>
         <p className="text-sm text-foreground opacity-70">
           {isSignupMode ? 'Create your account' : 'Sign in to continue'}
