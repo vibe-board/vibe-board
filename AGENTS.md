@@ -18,6 +18,7 @@ When making changes to the types, you can regenerate them using `pnpm run genera
 Do not manually edit shared/types.ts, instead edit crates/server/src/bin/generate_types.rs
 
 ## Build, Test, and Development Commands
+- **IMPORTANT: Always use `pnpm`, never `npm`.** Do not run `npm install`, `npm run`, etc. — always use `pnpm`.
 - Install: `pnpm i`
 - Run dev (frontend + backend with ports auto-assigned): `pnpm run dev`
 - Backend (watch): `pnpm run backend:dev:watch`
