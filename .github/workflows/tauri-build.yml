@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'tauri-app/**'
+      - '.github/workflows/tauri-build.yml'
   workflow_dispatch:
 
 concurrency:
