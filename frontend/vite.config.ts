@@ -144,7 +144,7 @@ export default defineConfig({
   build: {
     sourcemap: true,
     // Tauri WebView targets
-    target: isTauri ? ['chrome105', 'safari13'] : undefined,
+    target: isTauri ? ['chrome105', 'safari15'] : undefined,
     // Disable minification in Tauri debug mode for better debugging
     minify: isTauri ? !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false : undefined,
   },
