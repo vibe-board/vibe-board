@@ -29,9 +29,6 @@ jobs:
             target: x86_64-apple-darwin
 
     runs-on: ${{ matrix.platform }}
-    defaults:
-      run:
-        working-directory: vibe-kanban
 
     steps:
       - uses: actions/checkout@v4
@@ -60,7 +57,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          projectPath: vibe-kanban/tauri-app
+          projectPath: tauri-app
           args: --target ${{ matrix.target }}
 
       - name: Upload artifacts (Linux)
@@ -69,8 +66,8 @@ jobs:
         with:
           name: vibe-board-${{ matrix.target }}
           path: |
-            vibe-kanban/tauri-app/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
-            vibe-kanban/tauri-app/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage
+            tauri-app/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
+            tauri-app/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage
           if-no-files-found: warn
 
       - name: Upload artifacts (macOS)
@@ -79,8 +76,8 @@ jobs:
         with:
           name: vibe-board-${{ matrix.target }}
           path: |
-            vibe-kanban/tauri-app/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.dmg
-            vibe-kanban/tauri-app/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.app.tar.gz
+            tauri-app/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.dmg
+            tauri-app/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.app.tar.gz
           if-no-files-found: warn
 
       - name: Upload artifacts (Windows)
@@ -89,6 +86,6 @@ jobs:
         with:
           name: vibe-board-${{ matrix.target }}
           path: |
-            vibe-kanban/tauri-app/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.msi
-            vibe-kanban/tauri-app/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.exe
+            tauri-app/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.msi
+            tauri-app/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.exe
           if-no-files-found: warn
