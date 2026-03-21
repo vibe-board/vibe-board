@@ -10,8 +10,8 @@ export interface BaseServerConfig {
 
 export interface DirectServerConfig extends BaseServerConfig {
   type: 'direct';
-  host: string;
-  port: number;
+  /** Full base URL e.g. "http://192.168.1.100:3000" */
+  url: string;
 }
 
 export interface E2EEServerConfig extends BaseServerConfig {
@@ -36,15 +36,11 @@ export interface ActiveServerState {
 
 export function getServerAddress(config: ServerConfig): string {
   if (config.type === 'direct') {
-    return `${config.host}:${config.port}`;
+    return config.url;
   }
   return config.gatewayUrl;
 }
 
 export function getServerBaseUrl(config: DirectServerConfig): string {
-  const host = config.host;
-  const port = config.port;
-  const protocol =
-    host === 'localhost' || host === '127.0.0.1' ? 'http' : 'https';
-  return `${protocol}://${host}:${port}`;
+  return config.url.replace(/\/$/, '');
 }

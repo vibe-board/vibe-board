@@ -2,44 +2,54 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { DirectServerConfig } from '@/lib/servers/types';
-import { getServerBaseUrl } from '@/lib/servers/types';
-import { ArrowLeft, CheckCircle, Loader2, AlertCircle } from 'lucide-react';
+import { CheckCircle, Loader2, AlertCircle } from 'lucide-react';
 
 interface DirectServerSetupProps {
   onDone: (config: DirectServerConfig) => void;
   onBack: () => void;
 }
 
+function normalizeUrl(raw: string): string {
+  let url = raw.trim().replace(/\/$/, '');
+  // If no protocol, default to http (LAN/local use case)
+  if (!/^https?:\/\//i.test(url)) {
+    url = `http://${url}`;
+  }
+  return url;
+}
+
 export function DirectServerSetup({ onDone, onBack }: DirectServerSetupProps) {
+  const [url, setUrl] = useState('');
   const [name, setName] = useState('');
-  const [host, setHost] = useState('');
-  const [port, setPort] = useState('3000');
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<'idle' | 'success' | 'error'>(
     'idle'
   );
   const [testError, setTestError] = useState('');
-
-  const config: DirectServerConfig = {
-    id: crypto.randomUUID(),
-    name: name || `${host}:${port}`,
-    type: 'direct',
-    host,
-    port: parseInt(port, 10) || 3000,
-  };
+  const [serverName, setServerName] = useState('');
 
   const handleTest = async () => {
     setTesting(true);
     setTestResult('idle');
     setTestError('');
+    setServerName('');
 
     try {
-      const baseUrl = getServerBaseUrl(config);
+      const baseUrl = normalizeUrl(url);
       const resp = await fetch(`${baseUrl}/api/info`, {
         signal: AbortSignal.timeout(5000),
       });
       if (!resp.ok) {
         throw new Error(`Server returned ${resp.status}`);
+      }
+      // Try to extract server name from response
+      try {
+        const data = await resp.json();
+        if (data?.name) {
+          setServerName(data.name);
+        }
+      } catch {
+        // ignore JSON parse errors
       }
       setTestResult('success');
     } catch (err) {
@@ -51,56 +61,56 @@ export function DirectServerSetup({ onDone, onBack }: DirectServerSetupProps) {
   };
 
   const handleSave = () => {
+    const baseUrl = normalizeUrl(url);
+    const displayName = name || serverName || new URL(baseUrl).host;
     onDone({
-      ...config,
-      name: name || `${host}:${port}`,
+      id: crypto.randomUUID(),
+      name: displayName,
+      type: 'direct',
+      url: baseUrl,
     });
   };
 
-  const canTest = host.trim().length > 0;
+  const canTest = url.trim().length > 0;
   const canSave = testResult === 'success';
 
   return (
     <div className="space-y-4 py-2">
       <div className="space-y-2">
-        <label className="text-sm font-medium text-foreground">Name</label>
+        <label className="text-sm font-medium text-foreground">
+          Server URL
+        </label>
         <Input
-          placeholder="My Server"
+          placeholder="http://192.168.1.100:3000"
+          value={url}
+          onChange={(e) => {
+            setUrl(e.target.value);
+            setTestResult('idle');
+          }}
+          autoCapitalize="none"
+          autoCorrect="off"
+        />
+        <p className="text-xs text-muted-foreground">
+          Enter the full URL of your Vibe Board server
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-foreground">
+          Name (optional)
+        </label>
+        <Input
+          placeholder={serverName || 'My Server'}
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
-      </div>
-
-      <div className="grid grid-cols-3 gap-2">
-        <div className="col-span-2 space-y-2">
-          <label className="text-sm font-medium text-foreground">Host</label>
-          <Input
-            placeholder="192.168.1.100"
-            value={host}
-            onChange={(e) => {
-              setHost(e.target.value);
-              setTestResult('idle');
-            }}
-          />
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-foreground">Port</label>
-          <Input
-            type="number"
-            placeholder="3000"
-            value={port}
-            onChange={(e) => {
-              setPort(e.target.value);
-              setTestResult('idle');
-            }}
-          />
-        </div>
       </div>
 
       {testResult === 'success' && (
         <div className="flex items-center gap-2 text-sm text-green-600">
           <CheckCircle className="h-4 w-4" />
           Connection successful
+          {serverName && ` — ${serverName}`}
         </div>
       )}
 
@@ -113,8 +123,7 @@ export function DirectServerSetup({ onDone, onBack }: DirectServerSetupProps) {
 
       <div className="flex items-center gap-2 pt-2">
         <Button variant="ghost" size="sm" onClick={onBack}>
-          <ArrowLeft className="h-3.5 w-3.5 mr-1" />
-          Back
+          Cancel
         </Button>
         <div className="flex-1" />
         <Button

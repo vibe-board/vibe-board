@@ -1,5 +1,5 @@
 import type { ServerConfig, ServerConnectionStatus } from '@/lib/servers/types';
-import { getServerBaseUrl } from '@/lib/servers/types';
+import { getServerAddress } from '@/lib/servers/types';
 import { useServerManager } from '@/contexts/ServerManagerContext';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/dialogs/shared/ConfirmDialog';
@@ -39,8 +39,7 @@ export function ServerCard({
     }
   };
 
-  const address =
-    config.type === 'direct' ? getServerBaseUrl(config) : config.gatewayUrl;
+  const address = getServerAddress(config);
 
   const statusColor =
     connectionStatus === 'connected'
