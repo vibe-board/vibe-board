@@ -54,7 +54,7 @@ const EXTERNAL_LINKS = [
   {
     label: 'Support',
     icon: MessageCircleQuestion,
-    href: 'https://github.com/WqyJh/vibe-board/issues',
+    href: 'https://github.com/vibe-board/vibe-board/issues',
   },
   {
     label: 'Discord',
