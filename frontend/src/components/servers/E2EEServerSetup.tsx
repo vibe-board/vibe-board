@@ -46,7 +46,9 @@ export function E2EEServerSetup({ onDone, onBack }: E2EEServerSetupProps) {
   const [saving, setSaving] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
-  const normalizedUrl = gatewayUrl.trim() ? normalizeGatewayUrl(gatewayUrl) : '';
+  const normalizedUrl = gatewayUrl.trim()
+    ? normalizeGatewayUrl(gatewayUrl)
+    : '';
 
   // --- Gateway step handlers ---
 
@@ -276,11 +278,7 @@ export function E2EEServerSetup({ onDone, onBack }: E2EEServerSetupProps) {
             {testing && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
             Test
           </Button>
-          <Button
-            size="sm"
-            onClick={() => setStep('login')}
-            disabled={!testOk}
-          >
+          <Button size="sm" onClick={() => setStep('login')} disabled={!testOk}>
             Next
           </Button>
         </div>
