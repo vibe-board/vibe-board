@@ -32,9 +32,17 @@
     "prepack": "pnpm run build:npx",
     "gateway:build": "cd frontend && pnpm run build && cd .. && cargo build --release --bin e2ee-gateway",
     "gateway:dev": "RUST_LOG=debug cargo run --bin e2ee-gateway",
+    "tauri:dev": "cd frontend && pnpm tauri dev",
+    "tauri:build": "cd frontend && pnpm tauri build",
+    "tauri:android:init": "cd frontend && pnpm tauri android init",
+    "tauri:android:dev": "cd frontend && pnpm tauri android dev",
+    "tauri:ios:init": "cd frontend && pnpm tauri ios init",
+    "tauri:ios:dev": "cd frontend && pnpm tauri ios dev",
+    "tauri:ios:build": "cd frontend && pnpm tauri ios build",
     "prepare": "husky"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.10.1",
     "concurrently": "^8.2.2",
     "husky": "^9.1.7",
     "vite": "^6.3.5"

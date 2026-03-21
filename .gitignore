@@ -93,3 +93,6 @@ vibe-board-cloud/
 
 # Vite temp files
 *.timestamp-*.mjs
+
+# Tauri auto-generated files
+frontend/src-tauri/gen/

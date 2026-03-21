@@ -77,11 +77,18 @@ export default schemas;
   };
 }
 
+// Detect Tauri build environment
+const isTauri = !!process.env.TAURI_ENV_PLATFORM;
+
 export default defineConfig({
+  // Prevent Vite from clearing Rust compiler output in Tauri dev
+  clearScreen: false,
   customLogger: createFilteredLogger(),
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
+  // Allow Tauri env vars to be accessible via import.meta.env
+  envPrefix: ['VITE_', 'TAURI_ENV_'],
   plugins: [
     react({
       babel: {
@@ -110,13 +117,17 @@ export default defineConfig({
   },
   server: {
     port: parseInt(process.env.FRONTEND_PORT || '3000'),
-    proxy: {
-      '/api': {
-        target: `http://localhost:${process.env.BACKEND_PORT || '3001'}`,
-        changeOrigin: true,
-        ws: true,
-      },
-    },
+    // In Tauri mode there's no local backend to proxy to;
+    // the app connects directly via the server manager.
+    proxy: isTauri
+      ? undefined
+      : {
+          '/api': {
+            target: `http://localhost:${process.env.BACKEND_PORT || '3001'}`,
+            changeOrigin: true,
+            ws: true,
+          },
+        },
     fs: {
       allow: [path.resolve(__dirname, '.'), path.resolve(__dirname, '..')],
     },
@@ -124,9 +135,17 @@ export default defineConfig({
     allowedHosts: [
       '.trycloudflare.com', // allow all cloudflared tunnels
     ],
+    // Tauri requires strict port so devUrl in tauri.conf.json is stable
+    strictPort: isTauri || undefined,
   },
   optimizeDeps: {
     exclude: ['wa-sqlite'],
   },
-  build: { sourcemap: true },
+  build: {
+    sourcemap: true,
+    // Tauri WebView targets
+    target: isTauri ? ['chrome105', 'safari13'] : undefined,
+    // Disable minification in Tauri debug mode for better debugging
+    minify: isTauri ? !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false : undefined,
+  },
 });
