@@ -26,7 +26,7 @@ use services::services::{
 };
 use tokio::sync::RwLock;
 use utils::{
-    assets::{config_path, credentials_path},
+    assets::{config_path, oauth_credentials_path},
     msg_store::MsgStore,
 };
 use uuid::Uuid;
@@ -134,7 +134,7 @@ impl Deployment for LocalDeployment {
         let approvals = Approvals::new();
         let queued_message_service = QueuedMessageService::new();
 
-        let oauth_credentials = Arc::new(OAuthCredentials::new(credentials_path()));
+        let oauth_credentials = Arc::new(OAuthCredentials::new(oauth_credentials_path()));
         if let Err(e) = oauth_credentials.load().await {
             tracing::warn!(?e, "failed to load OAuth credentials");
         }
