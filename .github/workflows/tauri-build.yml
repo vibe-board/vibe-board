@@ -94,6 +94,10 @@ jobs:
         with:
           targets: ${{ matrix.rust-targets }}
 
+      - name: Add Rust cross-compile target
+        if: matrix.rust-targets != ''
+        run: rustup target add ${{ matrix.rust-targets }}
+
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
         with:
