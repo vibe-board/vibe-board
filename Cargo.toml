@@ -1,5 +1,6 @@
 [workspace]
 resolver = "3"
+exclude = ["tauri-app/src-tauri"]
 members = [
     "crates/api-types",
     "crates/server",
