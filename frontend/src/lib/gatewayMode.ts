@@ -5,10 +5,7 @@
  * Browser-mode GatewayProvider still calls setGatewayConnection/getGatewayConnection.
  */
 import type { E2EEConnection } from '@/lib/e2ee';
-import {
-  setActiveServer,
-  getActiveServer,
-} from '@/lib/activeServer';
+import { setActiveServer, getActiveServer } from '@/lib/activeServer';
 
 let gatewayMode: boolean | null = null;
 let detectPromise: Promise<boolean> | null = null;

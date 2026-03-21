@@ -45,7 +45,8 @@ const ServerManagerContext = createContext<ServerManagerContextValue | null>(
 
 export function useServerManager(): ServerManagerContextValue {
   const ctx = useContext(ServerManagerContext);
-  if (!ctx) throw new Error('useServerManager must be within ServerManagerProvider');
+  if (!ctx)
+    throw new Error('useServerManager must be within ServerManagerProvider');
   return ctx;
 }
 

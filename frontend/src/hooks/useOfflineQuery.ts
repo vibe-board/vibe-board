@@ -51,7 +51,14 @@ export function useOfflineQuery<T>(
         });
       });
     }
-  }, [result.isError, isOnline, serverId, cacheKey, options.queryKey, queryClient]);
+  }, [
+    result.isError,
+    isOnline,
+    serverId,
+    cacheKey,
+    options.queryKey,
+    queryClient,
+  ]);
 
   return result;
 }

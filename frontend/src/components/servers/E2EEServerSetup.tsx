@@ -76,9 +76,7 @@ export function E2EEServerSetup({ onDone, onBack }: E2EEServerSetupProps) {
         />
       </div>
 
-      {testOk && (
-        <p className="text-sm text-green-600">Gateway reachable.</p>
-      )}
+      {testOk && <p className="text-sm text-green-600">Gateway reachable.</p>}
       {testError && (
         <div className="flex items-start gap-2 text-sm text-destructive">
           <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />

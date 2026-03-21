@@ -40,9 +40,7 @@ export function ServerCard({
   };
 
   const address =
-    config.type === 'direct'
-      ? getServerBaseUrl(config)
-      : config.gatewayUrl;
+    config.type === 'direct' ? getServerBaseUrl(config) : config.gatewayUrl;
 
   const statusColor =
     connectionStatus === 'connected'

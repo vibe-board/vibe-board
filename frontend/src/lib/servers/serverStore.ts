@@ -4,9 +4,7 @@ import { isTauri } from '@/lib/platform';
 export interface ServerStoreAdapter {
   getServers(): Promise<ServerConfig[]>;
   saveServers(servers: ServerConfig[]): Promise<void>;
-  getServerSession(
-    serverId: string
-  ): Promise<Record<string, unknown> | null>;
+  getServerSession(serverId: string): Promise<Record<string, unknown> | null>;
   saveServerSession(
     serverId: string,
     session: Record<string, unknown>
@@ -46,7 +44,11 @@ class TauriServerStore implements ServerStoreAdapter {
     serverId: string
   ): Promise<Record<string, unknown> | null> {
     const store = await this.getStore();
-    return ((await store.get(SESSION_PREFIX + serverId)) as Record<string, unknown> | undefined) ?? null;
+    return (
+      ((await store.get(SESSION_PREFIX + serverId)) as
+        | Record<string, unknown>
+        | undefined) ?? null
+    );
   }
 
   async saveServerSession(

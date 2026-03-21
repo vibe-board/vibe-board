@@ -15,9 +15,9 @@ export function DirectServerSetup({ onDone, onBack }: DirectServerSetupProps) {
   const [host, setHost] = useState('');
   const [port, setPort] = useState('3000');
   const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<
-    'idle' | 'success' | 'error'
-  >('idle');
+  const [testResult, setTestResult] = useState<'idle' | 'success' | 'error'>(
+    'idle'
+  );
   const [testError, setTestError] = useState('');
 
   const config: DirectServerConfig = {
@@ -44,9 +44,7 @@ export function DirectServerSetup({ onDone, onBack }: DirectServerSetupProps) {
       setTestResult('success');
     } catch (err) {
       setTestResult('error');
-      setTestError(
-        err instanceof Error ? err.message : 'Connection failed'
-      );
+      setTestError(err instanceof Error ? err.message : 'Connection failed');
     } finally {
       setTesting(false);
     }

@@ -1152,10 +1152,17 @@ const uploadFormData = async (
   const { getActiveServer } = await import('@/lib/activeServer');
   const server = getActiveServer();
   if (server?.connection) {
-    return server.connection.remoteFetch(url, { method: 'POST', body: formData });
+    return server.connection.remoteFetch(url, {
+      method: 'POST',
+      body: formData,
+    });
   }
   const target = server?.baseUrl ? `${server.baseUrl}${url}` : url;
-  return fetch(target, { method: 'POST', body: formData, credentials: 'include' });
+  return fetch(target, {
+    method: 'POST',
+    body: formData,
+    credentials: 'include',
+  });
 };
 
 // Images API

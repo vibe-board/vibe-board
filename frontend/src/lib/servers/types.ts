@@ -44,6 +44,7 @@ export function getServerAddress(config: ServerConfig): string {
 export function getServerBaseUrl(config: DirectServerConfig): string {
   const host = config.host;
   const port = config.port;
-  const protocol = host === 'localhost' || host === '127.0.0.1' ? 'http' : 'https';
+  const protocol =
+    host === 'localhost' || host === '127.0.0.1' ? 'http' : 'https';
   return `${protocol}://${host}:${port}`;
 }

@@ -45,9 +45,7 @@ import { ServerStatusIndicator } from '@/components/servers/ServerStatusIndicato
 
 const INTERNAL_NAV = [
   { label: 'Projects', icon: FolderOpen, to: '/local-projects' },
-  ...(isTauri()
-    ? [{ label: 'Servers', icon: Settings, to: '/servers' }]
-    : []),
+  ...(isTauri() ? [{ label: 'Servers', icon: Settings, to: '/servers' }] : []),
 ];
 
 const EXTERNAL_LINKS = [
