@@ -1,0 +1,64 @@
+name: vibe_board
+description: "Vibe Board — cross-platform Kanban + Agent control panel."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.7.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.6.1
+
+  # Routing
+  go_router: ^14.8.1
+
+  # Networking
+  http: ^1.2.2
+  web_socket_channel: ^3.0.1
+
+  # Serialization
+  json_annotation: ^4.9.0
+  freezed_annotation: ^2.4.4
+
+  # E2EE cryptography
+  cryptography: ^2.7.0
+  pointycastle: ^3.9.1
+
+  # Storage
+  flutter_secure_storage: ^9.2.4
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  shared_preferences: ^2.3.5
+
+  # UI
+  google_fonts: ^6.2.1
+  flutter_markdown: ^0.7.4+1
+  shimmer: ^3.0.0
+  flutter_svg: ^2.0.16
+
+  # Terminal
+  xterm: ^3.5.0
+
+  # Platform
+  window_manager: ^0.4.3
+  url_launcher: ^6.3.1
+  path_provider: ^2.1.5
+
+  # Icons
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  build_runner: ^2.4.13
+  json_serializable: ^6.9.0
+  freezed: ^2.5.7
+
+flutter:
+  uses-material-design: true
