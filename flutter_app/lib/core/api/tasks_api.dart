@@ -5,6 +5,17 @@ class TasksApi {
   TasksApi(this._client);
   final ApiClient _client;
 
+  Future<List<TaskWithAttemptStatus>> getAll(String projectId) async {
+    final list = await _client.getList(
+      '/api/tasks',
+      query: {'project_id': projectId},
+    );
+    return list
+        .map((j) =>
+            TaskWithAttemptStatus.fromJson(j as Map<String, dynamic>))
+        .toList();
+  }
+
   Future<Task> getById(String taskId) async {
     final json = await _client.get('/api/tasks/$taskId');
     return Task.fromJson(json);
