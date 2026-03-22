@@ -13,7 +13,6 @@ members = [
     "crates/review",
     "crates/e2ee-core",
     "crates/e2ee-gateway",
-    "crates/tauri-app",
 ]
 
 [workspace.dependencies]

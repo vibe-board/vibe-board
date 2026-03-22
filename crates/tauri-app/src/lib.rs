@@ -6,7 +6,7 @@ async fn get_app_version() -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn open_devtools(window: tauri::Window) {
+async fn open_devtools(window: tauri::WebviewWindow) {
     #[cfg(debug_assertions)]
     window.open_devtools();
 }

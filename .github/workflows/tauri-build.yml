@@ -115,7 +115,7 @@ jobs:
       - name: Cache Cargo target
         uses: actions/cache@v5
         with:
-          path: target
+          path: crates/tauri-app/target
           key: target-tauri-${{ runner.os }}-${{ matrix.target }}-${{ github.ref_name }}-${{ github.sha }}
           restore-keys: |
             target-tauri-${{ runner.os }}-${{ matrix.target }}-${{ github.ref_name }}-
@@ -152,8 +152,8 @@ jobs:
         shell: bash
         run: |
           echo "=== Build output ==="
-          find target/${{ matrix.target }}/release/bundle -type f 2>/dev/null || true
-          find target/release/bundle -type f 2>/dev/null || true
+          find crates/tauri-app/target/${{ matrix.target }}/release/bundle -type f 2>/dev/null || true
+          find crates/tauri-app/target/release/bundle -type f 2>/dev/null || true
 
       - name: Upload Linux artifacts
         if: runner.os == 'Linux'
@@ -161,9 +161,9 @@ jobs:
         with:
           name: vibe-board-tauri-${{ matrix.name }}
           path: |
-            target/${{ matrix.target }}/release/bundle/**/*.deb
-            target/${{ matrix.target }}/release/bundle/**/*.AppImage
-            target/${{ matrix.target }}/release/bundle/**/*.rpm
+            crates/tauri-app/target/${{ matrix.target }}/release/bundle/**/*.deb
+            crates/tauri-app/target/${{ matrix.target }}/release/bundle/**/*.AppImage
+            crates/tauri-app/target/${{ matrix.target }}/release/bundle/**/*.rpm
           retention-days: 7
           if-no-files-found: warn
 
@@ -173,8 +173,8 @@ jobs:
         with:
           name: vibe-board-tauri-${{ matrix.name }}
           path: |
-            target/${{ matrix.target }}/release/bundle/**/*.msi
-            target/${{ matrix.target }}/release/bundle/**/*.exe
+            crates/tauri-app/target/${{ matrix.target }}/release/bundle/**/*.msi
+            crates/tauri-app/target/${{ matrix.target }}/release/bundle/**/*.exe
           retention-days: 7
           if-no-files-found: warn
 
@@ -184,7 +184,7 @@ jobs:
         with:
           name: vibe-board-tauri-${{ matrix.name }}
           path: |
-            target/${{ matrix.target }}/release/bundle/**/*.dmg
-            target/${{ matrix.target }}/release/bundle/**/*.app
+            crates/tauri-app/target/${{ matrix.target }}/release/bundle/**/*.dmg
+            crates/tauri-app/target/${{ matrix.target }}/release/bundle/**/*.app
           retention-days: 7
           if-no-files-found: warn
