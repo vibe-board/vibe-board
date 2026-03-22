@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use axum::{Json, extract::State, response::Json as ResponseJson};
 use db::models::{
@@ -6,8 +6,10 @@ use db::models::{
     execution_process::{ExecutionProcess, ExecutionProcessStatus},
     merge::{Merge, MergeStatus},
     workspace::Workspace,
+    workspace_repo::WorkspaceRepo,
 };
 use deployment::Deployment;
+use git::DiffTarget;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use utils::response::ApiResponse;
@@ -161,21 +163,62 @@ pub async fn get_workspace_summaries(
     )))
 }
 
-/// Compute diff stats for a workspace.
+/// Compute diff stats for a workspace by comparing against target branches.
 pub async fn compute_workspace_diff_stats(
     deployment: &DeploymentImpl,
     workspace: &Workspace,
 ) -> Option<DiffStats> {
-    let stats = services::services::diff_stream::compute_diff_stats(
-        &deployment.db().pool,
-        deployment.git(),
-        workspace,
-    )
-    .await?;
+    let container_ref = workspace.container_ref.as_ref()?;
+    let pool = &deployment.db().pool;
+    let git = deployment.git();
 
-    Some(DiffStats {
-        files_changed: stats.files_changed,
-        lines_added: stats.lines_added,
-        lines_removed: stats.lines_removed,
-    })
+    let workspace_repos =
+        WorkspaceRepo::find_repos_with_target_branch_for_workspace(pool, workspace.id)
+            .await
+            .ok()?;
+
+    let mut stats = DiffStats::default();
+
+    for repo_with_branch in workspace_repos {
+        let worktree_path = PathBuf::from(container_ref).join(&repo_with_branch.repo.name);
+
+        let base_commit_result = tokio::task::spawn_blocking({
+            let git = git.clone();
+            let repo_path = repo_with_branch.repo.path.clone();
+            let workspace_branch = workspace.branch.clone();
+            let target_branch = repo_with_branch.target_branch.clone();
+            move || git.get_base_commit(&repo_path, &workspace_branch, &target_branch)
+        })
+        .await;
+
+        let base_commit = match base_commit_result {
+            Ok(Ok(commit)) => commit,
+            _ => continue,
+        };
+
+        let diffs_result = tokio::task::spawn_blocking({
+            let git = git.clone();
+            let worktree = worktree_path.clone();
+            move || {
+                git.get_diffs(
+                    DiffTarget::Worktree {
+                        worktree_path: &worktree,
+                        base_commit: &base_commit,
+                    },
+                    None,
+                )
+            }
+        })
+        .await;
+
+        if let Ok(Ok(diffs)) = diffs_result {
+            for diff in diffs {
+                stats.files_changed += 1;
+                stats.lines_added += diff.additions.unwrap_or(0);
+                stats.lines_removed += diff.deletions.unwrap_or(0);
+            }
+        }
+    }
+
+    Some(stats)
 }

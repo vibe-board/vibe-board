@@ -6,7 +6,6 @@ import { Loader } from '@/components/ui/loader';
 import { Button } from '@/components/ui/button';
 import DiffViewSwitch from '@/components/DiffViewSwitch';
 import DiffCard from '@/components/DiffCard';
-import { useDiffSummary } from '@/hooks/useDiffSummary';
 import { NewCardHeader } from '@/components/ui/new-card';
 import { ChevronsUp, ChevronsDown, ArrowLeft } from 'lucide-react';
 import {
@@ -61,23 +60,17 @@ export function DiffsPanel({
   gitOps,
 }: DiffsPanelProps) {
   const { t } = useTranslation('tasks');
-  const [loadingState, setLoadingState] = useState<
-    'loading' | 'loaded' | 'timed-out'
-  >('loading');
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
-  const [processedIds, setProcessedIds] = useState<Set<string>>(new Set());
 
   const isCommitMode = !!commitSha;
 
-  const { diffs: streamDiffs, error: streamError } = useDiffStream(
-    isCommitMode ? null : (selectedAttempt?.id ?? null),
-    true
-  );
   const {
-    fileCount: streamFileCount,
-    added: streamAdded,
-    deleted: streamDeleted,
-  } = useDiffSummary(isCommitMode ? null : (selectedAttempt?.id ?? null));
+    diffs: streamDiffs,
+    error: streamError,
+    isInitialized: streamInitialized,
+  } = useDiffStream(isCommitMode ? null : (selectedAttempt?.id ?? null), true, {
+    repoId,
+  });
 
   const {
     data: commitDiffs,
@@ -100,51 +93,29 @@ export function DiffsPanel({
       ? String(commitError)
       : null
     : streamError;
-  const loading = isCommitMode ? commitLoading : loadingState === 'loading';
-  const fileCount = isCommitMode ? diffs.length : streamFileCount;
-  const added = isCommitMode
-    ? diffs.reduce((sum, d) => sum + (d.additions ?? 0), 0)
-    : streamAdded;
-  const deletedCount = isCommitMode
-    ? diffs.reduce((sum, d) => sum + (d.deletions ?? 0), 0)
-    : streamDeleted;
+  const loading = isCommitMode ? commitLoading : !streamInitialized;
 
-  // If no diffs arrive within 3 seconds, stop showing the spinner
+  const fileCount = diffs.length;
+  const added = diffs.reduce((sum, d) => sum + (d.additions ?? 0), 0);
+  const deletedCount = diffs.reduce((sum, d) => sum + (d.deletions ?? 0), 0);
+
+  // Apply collapse defaults for new diffs (only in stream mode, once after load)
+  const [collapseDefaultsApplied, setCollapseDefaultsApplied] = useState(false);
   useEffect(() => {
-    if (isCommitMode) return;
-    if (loadingState !== 'loading') return;
-    const timer = setTimeout(() => setLoadingState('timed-out'), 3000);
-    return () => clearTimeout(timer);
-  }, [loadingState, isCommitMode]);
+    if (isCommitMode || diffs.length === 0 || collapseDefaultsApplied) return;
+    const toCollapse = diffs
+      .filter(
+        (diff) =>
+          DEFAULT_DIFF_COLLAPSE_DEFAULTS[diff.change] ||
+          exceedsMaxLineCount(diff, DEFAULT_COLLAPSE_MAX_LINES)
+      )
+      .map((d, i) => getDiffId({ diff: d, index: i }));
 
-  if (!isCommitMode && diffs.length > 0 && loadingState === 'loading') {
-    setLoadingState('loaded');
-  }
-
-  if (!isCommitMode && diffs.length > 0) {
-    const newDiffs = diffs
-      .map((d, index) => ({ diff: d, index }))
-      .filter((d) => {
-        const id = getDiffId(d);
-        return !processedIds.has(id);
-      });
-
-    if (newDiffs.length > 0) {
-      const newIds = newDiffs.map(getDiffId);
-      const toCollapse = newDiffs
-        .filter(
-          ({ diff }) =>
-            DEFAULT_DIFF_COLLAPSE_DEFAULTS[diff.change] ||
-            exceedsMaxLineCount(diff, DEFAULT_COLLAPSE_MAX_LINES)
-        )
-        .map(getDiffId);
-
-      setProcessedIds((prev) => new Set([...prev, ...newIds]));
-      if (toCollapse.length > 0) {
-        setCollapsedIds((prev) => new Set([...prev, ...toCollapse]));
-      }
+    if (toCollapse.length > 0) {
+      setCollapsedIds(new Set(toCollapse));
     }
-  }
+    setCollapseDefaultsApplied(true);
+  }, [isCommitMode, diffs, collapseDefaultsApplied]);
 
   const ids = useMemo(() => {
     return diffs.map((d, i) => getDiffId({ diff: d, index: i }));

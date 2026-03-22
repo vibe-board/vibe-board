@@ -25,7 +25,6 @@ use services::services::{
     events::{EventError, EventService},
     file_search::FileSearchCache,
     filesystem::{FilesystemError, FilesystemService},
-    filesystem_watcher::FilesystemWatcherError,
     image::{ImageError, ImageService},
     project::ProjectService,
     queued_message::QueuedMessageService,
@@ -47,8 +46,6 @@ pub enum DeploymentError {
     Git2(#[from] Git2Error),
     #[error(transparent)]
     GitServiceError(#[from] GitServiceError),
-    #[error(transparent)]
-    FilesystemWatcherError(#[from] FilesystemWatcherError),
     #[error(transparent)]
     Workspace(#[from] WorkspaceError),
     #[error(transparent)]

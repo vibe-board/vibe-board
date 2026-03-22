@@ -843,6 +843,17 @@ export const attemptsApi = {
     return handleApiResponse<Diff[]>(response);
   },
 
+  /** Get workspace diffs by comparing worktree against target branch */
+  getWorkspaceDiffs: async (
+    attemptId: string,
+    repoId: string
+  ): Promise<Diff[]> => {
+    const response = await makeRequest(
+      `/api/task-attempts/${attemptId}/diff?repo_id=${repoId}`
+    );
+    return handleApiResponse<Diff[]>(response);
+  },
+
   /** Revert a specific commit */
   revertCommit: async (
     attemptId: string,

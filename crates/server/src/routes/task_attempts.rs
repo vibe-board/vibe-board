@@ -96,12 +96,6 @@ pub struct TaskAttemptQuery {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct DiffStreamQuery {
-    #[serde(default)]
-    pub stats_only: bool,
-}
-
-#[derive(Debug, Deserialize)]
 pub struct WorkspaceStreamQuery {
     pub archived: Option<bool>,
     pub limit: Option<i64>,
@@ -349,68 +343,87 @@ pub async fn run_agent_setup(
     Ok(ResponseJson(ApiResponse::success(RunAgentSetupResponse {})))
 }
 
-#[axum::debug_handler]
-pub async fn stream_task_attempt_diff_ws(
-    ws: WebSocketUpgrade,
-    Query(params): Query<DiffStreamQuery>,
-    Extension(workspace): Extension<Workspace>,
-    State(deployment): State<DeploymentImpl>,
-) -> impl IntoResponse {
-    let _ = Workspace::touch(&deployment.db().pool, workspace.id).await;
-
-    let stats_only = params.stats_only;
-    ws.on_upgrade(move |socket| async move {
-        if let Err(e) = handle_task_attempt_diff_ws(socket, deployment, workspace, stats_only).await
-        {
-            tracing::warn!("diff WS closed: {}", e);
-        }
-    })
+#[derive(Debug, Deserialize)]
+pub struct DiffQuery {
+    pub repo_id: Uuid,
 }
 
-async fn handle_task_attempt_diff_ws(
-    socket: WebSocket,
-    deployment: DeploymentImpl,
-    workspace: Workspace,
-    stats_only: bool,
-) -> anyhow::Result<()> {
-    use futures_util::{SinkExt, StreamExt, TryStreamExt};
-    use utils::log_msg::LogMsg;
+/// Get diffs for a workspace by comparing worktree against target branch base commit.
+#[axum::debug_handler]
+pub async fn get_workspace_diffs(
+    Extension(workspace): Extension<Workspace>,
+    State(deployment): State<DeploymentImpl>,
+    Query(query): Query<DiffQuery>,
+) -> Result<ResponseJson<ApiResponse<Vec<utils::diff::Diff>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let workspace_repo =
+        WorkspaceRepo::find_by_workspace_and_repo_id(pool, workspace.id, query.repo_id)
+            .await?
+            .ok_or(RepoError::NotFound)?;
+    let repo = Repo::find_by_id(pool, workspace_repo.repo_id)
+        .await?
+        .ok_or(RepoError::NotFound)?;
 
-    let stream = deployment
+    let container_ref = deployment
         .container()
-        .stream_diff(&workspace, stats_only)
+        .ensure_container_exists(&workspace)
         .await?;
+    let workspace_path = Path::new(&container_ref);
+    let worktree_path = repo_worktree_path(workspace_path, &workspace, &repo);
 
-    let mut stream = stream.map_ok(|msg: LogMsg| msg.to_ws_message_unchecked());
+    let base_commit = {
+        let git = GitService::new();
+        let repo_path = repo.path.clone();
+        let workspace_branch = workspace.branch.clone();
+        let target_branch = workspace_repo.target_branch.clone();
+        tokio::task::spawn_blocking(move || {
+            git.get_base_commit(&repo_path, &workspace_branch, &target_branch)
+        })
+        .await
+        .map_err(|e| ApiError::BadRequest(format!("task join error: {e}")))?
+    };
 
-    let (mut sender, mut receiver) = socket.split();
+    let base_commit = base_commit.map_err(|e| {
+        tracing::warn!(
+            workspace_id = %workspace.id,
+            repo_id = %repo.id,
+            repo_path = %repo.path.display(),
+            worktree_path = %worktree_path.display(),
+            branch = %workspace.branch,
+            target_branch = %workspace_repo.target_branch,
+            "get_base_commit failed: {e:?}"
+        );
+        ApiError::BadRequest(format!("get_base_commit failed: {e}"))
+    })?;
 
-    loop {
-        tokio::select! {
-            // Wait for next stream item
-            item = stream.next() => {
-                match item {
-                    Some(Ok(msg)) => {
-                        if sender.send(msg).await.is_err() {
-                            break;
-                        }
-                    }
-                    Some(Err(e)) => {
-                        tracing::error!("stream error: {}", e);
-                        break;
-                    }
-                    None => break,
-                }
-            }
-            // Detect client disconnection
-            msg = receiver.next() => {
-                if msg.is_none() {
-                    break;
-                }
-            }
+    let base_commit_str = base_commit.to_string();
+    let diffs = tokio::task::spawn_blocking({
+        let git = GitService::new();
+        let worktree = worktree_path.clone();
+        move || {
+            git.get_diffs(
+                git::DiffTarget::Worktree {
+                    worktree_path: &worktree,
+                    base_commit: &base_commit,
+                },
+                None,
+            )
         }
+    })
+    .await
+    .map_err(|e| ApiError::BadRequest(format!("task join error: {e}")))??;
+
+    if diffs.is_empty() {
+        tracing::info!(
+            workspace_id = %workspace.id,
+            repo_id = %repo.id,
+            worktree_path = %worktree_path.display(),
+            base_commit = %base_commit_str,
+            "get_diffs returned empty diffs for workspace"
+        );
     }
-    Ok(())
+
+    Ok(ResponseJson(ApiResponse::success(diffs)))
 }
 
 pub async fn stream_workspaces_ws(
@@ -2333,7 +2346,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             .route("/run-cleanup-script", post(run_cleanup_script))
             .route("/run-archive-script", post(run_archive_script))
             .route("/branch-status", get(get_task_attempt_branch_status))
-            .route("/diff/ws", get(stream_task_attempt_diff_ws))
+            .route("/diff", get(get_workspace_diffs))
             .route("/commits", get(get_commit_history))
             .route("/merge", post(merge_task_attempt))
             .route("/push", post(push_task_attempt_branch))
