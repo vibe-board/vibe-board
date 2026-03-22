@@ -31,10 +31,10 @@ jobs:
       - name: Analyze
         run: flutter analyze
 
-      - name: Build release APK
-        run: flutter build apk --release
+      - name: Build arm64 release APK
+        run: flutter build apk --release --target-platform android-arm64
 
       - uses: actions/upload-artifact@v4
         with:
-          name: flutter-release-apk
+          name: flutter-arm64-release-apk
           path: flutter_app/build/app/outputs/flutter-apk/app-release.apk
