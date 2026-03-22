@@ -8,6 +8,7 @@ import '../../ui/theme/spacing.dart';
 import '../../ui/components/app_badge.dart';
 import '../../ui/components/empty_state.dart';
 import '../../utils/json_patch.dart';
+import 'conversation_view.dart';
 
 final _sessionsProvider =
     FutureProvider.family<List<Session>, String>((ref, attemptId) {
@@ -33,6 +34,21 @@ final _executionProcessesStream = StreamProvider.family
     }
     return state.data.cast<Map<String, dynamic>>();
   });
+});
+
+final _conversationProvider =
+    FutureProvider.family<List<Map<String, dynamic>>, String>((ref, sessionId) {
+  final api = ref.watch(sessionsApiProvider);
+  if (api == null) return [];
+  return api.getConversation(sessionId).then(
+    (entries) => entries.map((e) => {
+      'id': e.id,
+      'session_id': e.sessionId,
+      'role': e.role,
+      'content': e.content,
+      'created_at': e.createdAt,
+    }).toList(),
+  );
 });
 
 class SessionDetailScreen extends ConsumerWidget {
@@ -217,6 +233,7 @@ class _SessionDetailSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final processesAsync = ref.watch(_executionProcessesStream(session.id));
+    final conversationAsync = ref.watch(_conversationProvider(session.id));
 
     return ListView(
       controller: scrollController,
@@ -312,6 +329,29 @@ class _SessionDetailSheet extends ConsumerWidget {
                   .toList(),
             );
           },
+        ),
+        const SizedBox(height: AppSpacing.xl),
+
+        // Conversation
+        const Text(
+          'Conversation',
+          style: TextStyle(
+            color: AppColors.textHigh,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            fontFamily: 'IBM Plex Sans',
+          ),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        conversationAsync.when(
+          loading: () => const Center(
+            child: CircularProgressIndicator(color: AppColors.brand),
+          ),
+          error: (error, _) => Text(
+            'Failed to load conversation: $error',
+            style: const TextStyle(color: AppColors.error, fontSize: 13),
+          ),
+          data: (entries) => ConversationView(entries: entries),
         ),
         const SizedBox(height: AppSpacing.xl),
 

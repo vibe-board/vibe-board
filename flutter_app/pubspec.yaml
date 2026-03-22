@@ -40,6 +40,7 @@ dependencies:
   flutter_markdown: ^0.7.4+1
   shimmer: ^3.0.0
   flutter_svg: ^2.0.16
+  file_picker: ^8.0.0+1
 
   # Terminal
   xterm: ^3.5.0

@@ -9,12 +9,32 @@ import '../../ui/components/app_button.dart';
 import '../../ui/components/app_text_field.dart';
 import '../../ui/components/app_dialog.dart';
 import '../../ui/components/empty_state.dart';
+import '../../utils/json_patch.dart';
 
-/// Projects list fetched from the active server.
-final projectsProvider = FutureProvider<List<Project>>((ref) async {
+/// Projects list fetched from the active server with WebSocket streaming.
+final projectsProvider = StreamProvider<List<Project>>((ref) {
   final api = ref.watch(projectsApiProvider);
-  if (api == null) return [];
-  return api.getAll();
+  if (api == null) return Stream.value([]);
+
+  final server = ref.watch(activeServerProvider);
+  if (server == null) return Stream.value([]);
+
+  final baseUri = Uri.parse(server.baseUrl);
+  final wsScheme = baseUri.scheme == 'https' ? 'wss' : 'ws';
+  final wsUrl =
+      '$wsScheme://${baseUri.host}:${baseUri.port}/api/projects/stream/ws';
+
+  return jsonPatchWsStream<List<dynamic>>(
+    wsUrl: wsUrl,
+    initialData: [],
+  ).map((state) {
+    if (state.error != null && !state.isInitialized) {
+      throw Exception(state.error!);
+    }
+    return state.data
+        .map((j) => Project.fromJson(j as Map<String, dynamic>))
+        .toList();
+  });
 });
 
 class ProjectListScreen extends ConsumerWidget {

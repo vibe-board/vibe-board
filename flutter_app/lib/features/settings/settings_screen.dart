@@ -25,6 +25,18 @@ class SettingsScreen extends ConsumerWidget {
                 subtitle: 'Task updates, approvals',
                 onTap: () => context.push('/settings/notifications'),
               ),
+              _SettingsTile(
+                icon: Icons.palette_outlined,
+                title: 'Appearance',
+                subtitle: 'Theme, display preferences',
+                onTap: () => _showAppearanceDialog(context),
+              ),
+              _SettingsTile(
+                icon: Icons.storage_rounded,
+                title: 'Data & Storage',
+                subtitle: 'Cache, offline data',
+                onTap: () => _showDataDialog(context),
+              ),
             ],
           ),
           const SizedBox(height: AppSpacing.xxl),
@@ -44,6 +56,93 @@ class SettingsScreen extends ConsumerWidget {
                 onTap: () => context.push('/settings/mcp-servers'),
               ),
             ],
+          ),
+          const SizedBox(height: AppSpacing.xxl),
+          _SettingsSection(
+            title: 'About',
+            children: [
+              _SettingsTile(
+                icon: Icons.info_outline_rounded,
+                title: 'Version',
+                subtitle: '1.0.0',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAppearanceDialog(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.bgPanel,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppSpacing.borderRadiusLg),
+        ),
+        title: const Text(
+          'Appearance',
+          style: TextStyle(
+            color: AppColors.textHigh,
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            fontFamily: 'IBM Plex Sans',
+          ),
+        ),
+        content: const Text(
+          'Theme settings will be available in a future update. Currently using the default dark theme.',
+          style: TextStyle(
+            color: AppColors.textNormal,
+            fontSize: 13,
+            fontFamily: 'IBM Plex Sans',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('OK',
+                style: TextStyle(
+                    color: AppColors.brand,
+                    fontFamily: 'IBM Plex Sans')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDataDialog(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.bgPanel,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppSpacing.borderRadiusLg),
+        ),
+        title: const Text(
+          'Data & Storage',
+          style: TextStyle(
+            color: AppColors.textHigh,
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            fontFamily: 'IBM Plex Sans',
+          ),
+        ),
+        content: const Text(
+          'Cache management will be available in a future update.',
+          style: TextStyle(
+            color: AppColors.textNormal,
+            fontSize: 13,
+            fontFamily: 'IBM Plex Sans',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('OK',
+                style: TextStyle(
+                    color: AppColors.brand,
+                    fontFamily: 'IBM Plex Sans')),
           ),
         ],
       ),

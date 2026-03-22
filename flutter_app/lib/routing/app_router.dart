@@ -9,6 +9,7 @@ import '../features/server_management/server_list_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/settings/executor_profiles_screen.dart';
 import '../features/settings/mcp_servers_screen.dart';
+import '../features/settings/notifications_screen.dart';
 import '../features/search/search_screen.dart';
 import '../features/sessions/session_detail_screen.dart';
 import '../features/diffs/diff_viewer_screen.dart';
@@ -134,6 +135,11 @@ final appRouter = GoRouter(
                   path: 'mcp-servers',
                   builder: (context, state) =>
                       const McpServersScreen(),
+                ),
+                GoRoute(
+                  path: 'notifications',
+                  builder: (context, state) =>
+                      const NotificationsScreen(),
                 ),
               ],
             ),

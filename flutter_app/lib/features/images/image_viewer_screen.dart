@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../core/api/api_providers.dart';
 import '../../core/models/image_ref.dart';
 import '../../ui/theme/color_tokens.dart';
@@ -12,7 +14,7 @@ final _taskImagesProvider = FutureProvider.family<List<ImageMetadata>, String>((
   return api.getTaskImages(taskId);
 });
 
-class ImageViewerScreen extends ConsumerWidget {
+class ImageViewerScreen extends ConsumerStatefulWidget {
   const ImageViewerScreen({
     super.key,
     required this.projectId,
@@ -23,8 +25,59 @@ class ImageViewerScreen extends ConsumerWidget {
   final String taskId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final imagesAsync = ref.watch(_taskImagesProvider(taskId));
+  ConsumerState<ImageViewerScreen> createState() => _ImageViewerScreenState();
+}
+
+class _ImageViewerScreenState extends ConsumerState<ImageViewerScreen> {
+  bool _uploading = false;
+
+  Future<void> _uploadImage() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+
+    final file = result.files.first;
+    setState(() => _uploading = true);
+
+    try {
+      final api = ref.read(imagesApiProvider);
+      if (api == null) throw Exception('No server connected');
+
+      List<int> bytes;
+      if (file.bytes != null) {
+        bytes = file.bytes!;
+      } else if (file.path != null) {
+        bytes = await File(file.path!).readAsBytes();
+      } else {
+        throw Exception('Could not read file');
+      }
+
+      await api.uploadImage(
+        widget.taskId,
+        bytes,
+        file.name,
+        contentType: file.extension != null ? 'image/${file.extension}' : null,
+      );
+      ref.invalidate(_taskImagesProvider(widget.taskId));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Upload failed: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final imagesAsync = ref.watch(_taskImagesProvider(widget.taskId));
 
     return Scaffold(
       backgroundColor: AppColors.bgBase,
@@ -46,6 +99,28 @@ class ImageViewerScreen extends ConsumerWidget {
             fontFamily: 'IBM Plex Sans',
           ),
         ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: AppSpacing.sm),
+            child: _uploading
+                ? const Center(
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: AppColors.brand),
+                    ),
+                  )
+                : IconButton(
+                    icon: const Icon(Icons.upload_rounded,
+                        size: AppSpacing.iconSizeLg),
+                    color: AppColors.textNormal,
+                    splashRadius: 16,
+                    tooltip: 'Upload image',
+                    onPressed: _uploadImage,
+                  ),
+          ),
+        ],
       ),
       body: imagesAsync.when(
         loading: () => const Center(
@@ -71,6 +146,15 @@ class ImageViewerScreen extends ConsumerWidget {
                       color: AppColors.textNormal,
                       fontSize: 15,
                       fontFamily: 'IBM Plex Sans',
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  TextButton.icon(
+                    onPressed: _uploadImage,
+                    icon: const Icon(Icons.upload_rounded, size: 18),
+                    label: const Text('Upload Image'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.brand,
                     ),
                   ),
                 ],
