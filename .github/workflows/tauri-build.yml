@@ -121,11 +121,24 @@ jobs:
             target-tauri-${{ runner.os }}-${{ matrix.target }}-${{ github.ref_name }}-
             target-tauri-${{ runner.os }}-${{ matrix.target }}-
 
-      - name: Setup Node
-        uses: ./.github/actions/setup-node
+      - name: Download frontend dist
+        uses: actions/download-artifact@v6
+        with:
+          name: tauri-frontend-dist
+          path: tauri-app-frontend/dist
 
-      - name: Install frontend dependencies
-        run: cd tauri-app-frontend && pnpm install
+      - name: Disable beforeBuildCommand for CI
+        shell: bash
+        run: |
+          cd crates/tauri-app
+          python3 -c "
+          import json
+          with open('tauri.conf.json') as f:
+              cfg = json.load(f)
+          cfg['build']['beforeBuildCommand'] = ''
+          with open('tauri.conf.json', 'w') as f:
+              json.dump(cfg, f, indent=2)
+          "
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
