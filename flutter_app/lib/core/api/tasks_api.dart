@@ -34,4 +34,8 @@ class TasksApi {
   Future<void> deleteTask(String taskId) async {
     await _client.delete('/api/tasks/$taskId');
   }
+
+  Future<Map<String, dynamic>> createAndStart(CreateTask body) async {
+    return _client.post('/api/tasks/create-and-start', body: body.toJson());
+  }
 }

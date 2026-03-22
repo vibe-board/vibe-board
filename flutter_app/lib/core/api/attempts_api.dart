@@ -151,4 +151,15 @@ class AttemptsApi {
   Future<String> getFirstMessage(String attemptId) async {
     return _client.getString('/api/task-attempts/$attemptId/first-message');
   }
+
+  Future<void> linkToIssue(String attemptId, String issueUrl) async {
+    await _client.post(
+      '/api/task-attempts/$attemptId/issue',
+      body: {'issue_url': issueUrl},
+    );
+  }
+
+  Future<void> unlinkFromIssue(String attemptId) async {
+    await _client.delete('/api/task-attempts/$attemptId/issue');
+  }
 }

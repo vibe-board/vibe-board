@@ -120,3 +120,7 @@ final tagsApiProvider = Provider<TagsApi?>((ref) {
 final scratchApiProvider = Provider<ScratchApi?>((ref) {
   return ref.watch(apiProvider)?.scratch;
 });
+
+final fileSystemApiProvider = Provider<FileSystemApi?>((ref) {
+  return ref.watch(apiProvider)?.fileSystem;
+});

@@ -10,6 +10,9 @@ import '../features/settings/settings_screen.dart';
 import '../features/settings/executor_profiles_screen.dart';
 import '../features/settings/mcp_servers_screen.dart';
 import '../features/settings/notifications_screen.dart';
+import '../features/settings/general_settings_screen.dart';
+import '../features/settings/project_settings_screen.dart';
+import '../features/settings/repos_settings_screen.dart';
 import '../features/search/search_screen.dart';
 import '../features/sessions/session_detail_screen.dart';
 import '../features/diffs/diff_viewer_screen.dart';
@@ -140,6 +143,21 @@ final appRouter = GoRouter(
                   path: 'notifications',
                   builder: (context, state) =>
                       const NotificationsScreen(),
+                ),
+                GoRoute(
+                  path: 'general',
+                  builder: (context, state) =>
+                      const GeneralSettingsScreen(),
+                ),
+                GoRoute(
+                  path: 'projects',
+                  builder: (context, state) =>
+                      const ProjectSettingsScreen(),
+                ),
+                GoRoute(
+                  path: 'repos',
+                  builder: (context, state) =>
+                      const ReposSettingsScreen(),
                 ),
               ],
             ),

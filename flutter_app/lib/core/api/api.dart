@@ -12,6 +12,7 @@ import 'queue_api.dart';
 import 'images_api.dart';
 import 'tags_api.dart';
 import 'scratch_api.dart';
+import 'file_system_api.dart';
 
 export 'api_client.dart';
 export 'projects_api.dart';
@@ -27,6 +28,7 @@ export 'queue_api.dart';
 export 'images_api.dart';
 export 'tags_api.dart';
 export 'scratch_api.dart';
+export 'file_system_api.dart';
 
 /// Top-level API namespace that groups all sub-APIs.
 ///
@@ -45,7 +47,8 @@ class VibeApi {
         queue = QueueApi(_client),
         images = ImagesApi(_client),
         tags = TagsApi(_client),
-        scratch = ScratchApi(_client);
+        scratch = ScratchApi(_client),
+        fileSystem = FileSystemApi(_client);
 
   factory VibeApi.forServer(String baseUrl) {
     return VibeApi._(ApiClient(baseUrl: baseUrl));
@@ -66,6 +69,7 @@ class VibeApi {
   final ImagesApi images;
   final TagsApi tags;
   final ScratchApi scratch;
+  final FileSystemApi fileSystem;
 
   void dispose() => _client.dispose();
 }

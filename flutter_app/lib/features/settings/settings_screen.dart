@@ -20,22 +20,34 @@ class SettingsScreen extends ConsumerWidget {
             title: 'General',
             children: [
               _SettingsTile(
+                icon: Icons.tune_rounded,
+                title: 'General',
+                subtitle: 'Theme, language, git, analytics',
+                onTap: () => context.push('/settings/general'),
+              ),
+              _SettingsTile(
                 icon: Icons.notifications_rounded,
                 title: 'Notifications',
                 subtitle: 'Task updates, approvals',
                 onTap: () => context.push('/settings/notifications'),
               ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xxl),
+          _SettingsSection(
+            title: 'Management',
+            children: [
               _SettingsTile(
-                icon: Icons.palette_outlined,
-                title: 'Appearance',
-                subtitle: 'Theme, display preferences',
-                onTap: () => _showAppearanceDialog(context),
+                icon: Icons.folder_rounded,
+                title: 'Projects',
+                subtitle: 'Manage projects',
+                onTap: () => context.push('/settings/projects'),
               ),
               _SettingsTile(
                 icon: Icons.storage_rounded,
-                title: 'Data & Storage',
-                subtitle: 'Cache, offline data',
-                onTap: () => _showDataDialog(context),
+                title: 'Repositories',
+                subtitle: 'Scripts, copy files, parallel setup',
+                onTap: () => context.push('/settings/repos'),
               ),
             ],
           ),
@@ -67,82 +79,6 @@ class SettingsScreen extends ConsumerWidget {
                 subtitle: '1.0.0',
               ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showAppearanceDialog(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.bgPanel,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppSpacing.borderRadiusLg),
-        ),
-        title: const Text(
-          'Appearance',
-          style: TextStyle(
-            color: AppColors.textHigh,
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            fontFamily: 'IBM Plex Sans',
-          ),
-        ),
-        content: const Text(
-          'Theme settings will be available in a future update. Currently using the default dark theme.',
-          style: TextStyle(
-            color: AppColors.textNormal,
-            fontSize: 13,
-            fontFamily: 'IBM Plex Sans',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('OK',
-                style: TextStyle(
-                    color: AppColors.brand,
-                    fontFamily: 'IBM Plex Sans')),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showDataDialog(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.bgPanel,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppSpacing.borderRadiusLg),
-        ),
-        title: const Text(
-          'Data & Storage',
-          style: TextStyle(
-            color: AppColors.textHigh,
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            fontFamily: 'IBM Plex Sans',
-          ),
-        ),
-        content: const Text(
-          'Cache management will be available in a future update.',
-          style: TextStyle(
-            color: AppColors.textNormal,
-            fontSize: 13,
-            fontFamily: 'IBM Plex Sans',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('OK',
-                style: TextStyle(
-                    color: AppColors.brand,
-                    fontFamily: 'IBM Plex Sans')),
           ),
         ],
       ),

@@ -38,4 +38,26 @@ class ReposApi {
         .map((j) => Repo.fromJson(j as Map<String, dynamic>))
         .toList();
   }
+
+  Future<List<Repo>> listRecent() async {
+    final list = await _client.getList('/api/repos/recent');
+    return list.map((j) => Repo.fromJson(j as Map<String, dynamic>)).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> listOpenPrs(String repoId) async {
+    final list = await _client.getList('/api/repos/$repoId/prs');
+    return list.map((j) => j as Map<String, dynamic>).toList();
+  }
+
+  Future<List<String>> listRemotes(String repoId) async {
+    final list = await _client.getList('/api/repos/$repoId/remotes');
+    return list.map((j) => (j as Map<String, dynamic>)['name'] as String).toList();
+  }
+
+  Future<Repo> init({required String path, String? displayName}) async {
+    final body = <String, dynamic>{'path': path};
+    if (displayName != null) body['display_name'] = displayName;
+    final json = await _client.post('/api/repos/init', body: body);
+    return Repo.fromJson(json);
+  }
 }

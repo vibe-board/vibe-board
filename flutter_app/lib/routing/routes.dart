@@ -19,5 +19,9 @@ class AppRoutes {
   static const String executorProfiles = '/settings/executor-profiles';
   static const String mcpServers = '/settings/mcp-servers';
   static const String notifications = '/settings/notifications';
+  static const String generalSettings = '/settings/general';
+  static const String projectSettings = '/settings/projects';
+  static const String reposSettings = '/settings/repos';
+  static const String queue = '/queue';
   static const String search = '/search';
 }
