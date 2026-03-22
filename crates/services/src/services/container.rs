@@ -772,13 +772,6 @@ pub trait ContainerService {
         copy_files: &str,
     ) -> Result<(), ContainerError>;
 
-    /// Stream diff updates as LogMsg for WebSocket endpoints.
-    async fn stream_diff(
-        &self,
-        workspace: &Workspace,
-        stats_only: bool,
-    ) -> Result<futures::stream::BoxStream<'static, Result<LogMsg, std::io::Error>>, ContainerError>;
-
     /// Fetch the MsgStore for a given execution ID, panicking if missing.
     async fn get_msg_store_by_id(&self, uuid: &Uuid) -> Option<Arc<MsgStore>> {
         let map = self.msg_stores().read().await;
@@ -1049,6 +1042,9 @@ pub trait ContainerService {
 
             if let Some(store) = store {
                 let mut stream = store.history_plus_stream();
+                // Buffer for accumulating normalized entries before batch insert
+                let mut pending_entries: Vec<(i64, String)> = Vec::new();
+                const FLUSH_THRESHOLD: usize = 10;
 
                 while let Some(Ok(msg)) = stream.next().await {
                     match &msg {
@@ -1082,8 +1078,33 @@ pub trait ContainerService {
                                 }
                             }
                         }
+                        LogMsg::JsonPatch(patch) => {
+                            // Extract normalized entries and accumulate for batch insert
+                            if let Some((index, entry)) = extract_normalized_entry_from_patch(patch)
+                            {
+                                if let Ok(json) = serde_json::to_string(&entry) {
+                                    pending_entries.push((index as i64, json));
+                                }
+                            }
+                            // Flush when threshold is reached
+                            if pending_entries.len() >= FLUSH_THRESHOLD {
+                                if let Err(e) = DbNormalizedEntry::insert_batch(
+                                    &db.pool,
+                                    execution_id,
+                                    &pending_entries,
+                                )
+                                .await
+                                {
+                                    tracing::error!(
+                                        "Failed to persist normalized entries for execution {}: {}",
+                                        execution_id,
+                                        e
+                                    );
+                                }
+                                pending_entries.clear();
+                            }
+                        }
                         LogMsg::SessionId(agent_session_id) => {
-                            // Append this line to the database
                             if let Err(e) = CodingAgentTurn::update_agent_session_id(
                                 &db.pool,
                                 execution_id,
@@ -1118,7 +1139,21 @@ pub trait ContainerService {
                         LogMsg::Finished => {
                             break;
                         }
-                        LogMsg::JsonPatch(_) | LogMsg::Ready => continue,
+                        LogMsg::Ready => continue,
+                    }
+                }
+
+                // Flush any remaining normalized entries
+                if !pending_entries.is_empty() {
+                    if let Err(e) =
+                        DbNormalizedEntry::insert_batch(&db.pool, execution_id, &pending_entries)
+                            .await
+                    {
+                        tracing::error!(
+                            "Failed to flush remaining normalized entries for execution {}: {}",
+                            execution_id,
+                            e
+                        );
                     }
                 }
             }

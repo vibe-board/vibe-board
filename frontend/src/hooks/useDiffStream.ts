@@ -1,17 +1,9 @@
-import { useCallback, useMemo } from 'react';
-import type { Diff, PatchType } from 'shared/types';
-import { useJsonPatchWsStream } from './useJsonPatchWsStream';
-
-interface DiffEntries {
-  [filePath: string]: PatchType;
-}
-
-type DiffStreamEvent = {
-  entries: DiffEntries;
-};
+import { useQuery } from '@tanstack/react-query';
+import type { Diff } from 'shared/types';
+import { attemptsApi } from '@/lib/api';
 
 export interface UseDiffStreamOptions {
-  statsOnly?: boolean;
+  repoId?: string | null;
 }
 
 interface UseDiffStreamResult {
@@ -25,37 +17,24 @@ export const useDiffStream = (
   enabled: boolean,
   options?: UseDiffStreamOptions
 ): UseDiffStreamResult => {
-  const endpoint = (() => {
-    if (!attemptId) return undefined;
-    const query = `/api/task-attempts/${attemptId}/diff/ws`;
-    if (typeof options?.statsOnly === 'boolean') {
-      const params = new URLSearchParams();
-      params.set('stats_only', String(options.statsOnly));
-      return `${query}?${params.toString()}`;
-    } else {
-      return query;
-    }
-  })();
+  const repoId = options?.repoId;
 
-  const initialData = useCallback(
-    (): DiffStreamEvent => ({
-      entries: {},
-    }),
-    []
-  );
+  const {
+    data: diffs,
+    error,
+    isSuccess,
+  } = useQuery({
+    queryKey: ['workspaceDiff', attemptId, repoId],
+    queryFn: () => attemptsApi.getWorkspaceDiffs(attemptId!, repoId ?? ''),
+    enabled: enabled && !!attemptId && !!repoId,
+    staleTime: 0,
+  });
 
-  const { data, error, isInitialized } = useJsonPatchWsStream<DiffStreamEvent>(
-    endpoint,
-    enabled && !!attemptId,
-    initialData
-    // No need for injectInitialEntry or deduplicatePatches for diffs
-  );
+  const errorString = error ? String(error) : null;
 
-  const diffs = useMemo(() => {
-    return Object.values(data?.entries ?? {})
-      .filter((entry) => entry?.type === 'DIFF')
-      .map((entry) => entry.content);
-  }, [data?.entries]);
-
-  return { diffs, error, isInitialized };
+  return {
+    diffs: diffs ?? [],
+    error: errorString,
+    isInitialized: isSuccess || errorString !== null,
+  };
 };

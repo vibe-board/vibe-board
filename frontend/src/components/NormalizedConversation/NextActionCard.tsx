@@ -15,7 +15,6 @@ import { ViewProcessesDialog } from '@/components/dialogs/tasks/ViewProcessesDia
 import { CreateAttemptDialog } from '@/components/dialogs/tasks/CreateAttemptDialog';
 import { GitActionsDialog } from '@/components/dialogs/tasks/GitActionsDialog';
 import { useOpenInEditor } from '@/hooks/useOpenInEditor';
-import { useDiffSummary } from '@/hooks/useDiffSummary';
 import { useDevServer } from '@/hooks/useDevServer';
 import { useHasDevServerScript } from '@/hooks/useHasDevServerScript';
 import { useExecutionProcesses } from '@/hooks/useExecutionProcesses';
@@ -72,9 +71,11 @@ export function NextActionCard({
   const { capabilities } = useUserSystem();
 
   const openInEditor = useOpenInEditor(attemptId);
-  const { fileCount, added, deleted, error } = useDiffSummary(
-    attemptId ?? null
-  );
+  // Diff stats are not available here (requires repoId); will be shown in DiffsPanel instead
+  const fileCount = 0;
+  const added = 0;
+  const deleted = 0;
+  const error = null;
   const {
     start,
     stop,
