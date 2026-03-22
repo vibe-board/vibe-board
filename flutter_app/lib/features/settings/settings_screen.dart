@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../ui/theme/color_tokens.dart';
 import '../../ui/theme/spacing.dart';
 
@@ -19,14 +20,10 @@ class SettingsScreen extends ConsumerWidget {
             title: 'General',
             children: [
               _SettingsTile(
-                icon: Icons.palette_rounded,
-                title: 'Appearance',
-                subtitle: 'Dark mode, accent color',
-              ),
-              _SettingsTile(
                 icon: Icons.notifications_rounded,
                 title: 'Notifications',
                 subtitle: 'Task updates, approvals',
+                onTap: () => context.push('/settings/notifications'),
               ),
             ],
           ),
@@ -38,11 +35,13 @@ class SettingsScreen extends ConsumerWidget {
                 icon: Icons.smart_toy_rounded,
                 title: 'Executor Profiles',
                 subtitle: 'Claude, GPT-4, custom',
+                onTap: () => context.push('/settings/executor-profiles'),
               ),
               _SettingsTile(
                 icon: Icons.extension_rounded,
                 title: 'MCP Servers',
                 subtitle: 'Model Context Protocol',
+                onTap: () => context.push('/settings/mcp-servers'),
               ),
             ],
           ),
@@ -86,10 +85,12 @@ class _SettingsTile extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.subtitle,
+    this.onTap,
   });
   final IconData icon;
   final String title;
   final String subtitle;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -113,9 +114,7 @@ class _SettingsTile extends StatelessWidget {
       ),
       trailing: Icon(Icons.chevron_right_rounded,
           color: AppColors.textLow, size: 18),
-      onTap: () {
-        // TODO: navigate to sub-settings
-      },
+      onTap: onTap,
     );
   }
 }

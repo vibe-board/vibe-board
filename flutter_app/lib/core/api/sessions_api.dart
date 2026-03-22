@@ -1,4 +1,5 @@
 import '../models/session.dart';
+import '../models/conversation.dart';
 import 'api_client.dart';
 
 class SessionsApi {
@@ -35,5 +36,38 @@ class SessionsApi {
     Map<String, dynamic> body,
   ) async {
     return _client.post('/api/sessions/$sessionId/follow-up', body: body);
+  }
+
+  Future<void> reset(String sessionId) async {
+    await _client.post('/api/sessions/$sessionId/reset');
+  }
+
+  Future<void> startReview(String sessionId) async {
+    await _client.post('/api/sessions/$sessionId/review');
+  }
+
+  // Execution processes
+  Future<Map<String, dynamic>> getExecutionProcess(String processId) async {
+    return _client.get('/api/execution-processes/$processId');
+  }
+
+  Future<void> stopExecutionProcess(String processId) async {
+    await _client.post('/api/execution-processes/$processId/stop');
+  }
+
+  // Conversation
+  Future<List<ConversationEntry>> getConversation(String sessionId) async {
+    final list = await _client.getList('/api/sessions/$sessionId/conversation');
+    return list
+        .map((j) => ConversationEntry.fromJson(j as Map<String, dynamic>))
+        .toList();
+  }
+
+  // Execution processes list
+  Future<List<ExecutionProcess>> getExecutionProcesses(String sessionId) async {
+    final list = await _client.getList('/api/sessions/$sessionId/execution-processes');
+    return list
+        .map((j) => ExecutionProcess.fromJson(j as Map<String, dynamic>))
+        .toList();
   }
 }

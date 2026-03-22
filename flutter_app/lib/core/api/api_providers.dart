@@ -100,3 +100,23 @@ final searchApiProvider = Provider<SearchApi?>((ref) {
 final authApiProvider = Provider<AuthApi?>((ref) {
   return ref.watch(apiProvider)?.auth;
 });
+
+final approvalsApiProvider = Provider<ApprovalsApi?>((ref) {
+  return ref.watch(apiProvider)?.approvals;
+});
+
+final queueApiProvider = Provider<QueueApi?>((ref) {
+  return ref.watch(apiProvider)?.queue;
+});
+
+final imagesApiProvider = Provider<ImagesApi?>((ref) {
+  return ref.watch(apiProvider)?.images;
+});
+
+final tagsApiProvider = Provider<TagsApi?>((ref) {
+  return ref.watch(apiProvider)?.tags;
+});
+
+final scratchApiProvider = Provider<ScratchApi?>((ref) {
+  return ref.watch(apiProvider)?.scratch;
+});

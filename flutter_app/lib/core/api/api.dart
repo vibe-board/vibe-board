@@ -7,6 +7,11 @@ import 'repo_api.dart';
 import 'config_api.dart';
 import 'search_api.dart';
 import 'auth_api.dart';
+import 'approvals_api.dart';
+import 'queue_api.dart';
+import 'images_api.dart';
+import 'tags_api.dart';
+import 'scratch_api.dart';
 
 export 'api_client.dart';
 export 'projects_api.dart';
@@ -17,6 +22,11 @@ export 'repo_api.dart';
 export 'config_api.dart';
 export 'search_api.dart';
 export 'auth_api.dart';
+export 'approvals_api.dart';
+export 'queue_api.dart';
+export 'images_api.dart';
+export 'tags_api.dart';
+export 'scratch_api.dart';
 
 /// Top-level API namespace that groups all sub-APIs.
 ///
@@ -30,7 +40,12 @@ class VibeApi {
         repos = ReposApi(_client),
         config = ConfigApi(_client),
         search = SearchApi(_client),
-        auth = AuthApi(_client);
+        auth = AuthApi(_client),
+        approvals = ApprovalsApi(_client),
+        queue = QueueApi(_client),
+        images = ImagesApi(_client),
+        tags = TagsApi(_client),
+        scratch = ScratchApi(_client);
 
   factory VibeApi.forServer(String baseUrl) {
     return VibeApi._(ApiClient(baseUrl: baseUrl));
@@ -46,6 +61,11 @@ class VibeApi {
   final ConfigApi config;
   final SearchApi search;
   final AuthApi auth;
+  final ApprovalsApi approvals;
+  final QueueApi queue;
+  final ImagesApi images;
+  final TagsApi tags;
+  final ScratchApi scratch;
 
   void dispose() => _client.dispose();
 }

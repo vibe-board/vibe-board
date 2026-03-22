@@ -61,6 +61,15 @@ class TaskDetailScreen extends ConsumerWidget {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.image_outlined,
+                size: AppSpacing.iconSizeLg),
+            color: AppColors.textLow,
+            splashRadius: 16,
+            tooltip: 'Images',
+            onPressed: () => context.push(
+                '/projects/$projectId/tasks/$taskId/images'),
+          ),
+          IconButton(
             icon: const Icon(Icons.delete_outline_rounded,
                 size: AppSpacing.iconSizeLg),
             color: AppColors.textLow,
@@ -264,8 +273,15 @@ class _TaskDetailContent extends ConsumerWidget {
               }
               return _AttemptsTable(
                 attempts: attempts,
+                projectId: projectId,
+                taskId: taskId,
                 onAttemptTap: (attemptId) {
-                  // TODO: navigate to attempt/session detail
+                  context.push(
+                      '/projects/$projectId/tasks/$taskId/attempts/$attemptId/sessions');
+                },
+                onDiffTap: (attemptId) {
+                  context.push(
+                      '/projects/$projectId/tasks/$taskId/attempts/$attemptId/diff');
                 },
               );
             },
@@ -301,11 +317,17 @@ class _TaskDetailContent extends ConsumerWidget {
 class _AttemptsTable extends StatelessWidget {
   const _AttemptsTable({
     required this.attempts,
+    required this.projectId,
+    required this.taskId,
     required this.onAttemptTap,
+    required this.onDiffTap,
   });
 
   final List<Workspace> attempts;
+  final String projectId;
+  final String taskId;
   final ValueChanged<String> onAttemptTap;
+  final ValueChanged<String> onDiffTap;
 
   @override
   Widget build(BuildContext context) {
@@ -361,7 +383,7 @@ class _AttemptsTable extends StatelessWidget {
                         fontFamily: 'IBM Plex Mono',
                       )),
                 ),
-                SizedBox(width: 32),
+                SizedBox(width: 64),
               ],
             ),
           ),
@@ -411,6 +433,15 @@ class _AttemptsTable extends StatelessWidget {
                             fontFamily: 'IBM Plex Sans',
                           ),
                         ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.code_rounded, size: 16),
+                        color: AppColors.textLow,
+                        tooltip: 'View diff',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                            minWidth: 28, minHeight: 28),
+                        onPressed: () => onDiffTap(attempt.id),
                       ),
                       const Icon(
                         Icons.chevron_right_rounded,

@@ -9,3 +9,7 @@ export 'approval.dart';
 export 'diff.dart';
 export 'config.dart';
 export 'machine_status.dart';
+export 'conversation.dart';
+export 'image_ref.dart';
+export 'scratch.dart';
+export 'commit.dart';

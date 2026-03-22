@@ -18,9 +18,7 @@ class ServerListScreen extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
-            onPressed: () {
-              // TODO: add server dialog
-            },
+            onPressed: () => _showAddServerDialog(context, ref),
           ),
         ],
       ),
@@ -51,13 +49,134 @@ class ServerListScreen extends ConsumerWidget {
               trailing: isActive
                   ? const Icon(Icons.check_circle_rounded,
                       color: AppColors.brand, size: 18)
-                  : null,
+                  : IconButton(
+                      icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                      color: AppColors.textLow,
+                      onPressed: () {
+                        ref.read(serverListProvider.notifier).remove(server.id);
+                      },
+                    ),
               onTap: () {
                 ref.read(activeServerProvider.notifier).state = server;
               },
             ),
           );
         },
+      ),
+    );
+  }
+
+  void _showAddServerDialog(BuildContext context, WidgetRef ref) {
+    final nameController = TextEditingController();
+    final urlController = TextEditingController();
+    bool isGateway = false;
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.bgPanel,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppSpacing.borderRadiusLg),
+          ),
+          title: const Text(
+            'Add Server',
+            style: TextStyle(
+              color: AppColors.textHigh,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              fontFamily: 'IBM Plex Sans',
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: InputDecoration(
+                  labelText: 'Name',
+                  labelStyle: const TextStyle(
+                      color: AppColors.textLow, fontSize: 13),
+                  enabledBorder: OutlineInputBorder(
+                    borderSide: const BorderSide(color: AppColors.border),
+                    borderRadius:
+                        BorderRadius.circular(AppSpacing.borderRadius),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderSide: const BorderSide(color: AppColors.brand),
+                    borderRadius:
+                        BorderRadius.circular(AppSpacing.borderRadius),
+                  ),
+                ),
+                style: const TextStyle(
+                    color: AppColors.textHigh, fontSize: 13),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              TextField(
+                controller: urlController,
+                decoration: InputDecoration(
+                  labelText: 'URL (e.g. http://localhost:3000)',
+                  labelStyle: const TextStyle(
+                      color: AppColors.textLow, fontSize: 13),
+                  enabledBorder: OutlineInputBorder(
+                    borderSide: const BorderSide(color: AppColors.border),
+                    borderRadius:
+                        BorderRadius.circular(AppSpacing.borderRadius),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderSide: const BorderSide(color: AppColors.brand),
+                    borderRadius:
+                        BorderRadius.circular(AppSpacing.borderRadius),
+                  ),
+                ),
+                style: const TextStyle(
+                    color: AppColors.textHigh, fontSize: 13),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              CheckboxListTile(
+                value: isGateway,
+                onChanged: (v) =>
+                    setDialogState(() => isGateway = v ?? false),
+                title: const Text(
+                  'Gateway mode',
+                  style: TextStyle(
+                      color: AppColors.textNormal, fontSize: 13),
+                ),
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel',
+                  style: TextStyle(
+                      color: AppColors.textNormal,
+                      fontFamily: 'IBM Plex Sans')),
+            ),
+            TextButton(
+              onPressed: () {
+                final name = nameController.text.trim();
+                final url = urlController.text.trim();
+                if (name.isEmpty || url.isEmpty) return;
+                ref.read(serverListProvider.notifier).add(
+                      ServerConfig(
+                        id: DateTime.now().millisecondsSinceEpoch.toString(),
+                        name: name,
+                        baseUrl: url,
+                        isGateway: isGateway,
+                      ),
+                    );
+                Navigator.of(ctx).pop();
+              },
+              child: const Text('Add',
+                  style: TextStyle(
+                      color: AppColors.brand,
+                      fontFamily: 'IBM Plex Sans')),
+            ),
+          ],
+        ),
       ),
     );
   }
