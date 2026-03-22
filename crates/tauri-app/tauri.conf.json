@@ -1,0 +1,41 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicegui-dev/nicegui/refs/heads/main/nicegui/static/tauri/v2.json",
+  "productName": "Vibe Board",
+  "version": "0.1.0",
+  "identifier": "com.vibeboard.app",
+  "build": {
+    "frontendDist": "../../tauri-app-frontend/dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "pnpm -C ../../tauri-app-frontend dev",
+    "beforeBuildCommand": "pnpm -C ../../tauri-app-frontend build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Vibe Board",
+        "label": "main",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 800,
+        "minHeight": 600,
+        "center": true,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' http://* ws://* wss://* https://*; img-src 'self' data: blob:; font-src 'self' data:;"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "targets": "all"
+  }
+}

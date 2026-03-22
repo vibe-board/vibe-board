@@ -1,5 +1,6 @@
 packages:
   - frontend
+  - tauri-app-frontend
 
 onlyBuiltDependencies:
   - '@sentry/cli'
