@@ -134,8 +134,8 @@ export const useConversationHistoryOld = ({
             resolve(allEntries);
           },
           onError: (err) => {
-            console.warn(
-              `Error loading entries for historic execution process ${processId}`,
+            console.debug(
+              `Could not load entries for historic execution process ${processId}`,
               err
             );
             controller.close();
@@ -148,11 +148,10 @@ export const useConversationHistoryOld = ({
         patchWithKey(e, processId, idx)
       );
 
-      // Write to IndexedDB cache (fire-and-forget), only for completed processes
-      if (
-        entriesWithKey.length > 0 &&
-        executionProcess.status !== ExecutionProcessStatus.running
-      ) {
+      // Write to IndexedDB cache (fire-and-forget), only for completed processes.
+      // Cache even when empty to prevent repeated WebSocket retries for processes
+      // whose logs are unavailable (e.g. server restarted, in-memory store lost).
+      if (executionProcess.status !== ExecutionProcessStatus.running) {
         setCachedProcessEntries(
           attemptId,
           processId,
