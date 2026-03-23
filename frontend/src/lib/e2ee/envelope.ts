@@ -21,7 +21,7 @@ export function isEncryptedPayload(value: unknown): value is EncryptedPayload {
 }
 
 /** Encode bytes to base64 */
-function toBase64(bytes: Uint8Array): string {
+export function toBase64(bytes: Uint8Array): string {
   let binary = '';
   for (let i = 0; i < bytes.length; i++) {
     binary += String.fromCharCode(bytes[i]);

@@ -79,7 +79,10 @@ export function useE2EE() {
           onError: (err) => setError(err),
         });
         connection.subscribeMachine(machineId);
-        setConnected(true);
+        // Establish DEK before marking connection as ready
+        if (manager.hasPairedSecrets) {
+          await connection.initDek();
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Connection failed');
         setConnected(false);

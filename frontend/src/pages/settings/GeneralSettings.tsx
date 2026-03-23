@@ -922,7 +922,7 @@ export function GeneralSettings() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => E2EESettingsDialog.show({})}
+              onClick={() => E2EESettingsDialog.show()}
             >
               {t('settings.general.e2ee.configure')}
             </Button>

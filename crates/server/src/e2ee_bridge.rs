@@ -13,6 +13,20 @@ use crate::{e2ee_config::Credentials, e2ee_crypto::BridgeCryptoService};
 /// Active WebSocket sub-connections (id → sender to local WS)
 type WsConnections = Arc<Mutex<HashMap<u32, mpsc::UnboundedSender<String>>>>;
 
+/// DEK state for this connection — None until DEK exchange completes
+type DekState = Arc<Mutex<Option<[u8; 32]>>>;
+
+/// Shared context for forward message handling
+struct BridgeContext {
+    client: reqwest::Client,
+    local_base: String,
+    content_sk: [u8; 32],
+    content_pk: [u8; 32],
+    tx: mpsc::UnboundedSender<String>,
+    ws_connections: WsConnections,
+    dek_state: DekState,
+}
+
 /// Messages from gateway → daemon
 #[derive(Deserialize)]
 #[serde(tag = "type")]
@@ -201,6 +215,7 @@ async fn connect_and_run(
     let http_client = reqwest::Client::new();
     // Fresh ws_connections for each connection — old sub-connections are dead after disconnect
     let ws_connections: WsConnections = Arc::new(Mutex::new(HashMap::new()));
+    let dek_state: DekState = Arc::new(Mutex::new(None));
 
     info!("Bridge active — proxying to {local_base}, waiting for WebUI connections...");
 
@@ -235,25 +250,18 @@ async fn connect_and_run(
 
         match gateway_msg {
             GatewayMessage::Forward { payload } => {
-                let tx = tx.clone();
-                let client = http_client.clone();
-                let base = local_base.clone();
-                let crypto_content_pk = crypto.content_keypair.public_key;
-                let crypto_content_sk = crypto.content_keypair.secret_key;
-                let ws_conns = ws_connections.clone();
+                let ctx = BridgeContext {
+                    client: http_client.clone(),
+                    local_base: local_base.clone(),
+                    content_sk: crypto.content_keypair.secret_key,
+                    content_pk: crypto.content_keypair.public_key,
+                    tx: tx.clone(),
+                    ws_connections: ws_connections.clone(),
+                    dek_state: dek_state.clone(),
+                };
 
                 tokio::spawn(async move {
-                    if let Err(e) = handle_forward(
-                        payload,
-                        &client,
-                        &base,
-                        &crypto_content_pk,
-                        &crypto_content_sk,
-                        &tx,
-                        &ws_conns,
-                    )
-                    .await
-                    {
+                    if let Err(e) = handle_forward(&ctx, payload).await {
                         warn!("Forward handling error: {e}");
                     }
                 });
@@ -262,7 +270,8 @@ async fn connect_and_run(
                 info!("Registration confirmed: machine_id={machine_id}");
             }
             GatewayMessage::ClientConnected => {
-                info!("WebUI client connected");
+                info!("WebUI client connected, resetting DEK state");
+                *dek_state.lock().await = None;
             }
             GatewayMessage::ClientDisconnected => {
                 info!("WebUI client disconnected");
@@ -284,23 +293,63 @@ fn send_response(tx: &mpsc::UnboundedSender<String>, response: e2ee_core::Bridge
     let _ = tx.send(fwd_msg.to_string());
 }
 
-/// Handle a forwarded message from the gateway: decrypt, proxy, encrypt, send back
-async fn handle_forward(
-    payload: serde_json::Value,
-    client: &reqwest::Client,
-    local_base: &str,
-    _content_pk: &[u8; 32],
-    _content_sk: &[u8; 32],
+/// Send a bridge response, encrypting with DEK if available
+fn send_encrypted_response(
     tx: &mpsc::UnboundedSender<String>,
-    ws_connections: &WsConnections,
+    response: e2ee_core::BridgeResponse,
+    dek: Option<&[u8; 32]>,
 ) -> Result<()> {
-    if e2ee_core::is_encrypted_payload(&payload) {
-        warn!("Received encrypted payload — proxy not yet fully implemented");
+    let final_response = if let Some(dek) = dek {
+        let encrypted = e2ee_core::encrypt_json(&response, dek)?;
+        e2ee_core::BridgeResponse::Encrypted(encrypted)
+    } else {
+        response
+    };
+    send_response(tx, final_response);
+    Ok(())
+}
+
+/// Handle a forwarded message from the gateway: DEK exchange, decrypt, proxy, encrypt, send back
+async fn handle_forward(ctx: &BridgeContext, payload: serde_json::Value) -> Result<()> {
+    // Check for DEK exchange message (raw JSON, not a BridgeRequest)
+    if let Some(msg_type) = payload.get("type").and_then(|v| v.as_str())
+        && msg_type == "dek_exchange"
+    {
+        let wrapped_dek_b64 = payload
+            .get("wrapped_dek")
+            .and_then(|v| v.as_str())
+            .context("dek_exchange missing wrapped_dek")?;
+        let wrapped_dek = BASE64
+            .decode(wrapped_dek_b64)
+            .context("Invalid base64 in wrapped_dek")?;
+        let dek = e2ee_core::unwrap_dek(&wrapped_dek, &ctx.content_sk, &ctx.content_pk)
+            .context("Failed to unwrap DEK")?;
+        *ctx.dek_state.lock().await = Some(dek);
+        info!("DEK exchange completed successfully");
+        send_response(&ctx.tx, e2ee_core::BridgeResponse::DekOk);
         return Ok(());
     }
 
-    let request: e2ee_core::BridgeRequest =
-        serde_json::from_value(payload).context("Failed to parse BridgeRequest")?;
+    // Read current DEK state — Option<[u8; 32]> is Copy
+    let dek_opt = *ctx.dek_state.lock().await;
+
+    // Determine the request: decrypt if encrypted, otherwise parse directly
+    let request: e2ee_core::BridgeRequest = if e2ee_core::is_encrypted_payload(&payload) {
+        let encrypted: e2ee_core::envelope::EncryptedPayload =
+            serde_json::from_value(payload).context("Failed to parse EncryptedPayload")?;
+        let dek = dek_opt.context("Received encrypted payload but no DEK established")?;
+        e2ee_core::decrypt_json(&encrypted, &dek).context("Failed to decrypt bridge request")?
+    } else {
+        if dek_opt.is_some() {
+            anyhow::bail!("Received plaintext request after DEK exchange");
+        }
+        serde_json::from_value(payload).context("Failed to parse BridgeRequest")?
+    };
+
+    // Helper: send response encrypted with DEK if available
+    let send_resp = |response: e2ee_core::BridgeResponse| {
+        send_encrypted_response(&ctx.tx, response, dek_opt.as_ref())
+    };
 
     match request {
         e2ee_core::BridgeRequest::HttpRequest {
@@ -310,10 +359,10 @@ async fn handle_forward(
             headers,
             body,
         } => {
-            let url = format!("{local_base}{path}");
+            let url = format!("{}{path}", ctx.local_base);
             let method: reqwest::Method = method.parse().context("Invalid HTTP method")?;
 
-            let mut req_builder = client.request(method, &url);
+            let mut req_builder = ctx.client.request(method, &url);
             for (key, value) in &headers {
                 // Strip Origin header — the bridge forwards requests to localhost
                 // where Origin (e.g. the public domain) won't match Host (127.0.0.1),
@@ -338,20 +387,18 @@ async fn handle_forward(
                 .collect();
             let body_bytes = resp.bytes().await?;
 
-            send_response(
-                tx,
-                e2ee_core::BridgeResponse::HttpResponse {
-                    id,
-                    status,
-                    headers: resp_headers,
-                    body: BASE64.encode(&body_bytes),
-                },
-            );
+            send_resp(e2ee_core::BridgeResponse::HttpResponse {
+                id,
+                status,
+                headers: resp_headers,
+                body: BASE64.encode(&body_bytes),
+            })?;
         }
 
         e2ee_core::BridgeRequest::WsOpen { id, path, query } => {
             let ws_url = {
-                let base = local_base
+                let base = ctx
+                    .local_base
                     .replace("http://", "ws://")
                     .replace("https://", "wss://");
                 match query {
@@ -368,33 +415,40 @@ async fn handle_forward(
 
                     // Channel for sending data from bridge → local WS
                     let (sub_tx, mut sub_rx) = mpsc::unbounded_channel::<String>();
-                    ws_connections.lock().await.insert(id, sub_tx);
+                    {
+                        ctx.ws_connections.lock().await.insert(id, sub_tx);
+                    }
 
                     // Confirm opened
-                    send_response(tx, e2ee_core::BridgeResponse::WsOpened { id });
+                    send_resp(e2ee_core::BridgeResponse::WsOpened { id })?;
 
                     // Task: local WS → gateway (forward data from local WS back through bridge)
-                    let tx_recv = tx.clone();
-                    let ws_conns_recv = ws_connections.clone();
+                    let tx_recv = ctx.tx.clone();
+                    let ws_conns_recv = ctx.ws_connections.clone();
+                    let dek_state_clone = ctx.dek_state.clone();
                     tokio::spawn(async move {
                         while let Some(msg) = ws_recv.next().await {
                             match msg {
                                 Ok(Message::Text(text)) => {
-                                    send_response(
+                                    let dek = *dek_state_clone.lock().await;
+                                    let _ = send_encrypted_response(
                                         &tx_recv,
                                         e2ee_core::BridgeResponse::WsData {
                                             id,
                                             data: BASE64.encode(text.as_bytes()),
                                         },
+                                        dek.as_ref(),
                                     );
                                 }
                                 Ok(Message::Binary(bin)) => {
-                                    send_response(
+                                    let dek = *dek_state_clone.lock().await;
+                                    let _ = send_encrypted_response(
                                         &tx_recv,
                                         e2ee_core::BridgeResponse::WsData {
                                             id,
                                             data: BASE64.encode(&bin),
                                         },
+                                        dek.as_ref(),
                                     );
                                 }
                                 Ok(Message::Close(_)) => break,
@@ -403,7 +457,12 @@ async fn handle_forward(
                             }
                         }
                         // WS closed — notify and clean up
-                        send_response(&tx_recv, e2ee_core::BridgeResponse::WsClosed { id });
+                        let dek = *dek_state_clone.lock().await;
+                        let _ = send_encrypted_response(
+                            &tx_recv,
+                            e2ee_core::BridgeResponse::WsClosed { id },
+                            dek.as_ref(),
+                        );
                         ws_conns_recv.lock().await.remove(&id);
                     });
 
@@ -418,13 +477,10 @@ async fn handle_forward(
                 }
                 Err(e) => {
                     warn!("WS sub-connection failed for id={id}: {e}");
-                    send_response(
-                        tx,
-                        e2ee_core::BridgeResponse::Error {
-                            id,
-                            message: format!("WebSocket connect failed: {e}"),
-                        },
-                    );
+                    send_resp(e2ee_core::BridgeResponse::Error {
+                        id,
+                        message: format!("WebSocket connect failed: {e}"),
+                    })?;
                 }
             }
         }
@@ -432,7 +488,7 @@ async fn handle_forward(
         e2ee_core::BridgeRequest::WsData { id, data } => {
             let decoded = BASE64.decode(&data).context("Invalid base64 in WsData")?;
             let text = String::from_utf8(decoded).context("Invalid UTF-8 in WsData")?;
-            let conns = ws_connections.lock().await;
+            let conns = ctx.ws_connections.lock().await;
             if let Some(sub_tx) = conns.get(&id) {
                 let _ = sub_tx.send(text);
             } else {
@@ -444,21 +500,18 @@ async fn handle_forward(
             info!("Closing WS sub-connection id={id}");
             // Removing the sender drops it, which causes the sub_rx loop to end,
             // which causes the ws_send task to close the local WS.
-            ws_connections.lock().await.remove(&id);
+            ctx.ws_connections.lock().await.remove(&id);
         }
 
         e2ee_core::BridgeRequest::Ping { id } => {
-            send_response(tx, e2ee_core::BridgeResponse::Pong { id });
+            send_resp(e2ee_core::BridgeResponse::Pong { id })?;
         }
 
         e2ee_core::BridgeRequest::SseSubscribe { id, .. } => {
-            send_response(
-                tx,
-                e2ee_core::BridgeResponse::Error {
-                    id,
-                    message: "SSE not yet supported".to_string(),
-                },
-            );
+            send_resp(e2ee_core::BridgeResponse::Error {
+                id,
+                message: "SSE not yet supported".to_string(),
+            })?;
         }
 
         e2ee_core::BridgeRequest::SseUnsubscribe { .. } => {}
@@ -481,4 +534,117 @@ fn get_machine_id() -> String {
     hostname.hash(&mut hasher);
     username.hash(&mut hasher);
     format!("m-{:016x}", hasher.finish())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_dek_exchange_payload_detection() {
+        // dek_exchange message should NOT be detected as an encrypted payload
+        let dek_msg = serde_json::json!({
+            "type": "dek_exchange",
+            "wrapped_dek": "dGVzdA=="
+        });
+        assert!(!e2ee_core::is_encrypted_payload(&dek_msg));
+
+        // Should have type field = "dek_exchange"
+        assert_eq!(
+            dek_msg.get("type").and_then(|v| v.as_str()),
+            Some("dek_exchange")
+        );
+    }
+
+    #[test]
+    fn test_send_encrypted_response_without_dek() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let response = e2ee_core::BridgeResponse::Pong { id: 1 };
+
+        let result = send_encrypted_response(&tx, response, None);
+        assert!(result.is_ok());
+
+        let msg = rx.try_recv().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&msg).unwrap();
+        assert_eq!(parsed["type"], "forward");
+        assert_eq!(parsed["payload"]["type"], "pong");
+    }
+
+    #[test]
+    fn test_send_encrypted_response_with_dek() {
+        let dek = e2ee_core::generate_dek();
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        let response = e2ee_core::BridgeResponse::Pong { id: 42 };
+
+        let result = send_encrypted_response(&tx, response, Some(&dek));
+        assert!(result.is_ok());
+
+        let msg = rx.try_recv().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&msg).unwrap();
+        assert_eq!(parsed["type"], "forward");
+        // Payload should be encrypted
+        assert_eq!(parsed["payload"]["type"], "encrypted");
+        assert!(parsed["payload"]["c"].is_string());
+
+        // Verify we can decrypt it back
+        let encrypted: e2ee_core::envelope::EncryptedPayload =
+            serde_json::from_value(parsed["payload"].clone()).unwrap();
+        let decrypted: e2ee_core::BridgeResponse =
+            e2ee_core::decrypt_json(&encrypted, &dek).unwrap();
+        if let e2ee_core::BridgeResponse::Pong { id } = decrypted {
+            assert_eq!(id, 42);
+        } else {
+            panic!("Expected Pong response");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_dek_state_exchange_flow() {
+        let content_kp =
+            e2ee_core::derive_content_keypair(&e2ee_core::generate_master_secret()).unwrap();
+        let dek_state: DekState = Arc::new(Mutex::new(None));
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+
+        // Simulate DEK exchange
+        let test_dek = e2ee_core::generate_dek();
+        let wrapped = e2ee_core::wrap_dek(&test_dek, &content_kp.public_key).unwrap();
+        let dek_exchange_payload = serde_json::json!({
+            "type": "dek_exchange",
+            "wrapped_dek": BASE64.encode(&wrapped)
+        });
+
+        let ctx = BridgeContext {
+            client: reqwest::Client::new(),
+            local_base: "http://127.0.0.1:0".to_string(),
+            content_sk: content_kp.secret_key,
+            content_pk: content_kp.public_key,
+            tx,
+            ws_connections: Arc::new(Mutex::new(HashMap::new())),
+            dek_state: dek_state.clone(),
+        };
+
+        handle_forward(&ctx, dek_exchange_payload).await.unwrap();
+
+        // Should have received DekOk response
+        let msg = rx.try_recv().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&msg).unwrap();
+        assert_eq!(parsed["payload"]["type"], "dek_ok");
+
+        // DEK state should now be set
+        let stored_dek = dek_state.lock().await;
+        assert!(stored_dek.is_some());
+        assert_eq!(stored_dek.unwrap(), test_dek);
+    }
+
+    #[test]
+    fn test_encrypted_payload_detection() {
+        let encrypted = serde_json::json!({ "t": "encrypted", "c": "abc123" });
+        assert!(e2ee_core::is_encrypted_payload(&encrypted));
+
+        let bridge_request = serde_json::json!({
+            "type": "ping",
+            "id": 1
+        });
+        assert!(!e2ee_core::is_encrypted_payload(&bridge_request));
+    }
 }

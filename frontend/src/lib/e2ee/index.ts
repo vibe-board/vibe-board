@@ -17,6 +17,7 @@ export {
   encryptJson,
   decryptJson,
   isEncryptedPayload,
+  toBase64,
   type EncryptedPayload,
 } from './envelope';
 export { E2EEManager } from './manager';

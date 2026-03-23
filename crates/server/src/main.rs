@@ -291,6 +291,13 @@ async fn cmd_login(gateway_url: &str) -> anyhow::Result<()> {
     println!();
     println!("Your master secret (for pairing WebUI):");
     println!("  {master_secret_b64}");
+
+    // Print QR code for mobile pairing
+    println!();
+    if let Err(e) = qr2term::print_qr(&master_secret_b64) {
+        tracing::warn!("Failed to print QR code: {e}");
+    }
+
     println!();
     println!("Enter this in WebUI Settings > E2EE > Pair Device");
     println!();

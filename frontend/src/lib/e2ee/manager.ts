@@ -35,6 +35,12 @@ export class E2EEManager {
     return this.contentKeyPairs.size > 0;
   }
 
+  /** Get the content public key from the first content key pair */
+  getContentPublicKey(): Uint8Array | null {
+    const firstPair = this.contentKeyPairs.values().next().value;
+    return firstPair ? firstPair.publicKey : null;
+  }
+
   /** Get all paired secret identifiers (truncated for display) */
   get pairedSecretIds(): string[] {
     return Array.from(this.contentKeyPairs.keys()).map(

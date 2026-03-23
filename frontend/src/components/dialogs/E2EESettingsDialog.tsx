@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import NiceModal, { useModal } from '@ebay/nice-modal-react';
-import { defineModal } from '@/lib/modals';
+import { defineModal, type NoProps } from '@/lib/modals';
 import {
   Dialog,
   DialogContent,
@@ -15,12 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useE2EE } from '@/hooks/useE2ee';
 import { useGatewayAuth, type GatewaySession } from '@/hooks/useGatewayAuth';
-import { deriveAuthKeyPair, randomBytes } from '@/lib/e2ee';
-
-function generateMasterSecretB64(): string {
-  const bytes = randomBytes(32);
-  return btoa(String.fromCharCode(...bytes));
-}
+import { deriveAuthKeyPair } from '@/lib/e2ee';
 
 async function registerDevice(
   gatewayUrl: string,
@@ -68,12 +63,17 @@ async function notifyBackendLogout() {
   }
 }
 
-export interface E2EESettingsDialogProps {}
-
-const E2EESettingsDialogImpl = NiceModal.create<E2EESettingsDialogProps>(() => {
+const E2EESettingsDialogImpl = NiceModal.create<NoProps>(() => {
   const modal = useModal();
   const { t } = useTranslation('settings');
-  const { machines, connected, connectToGateway, error: e2eeError } = useE2EE();
+  const {
+    machines,
+    connected,
+    connectToGateway,
+    disconnect,
+    addPairedSecret,
+    error: e2eeError,
+  } = useE2EE();
 
   const {
     session,
@@ -94,11 +94,11 @@ const E2EESettingsDialogImpl = NiceModal.create<E2EESettingsDialogProps>(() => {
   const [isSignupMode, setIsSignupMode] = useState(false);
   const [registrationOpen, setRegistrationOpen] = useState(false);
 
-  // Generated master secret state
+  // Master secret state
   const [masterSecret, setMasterSecret] = useState<string | null>(null);
+  const [pastedSecret, setPastedSecret] = useState('');
   const [setupLoading, setSetupLoading] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
 
   // Machine selection
   const [selectedMachineId, setSelectedMachineId] = useState<string | null>(
@@ -124,47 +124,32 @@ const E2EESettingsDialogImpl = NiceModal.create<E2EESettingsDialogProps>(() => {
     };
   }, [gatewayUrl, checkRegistrationStatus]);
 
-  // After login, auto-setup: generate secret, register device, notify backend
-  useEffect(() => {
-    if (!isAuthenticated || !session || masterSecret) return;
-    let cancelled = false;
+  // After login, user pastes OOB secret from bridge terminal
+  const handleSetupFromSecret = async () => {
+    if (!session || !pastedSecret.trim()) return;
+    setSetupLoading(true);
+    setSetupError(null);
+    try {
+      const secretB64 = pastedSecret.trim();
+      const secretBytes = Uint8Array.from(atob(secretB64), (c) =>
+        c.charCodeAt(0)
+      );
+      const authKp = await deriveAuthKeyPair(secretBytes);
+      const pubKeyB64 = btoa(String.fromCharCode(...authKp.publicKey));
 
-    const setup = async () => {
-      setSetupLoading(true);
-      setSetupError(null);
-      try {
-        const secretB64 = generateMasterSecretB64();
-        const secretBytes = Uint8Array.from(atob(secretB64), (c) =>
-          c.charCodeAt(0)
-        );
-        const authKp = await deriveAuthKeyPair(secretBytes);
-        const pubKeyB64 = btoa(String.fromCharCode(...authKp.publicKey));
+      await registerDevice(session.gatewayUrl, session.sessionToken, pubKeyB64);
 
-        await registerDevice(
-          session.gatewayUrl,
-          session.sessionToken,
-          pubKeyB64
-        );
-        if (cancelled) return;
+      await notifyBackendCredentials(secretB64, session);
 
-        await notifyBackendCredentials(secretB64, session);
-        if (cancelled) return;
-
-        setMasterSecret(secretB64);
-      } catch (e) {
-        if (!cancelled) {
-          setSetupError(e instanceof Error ? e.message : 'Setup failed');
-        }
-      } finally {
-        if (!cancelled) setSetupLoading(false);
-      }
-    };
-
-    setup();
-    return () => {
-      cancelled = true;
-    };
-  }, [isAuthenticated, session, masterSecret]);
+      addPairedSecret(secretB64);
+      setMasterSecret(secretB64);
+      setPastedSecret('');
+    } catch (e) {
+      setSetupError(e instanceof Error ? e.message : 'Setup failed');
+    } finally {
+      setSetupLoading(false);
+    }
+  };
 
   const handleAuth = async () => {
     if (!gatewayUrl.trim()) return;
@@ -188,16 +173,10 @@ const E2EESettingsDialogImpl = NiceModal.create<E2EESettingsDialogProps>(() => {
     await connectToGateway(session.gatewayUrl, session.sessionToken, machineId);
   };
 
-  const handleCopySecret = async () => {
-    if (!masterSecret) return;
-    await navigator.clipboard.writeText(masterSecret);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   const handleLogout = useCallback(async () => {
     logout();
     setMasterSecret(null);
+    setPastedSecret('');
     setSetupError(null);
     await notifyBackendLogout();
   }, [logout]);
@@ -326,7 +305,7 @@ const E2EESettingsDialogImpl = NiceModal.create<E2EESettingsDialogProps>(() => {
             )}
           </div>
 
-          {/* Section 2: Master Secret (auto-generated after login) */}
+          {/* Section 2: Master Secret (OOB from bridge) */}
           {isAuthenticated && (
             <div className="space-y-3">
               <Label className="text-sm font-medium">
@@ -336,60 +315,81 @@ const E2EESettingsDialogImpl = NiceModal.create<E2EESettingsDialogProps>(() => {
               {setupLoading ? (
                 <p className="text-sm text-muted-foreground">
                   {t(
-                    'settings.general.e2ee.masterSecret.generating',
-                    'Generating master secret and registering device...'
+                    'settings.general.e2ee.masterSecret.registering',
+                    'Registering device and setting up...'
                   )}
                 </p>
-              ) : setupError ? (
-                <p className="text-xs text-red-500">{setupError}</p>
               ) : masterSecret ? (
+                <p className="text-sm text-green-500">
+                  {t(
+                    'settings.general.e2ee.masterSecret.paired',
+                    'E2EE paired successfully'
+                  )}
+                </p>
+              ) : (
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <code className="flex-1 rounded-md bg-muted px-3 py-2 text-xs font-mono break-all">
-                      {masterSecret}
-                    </code>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleCopySecret}
-                    >
-                      {copied
-                        ? t(
-                            'settings.general.e2ee.masterSecret.copied',
-                            'Copied!'
-                          )
-                        : t('settings.general.e2ee.masterSecret.copy', 'Copy')}
-                    </Button>
-                  </div>
+                  <Input
+                    placeholder={t(
+                      'settings.general.e2ee.masterSecret.placeholder',
+                      'Paste master secret from bridge terminal'
+                    )}
+                    value={pastedSecret}
+                    onChange={(e) => setPastedSecret(e.target.value)}
+                  />
+                  <Button
+                    onClick={handleSetupFromSecret}
+                    disabled={!pastedSecret.trim() || setupLoading}
+                    className="w-full"
+                    size="sm"
+                  >
+                    {t(
+                      'settings.general.e2ee.masterSecret.pair',
+                      'Pair with Bridge'
+                    )}
+                  </Button>
                   <p className="text-xs text-muted-foreground">
                     {t(
-                      'settings.general.e2ee.masterSecret.hint',
-                      'Use this secret to pair other devices or CLI tools.'
+                      'settings.general.e2ee.masterSecret.localStorageWarning',
+                      "The master secret will be stored in your browser's localStorage."
                     )}
                   </p>
                 </div>
-              ) : null}
+              )}
 
               {/* Connection Status */}
-              <div className="flex items-center gap-2">
-                <div
-                  className={`w-2 h-2 rounded-full ${
-                    connected ? 'bg-green-500' : 'bg-gray-400'
-                  }`}
-                />
-                <span className="text-sm text-muted-foreground">
-                  {connected
-                    ? t(
-                        'settings.general.e2ee.masterSecret.connected',
-                        'Connected'
-                      )
-                    : t(
-                        'settings.general.e2ee.masterSecret.notConnected',
-                        'Not connected'
-                      )}
-                </span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div
+                    className={`w-2 h-2 rounded-full ${
+                      connected ? 'bg-green-500' : 'bg-gray-400'
+                    }`}
+                  />
+                  <span className="text-sm text-muted-foreground">
+                    {connected
+                      ? t(
+                          'settings.general.e2ee.masterSecret.connected',
+                          'Connected'
+                        )
+                      : t(
+                          'settings.general.e2ee.masterSecret.notConnected',
+                          'Not connected'
+                        )}
+                  </span>
+                </div>
+                {connected && (
+                  <Button variant="outline" size="sm" onClick={disconnect}>
+                    {t(
+                      'settings.general.e2ee.masterSecret.disconnect',
+                      'Disconnect'
+                    )}
+                  </Button>
+                )}
               </div>
-              {e2eeError && <p className="text-xs text-red-500">{e2eeError}</p>}
+              {(setupError || e2eeError) && (
+                <p className="text-xs text-red-500">
+                  {setupError || e2eeError}
+                </p>
+              )}
             </div>
           )}
 
@@ -414,14 +414,22 @@ const E2EESettingsDialogImpl = NiceModal.create<E2EESettingsDialogProps>(() => {
                         ({m.platform})
                       </span>
                     </div>
-                    {isAuthenticated && !connected && (
+                    {isAuthenticated && (
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => handleConnect(m.machine_id)}
                         disabled={selectedMachineId === m.machine_id}
                       >
-                        {t('settings.general.e2ee.machines.connect', 'Connect')}
+                        {selectedMachineId === m.machine_id
+                          ? t(
+                              'settings.general.e2ee.machines.connected',
+                              'Connected'
+                            )
+                          : t(
+                              'settings.general.e2ee.machines.connect',
+                              'Connect'
+                            )}
                       </Button>
                     )}
                   </div>
@@ -441,6 +449,6 @@ const E2EESettingsDialogImpl = NiceModal.create<E2EESettingsDialogProps>(() => {
   );
 });
 
-export const E2EESettingsDialog = defineModal<E2EESettingsDialogProps, void>(
+export const E2EESettingsDialog = defineModal<void, void>(
   E2EESettingsDialogImpl
 );

@@ -97,6 +97,14 @@ pub enum BridgeResponse {
     /// Error response
     #[serde(rename = "error")]
     Error { id: u32, message: String },
+
+    /// DEK exchange acknowledgement
+    #[serde(rename = "dek_ok")]
+    DekOk,
+
+    /// Encrypted response payload
+    #[serde(rename = "encrypted")]
+    Encrypted(crate::envelope::EncryptedPayload),
 }
 
 #[cfg(test)]
@@ -217,6 +225,39 @@ mod tests {
             assert_eq!(message, "Connection refused");
         } else {
             panic!("Wrong variant");
+        }
+    }
+
+    #[test]
+    fn test_dek_ok_serialization() {
+        let resp = BridgeResponse::DekOk;
+        let json = serde_json::to_string(&resp).unwrap();
+        assert_eq!(json, r#"{"type":"dek_ok"}"#);
+
+        let parsed: BridgeResponse = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, BridgeResponse::DekOk));
+    }
+
+    #[test]
+    fn test_encrypted_bridge_response_serialization() {
+        use crate::{envelope::encrypt_to_envelope, keys::generate_dek};
+
+        let dek = generate_dek();
+        let payload = encrypt_to_envelope(b"hello from bridge", &dek).unwrap();
+
+        let resp = BridgeResponse::Encrypted(payload.clone());
+        let json = serde_json::to_string(&resp).unwrap();
+
+        // Should contain type:encrypted and the ciphertext
+        assert!(json.contains(r#""type":"encrypted""#));
+        assert!(json.contains(&payload.c));
+
+        let parsed: BridgeResponse = serde_json::from_str(&json).unwrap();
+        if let BridgeResponse::Encrypted(inner) = parsed {
+            assert_eq!(inner.t, "encrypted");
+            assert_eq!(inner.c, payload.c);
+        } else {
+            panic!("Expected Encrypted variant");
         }
     }
 }

@@ -1081,10 +1081,9 @@ pub trait ContainerService {
                         LogMsg::JsonPatch(patch) => {
                             // Extract normalized entries and accumulate for batch insert
                             if let Some((index, entry)) = extract_normalized_entry_from_patch(patch)
+                                && let Ok(json) = serde_json::to_string(&entry)
                             {
-                                if let Ok(json) = serde_json::to_string(&entry) {
-                                    pending_entries.push((index as i64, json));
-                                }
+                                pending_entries.push((index as i64, json));
                             }
                             // Flush when threshold is reached
                             if pending_entries.len() >= FLUSH_THRESHOLD {
@@ -1144,17 +1143,16 @@ pub trait ContainerService {
                 }
 
                 // Flush any remaining normalized entries
-                if !pending_entries.is_empty() {
-                    if let Err(e) =
+                if !pending_entries.is_empty()
+                    && let Err(e) =
                         DbNormalizedEntry::insert_batch(&db.pool, execution_id, &pending_entries)
                             .await
-                    {
-                        tracing::error!(
-                            "Failed to flush remaining normalized entries for execution {}: {}",
-                            execution_id,
-                            e
-                        );
-                    }
+                {
+                    tracing::error!(
+                        "Failed to flush remaining normalized entries for execution {}: {}",
+                        execution_id,
+                        e
+                    );
                 }
             }
         })

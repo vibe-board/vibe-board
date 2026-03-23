@@ -4,17 +4,15 @@
  *
  * When connected, replaces direct HTTP calls with encrypted messages.
  */
-import { encryptJson, decryptJson, type EncryptedPayload } from './envelope';
+import {
+  encryptJson,
+  decryptJson,
+  type EncryptedPayload,
+  toBase64,
+} from './envelope';
+import { E2EEManager } from './manager';
 import { RemoteWs } from './remoteWs';
-
-/** Convert Uint8Array to base64, handling large arrays without stack overflow */
-function uint8ToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]!);
-  }
-  return btoa(binary);
-}
+import { wrapDek } from './crypto';
 
 export interface ConnectionOptions {
   gatewayUrl: string;
@@ -54,6 +52,7 @@ export interface MachineStatus {
 export class E2EEConnection {
   private ws: WebSocket | null = null;
   private dek: Uint8Array | null = null;
+  private dekResolver: (() => void) | null = null;
   private pendingRequests: Map<number, PendingRequest> = new Map();
   private nextRequestId = 1;
   private nextWsStreamId = 1;
@@ -80,6 +79,9 @@ export class E2EEConnection {
 
   /** Connect to the gateway and subscribe to a machine */
   async connect(options: ConnectionOptions): Promise<void> {
+    // Reset DEK state for clean slate on new connection
+    this.dek = null;
+    this.dekResolver = null;
     this.options = options;
 
     const wsUrl = options.gatewayUrl
@@ -126,6 +128,7 @@ export class E2EEConnection {
     }
     this._connected = false;
     this.dek = null;
+    this.dekResolver = null;
     this.rejectAllPending('Disconnected');
   }
 
@@ -137,6 +140,61 @@ export class E2EEConnection {
   /** Unsubscribe from a machine */
   unsubscribeMachine(machineId: string): void {
     this.send({ type: 'unsubscribe', machine_id: machineId });
+  }
+
+  /**
+   * Initialize DEK exchange with the remote machine.
+   * Generates a random DEK, wraps it with the content public key,
+   * and sends it to the machine via the gateway.
+   */
+  async initDek(): Promise<void> {
+    if (!this._connected || !this.options) {
+      throw new Error('Not connected');
+    }
+
+    // Skip if DEK already established (e.g., from a concurrent initDek call)
+    if (this.dek) return;
+
+    // Generate random 32-byte DEK
+    const dek = crypto.getRandomValues(new Uint8Array(32));
+
+    // Get content public key from manager
+    const manager = E2EEManager.getInstance();
+    const publicKey = manager.getContentPublicKey();
+    if (!publicKey) {
+      throw new Error('No content public key available');
+    }
+
+    // Wrap the DEK with the content public key
+    const wrappedDek = wrapDek(dek, publicKey);
+
+    // Base64 encode the wrapped DEK
+    const wrappedDekB64 = toBase64(wrappedDek);
+
+    // Create a promise that resolves when dek_ok is received
+    const dekPromise = new Promise<void>((resolve, reject) => {
+      this.dekResolver = resolve;
+      setTimeout(() => {
+        if (this.dekResolver === resolve) {
+          this.dekResolver = null;
+          reject(new Error('DEK exchange timeout'));
+        }
+      }, 10000);
+    });
+
+    // Send dek_exchange message
+    this.send({
+      type: 'forward',
+      machine_id: this.options.machineId,
+      payload: {
+        type: 'dek_exchange',
+        wrapped_dek: wrappedDekB64,
+      },
+    });
+
+    // Wait for dek_ok response
+    await dekPromise;
+    this.dek = dek;
   }
 
   /**
@@ -168,7 +226,7 @@ export class E2EEConnection {
         // Encode UTF-8 string to base64
         body = btoa(unescape(encodeURIComponent(init.body)));
       } else if (init.body instanceof ArrayBuffer) {
-        body = uint8ToBase64(new Uint8Array(init.body));
+        body = toBase64(new Uint8Array(init.body));
       } else if (init.body instanceof FormData) {
         // Serialize FormData to multipart/form-data bytes
         const blob = await new Response(init.body).blob();
@@ -181,10 +239,10 @@ export class E2EEConnection {
           headers.push(['content-type', contentType]);
         }
         const arrayBuf = await blob.arrayBuffer();
-        body = uint8ToBase64(new Uint8Array(arrayBuf));
+        body = toBase64(new Uint8Array(arrayBuf));
       } else if (init.body instanceof Blob) {
         const arrayBuf = await init.body.arrayBuffer();
-        body = uint8ToBase64(new Uint8Array(arrayBuf));
+        body = toBase64(new Uint8Array(arrayBuf));
       }
     }
 
@@ -347,6 +405,13 @@ export class E2EEConnection {
           ];
           this.machineListeners.forEach((cb) => cb(this._machines));
         }
+        // Bridge reconnected — re-init DEK if we're subscribed to this machine
+        if (msg.machine_id === this.options?.machineId && this._connected) {
+          this.dek = null;
+          this.initDek().catch((e) =>
+            console.error('DEK re-init after bridge reconnect failed:', e)
+          );
+        }
         break;
 
       case 'machine_offline':
@@ -354,6 +419,10 @@ export class E2EEConnection {
           (m) => m.machine_id !== msg.machine_id
         );
         this.machineListeners.forEach((cb) => cb(this._machines));
+        // Bridge disconnected — invalidate DEK (bridge will have fresh state on reconnect)
+        if (msg.machine_id === this.options?.machineId) {
+          this.dek = null;
+        }
         break;
 
       case 'forward': {
@@ -387,6 +456,15 @@ export class E2EEConnection {
   private handleResponsePayload(payload: Record<string, unknown>): void {
     const type = payload.type as string;
     const id = payload.id as number;
+
+    // Handle DEK exchange response
+    if (type === 'dek_ok') {
+      if (this.dekResolver) {
+        this.dekResolver();
+        this.dekResolver = null;
+      }
+      return;
+    }
 
     // Handle WebSocket sub-connection responses
     if (type === 'ws_opened') {
