@@ -315,6 +315,12 @@ async fn handle_forward(
 
             let mut req_builder = client.request(method, &url);
             for (key, value) in &headers {
+                // Strip Origin header — the bridge forwards requests to localhost
+                // where Origin (e.g. the public domain) won't match Host (127.0.0.1),
+                // causing the origin middleware to reject with 403.
+                if key.eq_ignore_ascii_case("origin") {
+                    continue;
+                }
                 req_builder = req_builder.header(key, value);
             }
 
