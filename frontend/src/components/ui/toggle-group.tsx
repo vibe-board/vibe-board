@@ -10,7 +10,7 @@ const toggleGroupItemVariants = cva(
   {
     variants: {
       active: {
-        true: 'bg-primary text-primary-foreground',
+        true: 'text-foreground',
         false:
           'text-primary-foreground/70 hover:bg-accent hover:text-accent-foreground',
       },
