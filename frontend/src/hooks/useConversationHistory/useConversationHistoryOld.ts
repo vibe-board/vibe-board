@@ -11,6 +11,7 @@ import { useExecutionProcessesContext } from '@/contexts/ExecutionProcessesConte
 import { useEntries } from '@/contexts/EntriesContext';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { streamJsonPatchEntries } from '@/utils/streamJsonPatchEntries';
+import { executionProcessesApi } from '@/lib/api';
 import {
   getCachedProcessEntries,
   setCachedProcessEntries,
@@ -34,7 +35,17 @@ import {
   taskDurationPatch,
 } from './constants';
 
-const FIRST_ITEM_INDEX_BASE = 100_000;
+function parseEntryJson(entryJson: string): PatchType | null {
+  try {
+    // entry_json in the DB stores a raw NormalizedEntry (without the
+    // PatchType envelope).  Wrap it so downstream code that checks
+    // patch.type === "NORMALIZED_ENTRY" works correctly.
+    const content = JSON.parse(entryJson) as NormalizedEntry;
+    return { type: 'NORMALIZED_ENTRY', content };
+  } catch {
+    return null;
+  }
+}
 
 export const useConversationHistoryOld = ({
   attempt,
@@ -49,7 +60,6 @@ export const useConversationHistoryOld = ({
 
   // --- Declarative state (single source of truth) ---
   const [entries, setEntries] = useState<PatchTypeWithKey[]>([]);
-  const [firstItemIndex, setFirstItemIndex] = useState(FIRST_ITEM_INDEX_BASE);
   const [scrollIntent, setScrollIntent] = useState<ScrollIntent>('none');
   const [initialLoading, setInitialLoading] = useState(true);
   const [hasMore, setHasMore] = useState(false);
@@ -58,7 +68,6 @@ export const useConversationHistoryOld = ({
   // --- Refs for stable loadMore (read inside callback, avoid closure staleness) ---
   const isLoadingMoreRef = useRef(false);
   const hasMoreRef = useRef(false);
-  const prevFirstKeyRef = useRef<string | null>(null);
   const hasReceivedRealDataRef = useRef(false);
 
   const loadedProcessIds = useRef<Set<string>>(new Set());
@@ -72,15 +81,36 @@ export const useConversationHistoryOld = ({
   const isPreloadingRef = useRef(false);
   const isMountedRef = useRef(true);
 
+  // Tracks the latest flat entries array length. Updated in emitState after
+  // every setEntries call.
+  const entriesLengthRef = useRef(0);
+  // How many items were prepended in the last loadMore call. The component
+  // reads this to do manual scroll compensation after prepend.
+  const lastPrependCountRef = useRef(0);
+
   // Refs for stable loadMore — stores latest function versions so the
   // empty-deps useCallback always calls the current implementation.
   const emitStateRef = useRef<
-    (state: ExecutionProcessStateStore, addType: AddEntryType) => void
+    (
+      state: ExecutionProcessStateStore,
+      addType: AddEntryType,
+      protectedId?: string
+    ) => void
   >(() => {});
   const preloadNextBatchRef = useRef<() => Promise<void>>(async () => {});
   const loadEntriesRef = useRef<
-    (ep: ExecutionProcess) => Promise<PatchTypeWithKey[]>
-  >(async () => []);
+    (ep: ExecutionProcess) => Promise<{
+      entries: PatchTypeWithKey[];
+      totalCount: number;
+      hasMore: boolean;
+      minEntryIndex: number | undefined;
+    }>
+  >(async () => ({
+    entries: [],
+    totalCount: 0,
+    hasMore: false,
+    minEntryIndex: undefined,
+  }));
   // When true, loadMore will loop until hasMore is false or wantMore is cleared.
   // Set by the consumer (VirtualizedList) when user is at top.
   const wantMoreRef = useRef(false);
@@ -109,58 +139,82 @@ export const useConversationHistoryOld = ({
   }, [executionProcessesRaw]);
 
   const loadEntriesForHistoricExecutionProcess = useCallback(
-    async (executionProcess: ExecutionProcess): Promise<PatchTypeWithKey[]> => {
+    async (
+      executionProcess: ExecutionProcess
+    ): Promise<{
+      entries: PatchTypeWithKey[];
+      totalCount: number;
+      hasMore: boolean;
+      minEntryIndex: number | undefined;
+    }> => {
       const attemptId = attempt.id;
       const processId = executionProcess.id;
 
       // Try IndexedDB cache first
       const cached = await getCachedProcessEntries(attemptId, processId);
       if (cached && !isCacheStale(cached.cachedAt)) {
-        return cached.entries;
+        return {
+          entries: cached.entries,
+          totalCount: cached.entries.length,
+          hasMore: false,
+          minEntryIndex: undefined,
+        };
       }
 
-      // Cache miss or stale — fetch via WebSocket
-      let url = '';
-      if (executionProcess.executor_action.typ.type === 'ScriptRequest') {
-        url = `/api/execution-processes/${executionProcess.id}/raw-logs/ws`;
-      } else {
-        url = `/api/execution-processes/${executionProcess.id}/normalized-logs/ws`;
+      // Fetch via REST (tail-first: last 50 entries)
+      let result;
+      try {
+        result = await executionProcessesApi.getEntries(
+          processId,
+          undefined,
+          50
+        );
+      } catch (err) {
+        console.debug(
+          `Could not load entries for historic execution process ${processId}`,
+          err
+        );
+        return {
+          entries: [],
+          totalCount: 0,
+          hasMore: false,
+          minEntryIndex: undefined,
+        };
       }
 
-      const rawEntries = await new Promise<PatchType[]>((resolve) => {
-        const controller = streamJsonPatchEntries<PatchType>(url, {
-          onFinished: (allEntries) => {
-            controller.close();
-            resolve(allEntries);
-          },
-          onError: (err) => {
-            console.debug(
-              `Could not load entries for historic execution process ${processId}`,
-              err
-            );
-            controller.close();
-            resolve([]);
-          },
-        });
-      });
+      const entriesWithKey: PatchTypeWithKey[] = [];
+      let minEntryIndex: number | undefined;
+      for (const record of result.entries) {
+        const parsed = parseEntryJson(record.entry_json);
+        if (parsed) {
+          entriesWithKey.push(
+            patchWithKey(parsed, processId, record.entry_index)
+          );
+          if (
+            minEntryIndex === undefined ||
+            record.entry_index < minEntryIndex
+          ) {
+            minEntryIndex = record.entry_index;
+          }
+        }
+      }
 
-      const entriesWithKey = rawEntries.map((e, idx) =>
-        patchWithKey(e, processId, idx)
-      );
-
-      // Write to IndexedDB cache (fire-and-forget), only for completed processes.
-      // Cache even when empty to prevent repeated WebSocket retries for processes
-      // whose logs are unavailable (e.g. server restarted, in-memory store lost).
+      // Write to IndexedDB cache (fire-and-forget), only for completed processes
       if (executionProcess.status !== ExecutionProcessStatus.running) {
         setCachedProcessEntries(
           attemptId,
           processId,
           entriesWithKey,
-          entriesWithKey.length
+          result.total_count
         );
       }
 
-      return entriesWithKey;
+      return {
+        entries: entriesWithKey,
+        totalCount: result.total_count,
+        hasMore: result.has_more,
+        minEntryIndex,
+      };
     },
     [attempt.id]
   );
@@ -478,7 +532,8 @@ export const useConversationHistoryOld = ({
   const emitState = useCallback(
     (
       executionProcessState: ExecutionProcessStateStore,
-      addEntryType: AddEntryType
+      addEntryType: AddEntryType,
+      protectedId?: string
     ) => {
       // --- Eviction ---
       const totalEntries = Object.values(executionProcessState).reduce(
@@ -497,12 +552,15 @@ export const useConversationHistoryOld = ({
           new Date(
             b.executionProcess.created_at as unknown as string
           ).getTime();
-        const sorted = Object.entries(executionProcessState).sort(
-          addEntryType === 'historic' ? (a, b) => ascending(b, a) : ascending
-        );
+        // Always evict oldest processes first (ascending by created_at).
+        // This preserves the most recently added data regardless of whether
+        // it was appended (live) or prepended (historic/pagination).
+        const sorted = Object.entries(executionProcessState).sort(ascending);
         let remaining = totalEntries;
         for (const [id, proc] of sorted) {
           if (remaining <= MAX_IN_MEMORY_ENTRIES) break;
+          // Never evict the process the user is actively paginating through.
+          if (protectedId && id === protectedId) continue;
           const live = getLiveExecutionProcess(id);
           if (live?.status === ExecutionProcessStatus.running) continue;
           remaining -= proc.entries.length;
@@ -538,38 +596,35 @@ export const useConversationHistoryOld = ({
       );
       // Evicted processes that are no longer in memory but were previously loaded
       const hasEvicted = evictedProcessIds.current.size > 0;
-      const newHasMore = stillRemaining.length > 0 || hasEvicted;
+      // Entry-level pagination: any displayed process with more entries to load
+      const hasEntryLevelMore = Object.values(executionProcessState).some(
+        (p) => p.hasMoreEntries
+      );
+      const newHasMore =
+        stillRemaining.length > 0 || hasEvicted || hasEntryLevelMore;
       setHasMore(newHasMore);
       hasMoreRef.current = newHasMore;
 
-      // --- Compute firstItemIndex for historic prepends ---
-      // Use key-based lookup to find exactly how many items were prepended,
-      // which is immune to entry count changes from concurrent streaming.
-      if (addEntryType === 'historic') {
-        const prevKey = prevFirstKeyRef.current;
-        let prepended = 0;
-        if (prevKey && newEntries.length > 0) {
-          const idx = newEntries.findIndex((e) => e.patchKey === prevKey);
-          if (idx > 0) prepended = idx;
-        }
-        if (prepended > 0) {
-          setFirstItemIndex((prev) => prev - prepended);
-        }
-      }
-      prevFirstKeyRef.current = newEntries[0]?.patchKey ?? null;
-
       // --- Compute scrollIntent ---
-      if (effectiveAddType === 'running' || effectiveAddType === 'plan') {
-        setScrollIntent('bottom-smooth');
-      } else if (effectiveAddType === 'initial') {
+      if (effectiveAddType === 'initial') {
         setScrollIntent('bottom-instant');
+      } else if (
+        effectiveAddType === 'running' ||
+        effectiveAddType === 'plan'
+      ) {
+        // Only scroll to bottom if not in pagination mode. When the user is
+        // scrolling up (loadMore sets scrollIntent to 'none'), emitState
+        // from a WS update must not fight with the user's scroll position —
+        // doing so causes visible flicker and jump-to-bottom.
+        setScrollIntent((prev) => (prev === 'none' ? 'none' : 'bottom-smooth'));
       } else {
-        // 'historic' — no scroll change, Virtuoso handles via firstItemIndex
+        // 'historic' — no scroll change, component handles scroll compensation
         setScrollIntent('none');
       }
 
       // --- Set entries (single source of truth) ---
       setEntries(newEntries);
+      entriesLengthRef.current = newEntries.length;
 
       // --- initialLoading logic ---
       if (!hasReceivedRealDataRef.current && effectiveAddType === 'initial') {
@@ -599,19 +654,108 @@ export const useConversationHistoryOld = ({
 
   // This emits its own events as they are streamed
   const loadRunningAndEmit = useCallback(
-    (executionProcess: ExecutionProcess): Promise<void> => {
-      return new Promise((resolve, reject) => {
-        let url = '';
-        if (executionProcess.executor_action.typ.type === 'ScriptRequest') {
-          url = `/api/execution-processes/${executionProcess.id}/raw-logs/ws`;
-        } else {
-          url = `/api/execution-processes/${executionProcess.id}/normalized-logs/ws`;
+    async (executionProcess: ExecutionProcess): Promise<void> => {
+      // ScriptRequest still uses raw-logs WS (unchanged)
+      if (executionProcess.executor_action.typ.type === 'ScriptRequest') {
+        const url = `/api/execution-processes/${executionProcess.id}/raw-logs/ws`;
+        return new Promise((resolve, reject) => {
+          const controller = streamJsonPatchEntries<PatchType>(url, {
+            onEntries(entries) {
+              const patchesWithKey = entries.map((entry, index) =>
+                patchWithKey(entry, executionProcess.id, index)
+              );
+              mergeIntoDisplayed((state) => {
+                state[executionProcess.id] = {
+                  executionProcess,
+                  entries: patchesWithKey,
+                };
+              });
+              emitState(displayedExecutionProcesses.current, 'running');
+            },
+            onFinished: () => {
+              emitState(displayedExecutionProcesses.current, 'running');
+              controller.close();
+              resolve();
+            },
+            onError: () => {
+              controller.close();
+              reject();
+            },
+          });
+        });
+      }
+
+      // Normalized logs: REST first, then live WS
+      // Step 1: REST load current snapshot (last 50 entries)
+      let result;
+      try {
+        result = await executionProcessesApi.getEntries(
+          executionProcess.id,
+          undefined,
+          50
+        );
+      } catch (err) {
+        console.debug(
+          `Could not load entries for running execution process ${executionProcess.id}`,
+          err
+        );
+        return;
+      }
+
+      const entriesWithKey: PatchTypeWithKey[] = [];
+      for (const record of result.entries) {
+        const parsed = parseEntryJson(record.entry_json);
+        if (parsed) {
+          entriesWithKey.push(
+            patchWithKey(parsed, executionProcess.id, record.entry_index)
+          );
         }
-        const controller = streamJsonPatchEntries<PatchType>(url, {
-          onEntries(entries) {
-            const patchesWithKey = entries.map((entry, index) =>
-              patchWithKey(entry, executionProcess.id, index)
-            );
+      }
+
+      // Track max entry index for live WS cursor (highest entry_index from REST)
+      const maxEntryIndex =
+        result.entries.length > 0
+          ? Math.max(...result.entries.map((e) => e.entry_index))
+          : -1;
+
+      // Display initial snapshot immediately
+      mergeIntoDisplayed((state) => {
+        state[executionProcess.id] = {
+          executionProcess,
+          entries: entriesWithKey,
+        };
+      });
+      emitState(displayedExecutionProcesses.current, 'running');
+
+      // Step 2: Connect live WS for deltas only (wrapped in Promise for backoff retry)
+      // Build padded initial snapshot so entries sit at their DB entry_indices.
+      // This allows "replace" patches (for streaming text updates) to target
+      // the correct array position.
+      const liveUrl = `/api/execution-processes/${executionProcess.id}/normalized-logs-live/ws?after=${maxEntryIndex}`;
+      const initialEntries: (PatchType | null)[] =
+        maxEntryIndex >= 0 ? new Array(maxEntryIndex + 1).fill(null) : [];
+      for (const e of entriesWithKey) {
+        const idx = parseInt(e.patchKey.split(':').pop()!, 10);
+        if (!Number.isNaN(idx) && idx < initialEntries.length) {
+          initialEntries[idx] = {
+            type: e.type,
+            content: e.content,
+          } as PatchType;
+        }
+      }
+      return new Promise<void>((resolve, reject) => {
+        const controller = streamJsonPatchEntries<PatchType>(liveUrl, {
+          initial: {
+            entries: initialEntries as unknown as PatchType[],
+          },
+          onEntries(allEntries) {
+            // Sync full displayed state from snapshot on every update.
+            // This handles both additions and replacements (streaming text updates).
+            const patchesWithKey = (allEntries as (PatchType | null)[])
+              .map((entry, index) =>
+                entry ? patchWithKey(entry, executionProcess.id, index) : null
+              )
+              .filter(Boolean) as PatchTypeWithKey[];
             mergeIntoDisplayed((state) => {
               state[executionProcess.id] = {
                 executionProcess,
@@ -676,7 +820,7 @@ export const useConversationHistoryOld = ({
     // Preload up to MIN_INITIAL_ENTRIES worth of content
     let entriesLoaded = 0;
     for (const executionProcess of remainingProcesses) {
-      const entriesWithKey =
+      const { entries: entriesWithKey } =
         await loadEntriesForHistoricExecutionProcess(executionProcess);
 
       preloadedEntries.current.set(executionProcess.id, {
@@ -705,12 +849,19 @@ export const useConversationHistoryOld = ({
       preloadedEntries.current.clear();
 
       for (const executionProcess of historicProcesses) {
-        const entriesWithKey =
-          await loadEntriesForHistoricExecutionProcess(executionProcess);
+        const {
+          entries: entriesWithKey,
+          totalCount,
+          hasMore: hasMoreEntries,
+          minEntryIndex,
+        } = await loadEntriesForHistoricExecutionProcess(executionProcess);
 
         localDisplayedExecutionProcesses[executionProcess.id] = {
           executionProcess,
           entries: entriesWithKey,
+          totalCount,
+          hasMoreEntries,
+          minEntryIndex,
         };
         loadedProcessIds.current.add(executionProcess.id);
 
@@ -722,12 +873,17 @@ export const useConversationHistoryOld = ({
         }
       }
 
-      // Check if there are more processes to load
+      // Check if there are more processes to load or entry-level pagination
       const remainingProcesses = historicProcesses.filter(
         (p) => !loadedProcessIds.current.has(p.id)
       );
-      setHasMore(remainingProcesses.length > 0);
-      hasMoreRef.current = remainingProcesses.length > 0;
+      const hasEntryPagination = Object.values(
+        localDisplayedExecutionProcesses
+      ).some((p) => p.hasMoreEntries);
+      const initialHasMore =
+        remainingProcesses.length > 0 || hasEntryPagination;
+      setHasMore(initialHasMore);
+      hasMoreRef.current = initialHasMore;
 
       // Start preloading next batch in background
       if (remainingProcesses.length > 0) {
@@ -741,10 +897,86 @@ export const useConversationHistoryOld = ({
       loadEntriesForHistoricExecutionProcess,
     ]);
 
+  // Helper: build flat entries for a single historic process (for prepend).
+  // Produces the same output as flattenEntriesForEmit for one CodingAgent process,
+  // but without the global side-effects (nextActionPatch, tokenUsageInfo, etc.).
+  const flattenProcessForPrepend = useCallback(
+    (proc: ExecutionProcessState): PatchTypeWithKey[] => {
+      const ep = proc.executionProcess;
+      const actionType = ep.executor_action.typ.type;
+      if (
+        actionType !== 'CodingAgentInitialRequest' &&
+        actionType !== 'CodingAgentFollowUpRequest' &&
+        actionType !== 'ReviewRequest'
+      ) {
+        return []; // ScriptRequest processes are handled differently
+      }
+
+      const flat: PatchTypeWithKey[] = [];
+
+      // Synthetic user message
+      const userNormalizedEntry: NormalizedEntry = {
+        entry_type: { type: 'user_message' },
+        content: ep.executor_action.typ.prompt,
+        timestamp: null,
+      };
+      flat.push(
+        patchWithKey(
+          { type: 'NORMALIZED_ENTRY', content: userNormalizedEntry },
+          ep.id,
+          'user'
+        )
+      );
+
+      // Entries with user_message filtered out
+      const filtered = proc.entries.filter(
+        (e) =>
+          e.type !== 'NORMALIZED_ENTRY' ||
+          e.content.entry_type.type !== 'user_message'
+      );
+      flat.push(...filtered);
+
+      // Duration entry for completed processes
+      const live = getLiveExecutionProcess(ep.id);
+      if (
+        live?.status !== ExecutionProcessStatus.running &&
+        live?.completed_at
+      ) {
+        const startMs = new Date(live.started_at as string).getTime();
+        const endMs = new Date(live.completed_at as string).getTime();
+        flat.push(
+          taskDurationPatch(
+            ep.id,
+            live.started_at as string,
+            live.completed_at as string,
+            (endMs - startMs) / 1000
+          )
+        );
+      }
+
+      return flat;
+    },
+    []
+  );
+
+  // Recompute hasMore from current state. Call after mutating displayedExecutionProcesses.
+  const recomputeHasMore = useCallback(() => {
+    const stillRemaining = allHistoricProcesses.current.filter(
+      (p) => !loadedProcessIds.current.has(p.id)
+    );
+    const hasEvicted = evictedProcessIds.current.size > 0;
+    const hasEntryLevelMore = Object.values(
+      displayedExecutionProcesses.current
+    ).some((p) => p.hasMoreEntries);
+    const newHasMore =
+      stillRemaining.length > 0 || hasEvicted || hasEntryLevelMore;
+    setHasMore(newHasMore);
+    hasMoreRef.current = newHasMore;
+  }, []);
+
   // Load more historic entries — STABLE reference (empty deps).
-  // Reads hasMoreRef/isLoadingMoreRef and function refs to avoid closure staleness.
-  // Loops internally while wantMoreRef is true and hasMoreRef is true,
-  // so continuous pagination doesn't depend on external effect timing.
+  // Directly prepends to entries state, setting lastPrependCountRef
+  // for scroll compensation. Bypasses emitState to avoid full-rebuild ambiguity.
   const loadMore = useCallback(async () => {
     if (isLoadingMoreRef.current || !hasMoreRef.current) return;
 
@@ -755,101 +987,205 @@ export const useConversationHistoryOld = ({
       // Yield to let React render the loading state before we proceed.
       await new Promise((r) => setTimeout(r, 0));
 
-      // Loop: keep loading while consumer wants more and there is more
-      let prevDisplayedCount = Object.keys(
-        displayedExecutionProcesses.current
-      ).length;
-      do {
-        // First, use any preloaded entries
-        const preloaded = Array.from(preloadedEntries.current.values());
-        if (preloaded.length > 0) {
-          for (const state of preloaded) {
-            mergeIntoDisplayed((s) => {
-              s[state.executionProcess.id] = state;
-            });
-            loadedProcessIds.current.add(state.executionProcess.id);
-            evictedProcessIds.current.delete(state.executionProcess.id);
-          }
-          preloadedEntries.current.clear();
+      // Check for entry-level pagination within existing displayed processes.
+      // Skip processes with active live WS.
+      const processWithMore = Object.values(displayedExecutionProcesses.current)
+        .filter((p) => {
+          if (!p.hasMoreEntries || p.minEntryIndex === undefined) return false;
+          const live = getLiveExecutionProcess(p.executionProcess.id);
+          return live?.status !== ExecutionProcessStatus.running;
+        })
+        .sort(
+          (a, b) =>
+            new Date(
+              b.executionProcess.created_at as unknown as string
+            ).getTime() -
+            new Date(
+              a.executionProcess.created_at as unknown as string
+            ).getTime()
+        )[0];
 
-          emitStateRef.current(displayedExecutionProcesses.current, 'historic');
+      if (processWithMore) {
+        // --- Entry-level pagination ---
+        let result;
+        try {
+          result = await executionProcessesApi.getEntries(
+            processWithMore.executionProcess.id,
+            processWithMore.minEntryIndex,
+            50
+          );
+        } catch (err) {
+          console.debug(
+            `Could not load entries for process ${processWithMore.executionProcess.id}`,
+            err
+          );
+          mergeIntoDisplayed((state) => {
+            if (state[processWithMore.executionProcess.id]) {
+              state[processWithMore.executionProcess.id].hasMoreEntries = false;
+              state[processWithMore.executionProcess.id].minEntryIndex =
+                undefined;
+            }
+          });
+          recomputeHasMore();
+          return;
+        }
 
-          if (hasMoreRef.current) {
-            preloadNextBatchRef.current();
+        if (!result) return;
+
+        let newMinIndex = processWithMore.minEntryIndex!;
+        const newRawEntries: PatchTypeWithKey[] = [];
+        for (const record of result.entries) {
+          const parsed = parseEntryJson(record.entry_json);
+          if (parsed) {
+            newRawEntries.push(
+              patchWithKey(
+                parsed,
+                processWithMore.executionProcess.id,
+                record.entry_index
+              )
+            );
+            if (record.entry_index < newMinIndex) {
+              newMinIndex = record.entry_index;
+            }
           }
-        } else {
-          // No preloaded content, load synchronously
-          // First try never-loaded processes, then evicted ones
-          let remainingProcesses = allHistoricProcesses.current.filter(
-            (p) => !loadedProcessIds.current.has(p.id)
+        }
+
+        // Update the ref (so future emitState('running') includes this data)
+        mergeIntoDisplayed((state) => {
+          if (state[processWithMore.executionProcess.id]) {
+            state[processWithMore.executionProcess.id].entries = [
+              ...newRawEntries,
+              ...state[processWithMore.executionProcess.id].entries,
+            ];
+            state[processWithMore.executionProcess.id].hasMoreEntries =
+              result.has_more;
+            state[processWithMore.executionProcess.id].minEntryIndex =
+              result.has_more ? newMinIndex : undefined;
+          }
+        });
+
+        if (newRawEntries.length > 0) {
+          // Filter out user_message entries (already represented by synthetic user msg)
+          const toPrepend = newRawEntries.filter(
+            (e) =>
+              e.type !== 'NORMALIZED_ENTRY' ||
+              e.content.entry_type.type !== 'user_message'
           );
 
-          // If all never-loaded processes are done, try re-loading evicted ones
-          if (
-            remainingProcesses.length === 0 &&
-            evictedProcessIds.current.size > 0
-          ) {
-            remainingProcesses = allHistoricProcesses.current.filter(
+          if (toPrepend.length > 0) {
+            // Reset scrollIntent so followOutput stops forcing scroll-to-bottom.
+            setScrollIntent('none');
+            // Deduplicate: a concurrent emitState('running') may have already
+            // rebuilt entries from the ref (which we just mutated above), so
+            // `prev` might already contain these entries.
+            setEntries((prev) => {
+              const existingKeys = new Set(prev.map((e) => e.patchKey));
+              const unique = toPrepend.filter(
+                (e) => !existingKeys.has(e.patchKey)
+              );
+              if (unique.length === 0) return prev;
+              lastPrependCountRef.current = unique.length;
+              const next = [...unique, ...prev];
+              entriesLengthRef.current = next.length;
+              return next;
+            });
+          }
+        } else {
+          // All entries failed to parse — advance cursor
+          const rawMin = result.entries.reduce(
+            (min, r) => Math.min(min, r.entry_index),
+            Infinity
+          );
+          mergeIntoDisplayed((state) => {
+            if (state[processWithMore.executionProcess.id]) {
+              state[processWithMore.executionProcess.id].hasMoreEntries =
+                result.has_more;
+              state[processWithMore.executionProcess.id].minEntryIndex =
+                result.has_more && rawMin < Infinity ? rawMin : undefined;
+            }
+          });
+        }
+
+        recomputeHasMore();
+      } else {
+        // --- Process-level pagination ---
+        let procState: ExecutionProcessState | null = null;
+
+        // Try preloaded first
+        const preloaded = Array.from(preloadedEntries.current.values());
+        if (preloaded.length > 0) {
+          procState = preloaded[0];
+          preloadedEntries.current.delete(procState.executionProcess.id);
+        } else {
+          // Load one process synchronously
+          let nextProcess = allHistoricProcesses.current.find(
+            (p) => !loadedProcessIds.current.has(p.id)
+          );
+          if (!nextProcess && evictedProcessIds.current.size > 0) {
+            nextProcess = allHistoricProcesses.current.find(
               (p) =>
                 evictedProcessIds.current.has(p.id) &&
                 !displayedExecutionProcesses.current[p.id]
             );
           }
-
-          if (remainingProcesses.length === 0) {
+          if (!nextProcess) {
             setHasMore(false);
             hasMoreRef.current = false;
-            break;
+            return;
           }
 
-          let entriesLoaded = 0;
-          for (const executionProcess of remainingProcesses) {
-            const entriesWithKey =
-              await loadEntriesRef.current(executionProcess);
+          const {
+            entries: entriesWithKey,
+            totalCount,
+            hasMore: hasMoreEntries,
+            minEntryIndex,
+          } = await loadEntriesRef.current(nextProcess);
 
-            mergeIntoDisplayed((state) => {
-              state[executionProcess.id] = {
-                executionProcess,
-                entries: entriesWithKey,
-              };
-            });
-            loadedProcessIds.current.add(executionProcess.id);
-            // Remove from evicted set since it's back in memory
-            evictedProcessIds.current.delete(executionProcess.id);
-            entriesLoaded += entriesWithKey.length;
-
-            if (entriesLoaded >= MIN_INITIAL_ENTRIES) {
-              break;
-            }
-          }
-
-          emitStateRef.current(displayedExecutionProcesses.current, 'historic');
-
-          if (hasMoreRef.current) {
-            preloadNextBatchRef.current();
-          }
+          procState = {
+            executionProcess: nextProcess,
+            entries: entriesWithKey,
+            totalCount,
+            hasMoreEntries,
+            minEntryIndex,
+          };
         }
 
-        // Yield between iterations so React can render the new entries
-        // and Virtuoso can update scroll position.
-        await new Promise((r) => setTimeout(r, 0));
+        // Update the ref
+        mergeIntoDisplayed((state) => {
+          state[procState!.executionProcess.id] = procState!;
+        });
+        loadedProcessIds.current.add(procState.executionProcess.id);
+        evictedProcessIds.current.delete(procState.executionProcess.id);
 
-        // Progress guard: if the displayed set didn't grow, we're in an
-        // eviction cycle (loading A evicts B, loading B evicts A). Break
-        // to avoid an infinite loop.
-        const currentDisplayedCount = Object.keys(
-          displayedExecutionProcesses.current
-        ).length;
-        if (currentDisplayedCount <= prevDisplayedCount) {
-          break;
+        // Build flat entries for this process and prepend
+        const toPrepend = flattenProcessForPrepend(procState);
+        if (toPrepend.length > 0) {
+          // Reset scrollIntent so followOutput stops forcing scroll-to-bottom.
+          setScrollIntent('none');
+          setEntries((prev) => {
+            const existingKeys = new Set(prev.map((e) => e.patchKey));
+            const unique = toPrepend.filter(
+              (e) => !existingKeys.has(e.patchKey)
+            );
+            if (unique.length === 0) return prev;
+            lastPrependCountRef.current = unique.length;
+            const next = [...unique, ...prev];
+            entriesLengthRef.current = next.length;
+            return next;
+          });
         }
-        prevDisplayedCount = currentDisplayedCount;
-      } while (wantMoreRef.current && hasMoreRef.current);
+
+        recomputeHasMore();
+
+        if (hasMoreRef.current) {
+          preloadNextBatchRef.current();
+        }
+      }
     } finally {
       isLoadingMoreRef.current = false;
       setIsLoadingMore(false);
     }
-  }, []);
+  }, [flattenProcessForPrepend, recomputeHasMore]);
 
   const ensureProcessVisible = useCallback((p: ExecutionProcess) => {
     mergeIntoDisplayed((state) => {
@@ -918,13 +1254,13 @@ export const useConversationHistoryOld = ({
     isPreloadingRef.current = false;
     isLoadingMoreRef.current = false;
     hasReceivedRealDataRef.current = false;
-    prevFirstKeyRef.current = null;
     hasMoreRef.current = false;
     wantMoreRef.current = false;
+    entriesLengthRef.current = 0;
+    lastPrependCountRef.current = 0;
     setHasMore(false);
     setIsLoadingMore(false);
     setEntries([]);
-    setFirstItemIndex(FIRST_ITEM_INDEX_BASE);
     setScrollIntent('none');
     setInitialLoading(true);
 
@@ -1009,14 +1345,25 @@ export const useConversationHistoryOld = ({
     wantMoreRef.current = want;
   }, []);
 
+  // Restore auto-scroll when user returns to the bottom of the list.
+  // loadMore sets scrollIntent to 'none' to prevent scroll interference
+  // during pagination; this restores it so followOutput works for new
+  // streaming entries once the user scrolls back down.
+  const onAtBottom = useCallback((atBottom: boolean) => {
+    if (atBottom) {
+      setScrollIntent('bottom-smooth');
+    }
+  }, []);
+
   return {
     entries,
-    firstItemIndex,
     hasMore,
     isLoadingMore,
     loadMore,
     setWantMore,
     scrollIntent,
     initialLoading,
+    onAtBottom,
+    lastPrependCountRef,
   };
 };

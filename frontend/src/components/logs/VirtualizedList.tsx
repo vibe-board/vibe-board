@@ -1,5 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 
 import DisplayConversationEntry from '../NormalizedConversation/DisplayConversationEntry';
 import { useEntries } from '@/contexts/EntriesContext';
@@ -17,31 +23,25 @@ interface VirtualizedListProps {
   task?: TaskWithAttemptStatus;
 }
 
-interface ItemContext {
-  attempt: WorkspaceWithSession;
-  task?: TaskWithAttemptStatus;
-}
-
-const TopLoader = () => (
-  <div className="flex items-center justify-center gap-2 py-2 text-sm text-muted-foreground">
-    <Loader2 className="h-4 w-4 animate-spin" />
-    <span>Loading more...</span>
-  </div>
-);
+const AT_BOTTOM_THRESHOLD = 50;
+const AT_TOP_THRESHOLD = 100;
 
 const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
   const {
     entries,
-    firstItemIndex,
-    isLoadingMore,
     loadMore,
     setWantMore,
     scrollIntent,
     initialLoading,
+    isLoadingMore,
+    onAtBottom,
+    lastPrependCountRef,
   } = useConversationHistory({ attempt });
 
   const { setEntries, reset } = useEntries();
-  const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const prevTotalSizeRef = useRef(0);
+  const isAtBottomRef = useRef(true);
 
   // Reset EntriesContext when attempt changes
   useEffect(() => {
@@ -53,57 +53,91 @@ const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
     setEntries(entries);
   }, [entries, setEntries]);
 
-  // followOutput derived from scrollIntent
-  const followOutput = useCallback(
-    (isAtBottom: boolean) => {
-      if (scrollIntent === 'bottom-instant') return 'auto';
-      if (scrollIntent === 'bottom-smooth' && isAtBottom) return 'smooth';
-      return false;
-    },
-    [scrollIntent]
-  );
+  const virtualizer = useVirtualizer({
+    count: entries.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => 120,
+    overscan: 5,
+    getItemKey: (i) => entries[i]?.patchKey ?? `idx-${i}`,
+  });
 
-  // When user reaches top, signal the hook to keep loading continuously.
-  // When user leaves top, stop the continuous loop.
-  const handleAtTopStateChange = useCallback(
-    (isAtTop: boolean) => {
-      setWantMore(isAtTop);
-      if (isAtTop) loadMore();
-    },
-    [loadMore, setWantMore]
-  );
+  // --- Prepend scroll compensation ---
+  // After React commits DOM changes from a prepend, shift scrollTop
+  // by the height delta so the user's viewport stays in place.
+  useLayoutEffect(() => {
+    const count = lastPrependCountRef.current;
+    if (count <= 0) return;
+    lastPrependCountRef.current = 0;
 
-  // startReached fires when the user scrolls to the very first item.
-  // Belt-and-suspenders: atTopStateChange may not re-fire after firstItemIndex
-  // changes, but startReached reliably fires when item at firstItemIndex is visible.
-  const handleStartReached = useCallback(() => {
-    setWantMore(true);
-    loadMore();
-  }, [loadMore, setWantMore]);
+    const container = scrollContainerRef.current;
+    if (!container) return;
 
-  const context = useMemo<ItemContext>(
-    () => ({ attempt, task }),
-    [attempt, task]
-  );
+    const newTotalSize = virtualizer.getTotalSize();
+    const delta = newTotalSize - prevTotalSizeRef.current;
+    if (delta > 0) {
+      container.scrollTop += delta;
+    }
+  }, [entries, virtualizer, lastPrependCountRef]);
 
-  // Stable component reference — Virtuoso Header renders inline above list items,
-  // so it doesn't overlap content. The component itself is stable; Virtuoso
-  // re-renders it when the parent re-renders (which happens when isLoadingMore changes).
-  const virtuosoComponents = useMemo(
-    () => ({
-      Header: isLoadingMore ? TopLoader : undefined,
-    }),
-    [isLoadingMore]
-  );
+  // Track totalSize for next prepend compensation
+  useEffect(() => {
+    prevTotalSizeRef.current = virtualizer.getTotalSize();
+  });
 
-  const computeItemKey = useCallback(
-    (_index: number, item: PatchTypeWithKey) =>
-      `l-${item?.patchKey ?? 'unknown'}`,
-    []
-  );
+  // --- Scroll event: at-top / at-bottom detection ---
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
 
-  const itemContent = useCallback(
-    (_index: number, data: PatchTypeWithKey, ctx: ItemContext) => {
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        ticking = false;
+        const { scrollTop, scrollHeight, clientHeight } = container;
+        const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+        const atBottom = distanceFromBottom <= AT_BOTTOM_THRESHOLD;
+        const atTop = scrollTop <= AT_TOP_THRESHOLD;
+
+        isAtBottomRef.current = atBottom;
+        onAtBottom(atBottom);
+
+        if (atTop) {
+          setWantMore(true);
+          loadMore();
+        } else {
+          setWantMore(false);
+        }
+      });
+    };
+
+    container.addEventListener('scroll', onScroll, { passive: true });
+    return () => container.removeEventListener('scroll', onScroll);
+  }, [loadMore, setWantMore, onAtBottom]);
+
+  // --- Follow-output / auto-scroll ---
+  useEffect(() => {
+    if (entries.length === 0) return;
+    const lastIndex = entries.length - 1;
+
+    if (scrollIntent === 'bottom-instant') {
+      virtualizer.scrollToIndex(lastIndex, { align: 'end' });
+    } else if (scrollIntent === 'bottom-smooth' && isAtBottomRef.current) {
+      virtualizer.scrollToIndex(lastIndex, {
+        align: 'end',
+        behavior: 'smooth',
+      });
+    }
+  }, [entries.length, scrollIntent, virtualizer]);
+
+  const context = useMemo(() => ({ attempt, task }), [attempt, task]);
+
+  const renderItem = useCallback(
+    (
+      data: PatchTypeWithKey,
+      ctx: { attempt: WorkspaceWithSession; task?: TaskWithAttemptStatus }
+    ) => {
       if (!data) return null;
       if (data.type === 'STDOUT') return <p>{data.content}</p>;
       if (data.type === 'STDERR') return <p>{data.content}</p>;
@@ -123,6 +157,8 @@ const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
     []
   );
 
+  const virtualItems = virtualizer.getVirtualItems();
+
   return (
     <ApprovalFormProvider>
       {initialLoading && (
@@ -131,23 +167,49 @@ const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
           <p>Loading History</p>
         </div>
       )}
-      <Virtuoso<PatchTypeWithKey, ItemContext>
-        ref={virtuosoRef}
-        className="flex-1"
-        data={entries}
-        context={context}
-        firstItemIndex={firstItemIndex}
-        initialTopMostItemIndex={
-          entries.length > 0 ? entries.length - 1 : undefined
-        }
-        followOutput={followOutput}
-        atTopStateChange={handleAtTopStateChange}
-        startReached={handleStartReached}
-        computeItemKey={computeItemKey}
-        itemContent={itemContent}
-        components={virtuosoComponents}
-        increaseViewportBy={{ top: 200, bottom: 200 }}
-      />
+      <div className="relative flex-1 min-h-0">
+        {isLoadingMore && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-muted rounded-full p-2 shadow">
+            <Loader2 className="h-5 w-5 animate-spin" />
+          </div>
+        )}
+        <div
+          ref={scrollContainerRef}
+          className="h-full overflow-y-auto"
+          style={{ overflowAnchor: 'none' }}
+        >
+          <div
+            style={{
+              height: `${virtualizer.getTotalSize()}px`,
+              width: '100%',
+              position: 'relative',
+            }}
+          >
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                transform: `translateY(${virtualItems[0]?.start ?? 0}px)`,
+              }}
+            >
+              {virtualItems.map((virtualRow) => {
+                const entry = entries[virtualRow.index];
+                return (
+                  <div
+                    key={virtualRow.key}
+                    data-index={virtualRow.index}
+                    ref={virtualizer.measureElement}
+                  >
+                    {renderItem(entry, context)}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
     </ApprovalFormProvider>
   );
 };

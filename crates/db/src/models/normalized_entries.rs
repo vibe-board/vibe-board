@@ -90,6 +90,70 @@ impl NormalizedEntry {
         })
     }
 
+    /// Find entries for an execution process using cursor-based pagination.
+    /// `before`: if Some(n), returns entries with entry_index < n (DESC, reversed to ASC).
+    /// If None, returns the last `limit` entries.
+    pub async fn find_by_execution_id_cursor(
+        pool: &SqlitePool,
+        execution_id: Uuid,
+        before: Option<i64>,
+        limit: i64,
+    ) -> Result<PaginatedEntries, sqlx::Error> {
+        let total_count = Self::count_by_execution_id(pool, execution_id).await?;
+
+        // Fetch limit+1 to detect whether more entries exist
+        let fetch_limit = limit + 1;
+
+        let mut entries: Vec<NormalizedEntry> = if let Some(before_index) = before {
+            sqlx::query_as!(
+                NormalizedEntry,
+                r#"SELECT
+                    execution_id as "execution_id!: Uuid",
+                    entry_index,
+                    entry_json,
+                    inserted_at as "inserted_at!: DateTime<Utc>"
+                   FROM normalized_entries
+                   WHERE execution_id = $1 AND entry_index < $2
+                   ORDER BY entry_index DESC
+                   LIMIT $3"#,
+                execution_id,
+                before_index,
+                fetch_limit
+            )
+            .fetch_all(pool)
+            .await?
+        } else {
+            sqlx::query_as!(
+                NormalizedEntry,
+                r#"SELECT
+                    execution_id as "execution_id!: Uuid",
+                    entry_index,
+                    entry_json,
+                    inserted_at as "inserted_at!: DateTime<Utc>"
+                   FROM normalized_entries
+                   WHERE execution_id = $1
+                   ORDER BY entry_index DESC
+                   LIMIT $2"#,
+                execution_id,
+                fetch_limit
+            )
+            .fetch_all(pool)
+            .await?
+        };
+
+        let has_more = entries.len() > limit as usize;
+        entries.truncate(limit as usize);
+
+        // Reverse to ASC order for client consumption
+        entries.reverse();
+
+        Ok(PaginatedEntries {
+            entries,
+            total_count,
+            has_more,
+        })
+    }
+
     /// Count total entries for an execution process
     pub async fn count_by_execution_id(
         pool: &SqlitePool,

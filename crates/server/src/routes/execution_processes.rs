@@ -30,6 +30,22 @@ pub struct SessionExecutionProcessQuery {
     pub show_soft_deleted: Option<bool>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct EntriesQuery {
+    pub before: Option<i64>,
+    #[serde(default = "default_limit")]
+    pub limit: i64,
+}
+
+fn default_limit() -> i64 {
+    50
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LiveLogsQuery {
+    pub after: Option<i64>,
+}
+
 pub async fn get_execution_process_by_id(
     Extension(execution_process): Extension<ExecutionProcess>,
     State(_deployment): State<DeploymentImpl>,
@@ -243,6 +259,65 @@ pub async fn get_execution_process_repo_states(
     Ok(ResponseJson(ApiResponse::success(repo_states)))
 }
 
+pub async fn get_normalized_entries(
+    Extension(execution_process): Extension<ExecutionProcess>,
+    State(deployment): State<DeploymentImpl>,
+    Query(query): Query<EntriesQuery>,
+) -> Result<ResponseJson<ApiResponse<db::models::normalized_entries::PaginatedEntries>>, ApiError> {
+    let limit = query.limit.clamp(1, 200);
+    let pool = &deployment.db().pool;
+
+    let result = match db::models::normalized_entries::NormalizedEntry::find_by_execution_id_cursor(
+        pool,
+        execution_process.id,
+        query.before,
+        limit,
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(e) => {
+            tracing::error!(
+                "Failed to fetch entries for execution process {}: {}",
+                execution_process.id,
+                e
+            );
+            db::models::normalized_entries::PaginatedEntries {
+                entries: vec![],
+                total_count: 0,
+                has_more: false,
+            }
+        }
+    };
+
+    Ok(ResponseJson(ApiResponse::success(result)))
+}
+
+pub async fn stream_normalized_logs_live_ws(
+    ws: WebSocketUpgrade,
+    State(deployment): State<DeploymentImpl>,
+    Path(exec_id): Path<Uuid>,
+    Query(query): Query<LiveLogsQuery>,
+) -> Result<impl IntoResponse, ApiError> {
+    let after_index = query.after.unwrap_or(0);
+
+    let stream = deployment
+        .container()
+        .stream_live_normalized_logs(&exec_id, after_index)
+        .await
+        .ok_or_else(|| {
+            ApiError::ExecutionProcess(ExecutionProcessError::ExecutionProcessNotFound)
+        })?;
+
+    let stream = stream.err_into::<anyhow::Error>().into_stream();
+
+    Ok(ws.on_upgrade(move |socket| async move {
+        if let Err(e) = handle_normalized_logs_ws(socket, stream).await {
+            tracing::warn!("live normalized logs WS closed: {}", e);
+        }
+    }))
+}
+
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     let workspace_id_router = Router::new()
         .route("/", get(get_execution_process_by_id))
@@ -250,6 +325,11 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/repo-states", get(get_execution_process_repo_states))
         .route("/raw-logs/ws", get(stream_raw_logs_ws))
         .route("/normalized-logs/ws", get(stream_normalized_logs_ws))
+        .route(
+            "/normalized-logs-live/ws",
+            get(stream_normalized_logs_live_ws),
+        )
+        .route("/entries", get(get_normalized_entries))
         .layer(from_fn_with_state(
             deployment.clone(),
             load_execution_process_middleware,

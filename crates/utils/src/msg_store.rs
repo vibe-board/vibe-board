@@ -114,6 +114,30 @@ impl MsgStore {
         Box::pin(hist.chain(live))
     }
 
+    /// Returns a stream of only new messages (no history replay).
+    /// Unlike `history_plus_stream`, this does NOT replay buffered messages.
+    pub fn live_stream(
+        &self,
+    ) -> futures::stream::BoxStream<'static, Result<LogMsg, std::io::Error>> {
+        use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
+
+        let rx = self.get_receiver();
+        BroadcastStream::new(rx)
+            .filter_map(|res| async move {
+                match res {
+                    Ok(msg) => Some(Ok(msg)),
+                    Err(BroadcastStreamRecvError::Lagged(n)) => {
+                        tracing::warn!(
+                            "Live stream lagged by {} messages, client should re-fetch via REST",
+                            n
+                        );
+                        None
+                    }
+                }
+            })
+            .boxed()
+    }
+
     pub fn stdout_chunked_stream(
         &self,
     ) -> futures::stream::BoxStream<'static, Result<String, std::io::Error>> {

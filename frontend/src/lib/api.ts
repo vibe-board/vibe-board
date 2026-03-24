@@ -899,11 +899,15 @@ export const executionProcessesApi = {
 
   getEntries: async (
     processId: string,
-    offset: number = 0,
+    before?: number,
     limit: number = 50
   ): Promise<PaginatedNormalizedEntries> => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (before !== undefined) {
+      params.set('before', String(before));
+    }
     const response = await makeRequest(
-      `/api/execution-processes/${processId}/entries?offset=${offset}&limit=${limit}`
+      `/api/execution-processes/${processId}/entries?${params}`
     );
     return handleApiResponse<PaginatedNormalizedEntries>(response);
   },

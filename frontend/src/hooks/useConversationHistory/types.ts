@@ -1,3 +1,4 @@
+import type React from 'react';
 import { ExecutorAction, PatchType, Workspace } from 'shared/types';
 
 export type PatchTypeWithKey = PatchType & {
@@ -86,6 +87,9 @@ export type ExecutionProcessStaticInfo = {
 export type ExecutionProcessState = {
   executionProcess: ExecutionProcessStaticInfo;
   entries: PatchTypeWithKey[];
+  totalCount?: number;
+  hasMoreEntries?: boolean;
+  minEntryIndex?: number;
 };
 
 export type ExecutionProcessStateStore = Record<string, ExecutionProcessState>;
@@ -97,8 +101,6 @@ export interface UseConversationHistoryParams {
 export interface UseConversationHistoryResult {
   /** Flattened, display-ready entry array — single source of truth. */
   entries: PatchTypeWithKey[];
-  /** Virtuoso firstItemIndex. Starts at 100_000, decreases on historic prepends. */
-  firstItemIndex: number;
   /** Whether more historic processes can be loaded. */
   hasMore: boolean;
   /** Whether a loadMore operation is in flight. */
@@ -112,4 +114,8 @@ export interface UseConversationHistoryResult {
   scrollIntent: ScrollIntent;
   /** True until first real (non-synthetic) data arrives. */
   initialLoading: boolean;
+  /** Notify the hook when the user reaches or leaves the bottom of the list. */
+  onAtBottom: (atBottom: boolean) => void;
+  /** Count of items prepended in the last loadMore call. Component reads for scroll compensation. */
+  lastPrependCountRef: React.MutableRefObject<number>;
 }

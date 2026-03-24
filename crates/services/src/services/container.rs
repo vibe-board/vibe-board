@@ -45,7 +45,7 @@ use executors::{
 };
 use futures::{StreamExt, future, stream::BoxStream};
 use git::{GitService, GitServiceError};
-use json_patch::Patch;
+use json_patch::{Patch, PatchOperation};
 use sqlx::Error as SqlxError;
 use thiserror::Error;
 use tokio::{sync::RwLock, task::JoinHandle};
@@ -1026,6 +1026,41 @@ pub trait ContainerService {
                     .boxed(),
             )
         }
+    }
+
+    async fn stream_live_normalized_logs(
+        &self,
+        id: &Uuid,
+        after_index: i64,
+    ) -> Option<futures::stream::BoxStream<'static, Result<LogMsg, std::io::Error>>> {
+        let store = self.get_msg_store_by_id(id).await?;
+
+        let stream = store
+            .live_stream()
+            .filter(move |msg| {
+                future::ready(match msg {
+                    Ok(LogMsg::JsonPatch(patch)) => {
+                        if let Some((index, _)) = extract_normalized_entry_from_patch(patch) {
+                            let is_replace = patch
+                                .iter()
+                                .any(|op| matches!(op, PatchOperation::Replace(_)));
+                            // Allow replace patches for any index (streaming text updates).
+                            // Only filter add patches by cursor to avoid duplicates.
+                            is_replace || (index as i64) > after_index
+                        } else {
+                            false
+                        }
+                    }
+                    Ok(LogMsg::Finished) => true,
+                    _ => false,
+                })
+            })
+            .chain(futures::stream::once(async {
+                Ok::<_, std::io::Error>(LogMsg::Finished)
+            }))
+            .boxed();
+
+        Some(stream)
     }
 
     fn spawn_stream_raw_logs_to_db(&self, execution_id: &Uuid) -> JoinHandle<()> {

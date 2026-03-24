@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from '@testing-library/react';
 import VirtualizedList from '../VirtualizedList';
-import { capturedVirtuosoProps, resetVirtuosoMock } from '@/test-setup';
 import type { WorkspaceWithSession } from '@/types/attempt';
 
 // ---------------------------------------------------------------------------
@@ -9,19 +8,24 @@ import type { WorkspaceWithSession } from '@/types/attempt';
 // ---------------------------------------------------------------------------
 
 vi.mock('@/contexts/EntriesContext', () => ({
-  useEntries: () => ({ setEntries: vi.fn(), reset: vi.fn() }),
+  useEntries: () => ({
+    setEntries: vi.fn(),
+    reset: vi.fn(),
+    setTokenUsageInfo: vi.fn(),
+  }),
 }));
 
 vi.mock('@/hooks/useConversationHistory', () => ({
   useConversationHistory: () => ({
     entries: [],
-    firstItemIndex: 100_000,
     hasMore: false,
     isLoadingMore: false,
     loadMore: vi.fn(),
     setWantMore: vi.fn(),
     scrollIntent: 'none',
     initialLoading: true,
+    onAtBottom: vi.fn(),
+    lastPrependCountRef: { current: 0 },
   }),
 }));
 
@@ -35,26 +39,35 @@ vi.mock('../../../NormalizedConversation/DisplayConversationEntry', () => ({
   default: () => <div data-testid="conversation-entry" />,
 }));
 
+// Mock useVirtualizer — JSDOM has no layout engine so measurements are impossible
+vi.mock('@tanstack/react-virtual', () => ({
+  useVirtualizer: () => ({
+    getVirtualItems: () => [],
+    getTotalSize: () => 0,
+    measureElement: vi.fn(),
+    scrollToIndex: vi.fn(),
+  }),
+}));
+
 const mockAttempt = {
   id: 'attempt-1',
 } as unknown as WorkspaceWithSession;
 
-beforeEach(resetVirtuosoMock);
-
 describe('VirtualizedList', () => {
-  it('renders Virtuoso with initial loading overlay', () => {
-    const { getByText } = render(<VirtualizedList attempt={mockAttempt} />);
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
-    // Should show loading overlay on initial render
+  it('renders loading overlay when initialLoading is true', () => {
+    const { getByText } = render(<VirtualizedList attempt={mockAttempt} />);
     expect(getByText('Loading History')).toBeInTheDocument();
   });
 
-  it('passes correct props to Virtuoso', () => {
-    render(<VirtualizedList attempt={mockAttempt} />);
+  it('renders scroll container with correct structure', () => {
+    const { container } = render(<VirtualizedList attempt={mockAttempt} />);
 
-    // Virtuoso should receive firstItemIndex and data from the hook
-    expect(capturedVirtuosoProps).toHaveProperty('firstItemIndex', 100_000);
-    expect(capturedVirtuosoProps).toHaveProperty('data');
-    expect(capturedVirtuosoProps).toHaveProperty('className', 'flex-1');
+    // Should have a scroll container with overflow-y-auto
+    const scrollContainer = container.querySelector('.overflow-y-auto');
+    expect(scrollContainer).toBeInTheDocument();
   });
 });
