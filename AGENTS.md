@@ -55,3 +55,4 @@ Do not manually edit shared/types.ts, instead edit crates/server/src/bin/generat
 
 ## Worktree Configuration
 - Worktree directory: `~/.config/superpowers/worktrees/` (global, outside repo). Do NOT create worktrees inside `.worktrees/` or `.claude/worktrees/` within the repo.
+- **Always operate on the current worktree only.** Never edit, commit, or stage files in a different worktree/branch than the one you're currently working in.
