@@ -119,17 +119,21 @@ const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
   // --- Follow-output / auto-scroll ---
   useEffect(() => {
     if (entries.length === 0) return;
-    const lastIndex = entries.length - 1;
+    const container = scrollContainerRef.current;
+    if (!container) return;
 
     if (scrollIntent === 'bottom-instant') {
-      virtualizer.scrollToIndex(lastIndex, { align: 'end' });
+      // Use raw scrollTop instead of scrollToIndex — the virtualizer's
+      // totalSize may be based on estimateSize for unmeasured items,
+      // so scrollToIndex can overshoot past the real content.
+      container.scrollTop = container.scrollHeight;
     } else if (scrollIntent === 'bottom-smooth' && isAtBottomRef.current) {
-      virtualizer.scrollToIndex(lastIndex, {
-        align: 'end',
+      container.scrollTo({
+        top: container.scrollHeight,
         behavior: 'smooth',
       });
     }
-  }, [entries.length, scrollIntent, virtualizer]);
+  }, [entries.length, scrollIntent]);
 
   const context = useMemo(() => ({ attempt, task }), [attempt, task]);
 
