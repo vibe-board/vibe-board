@@ -1077,8 +1077,11 @@ pub trait ContainerService {
 
             if let Some(store) = store {
                 let mut stream = store.history_plus_stream();
-                // Buffer for accumulating normalized entries before batch insert
-                let mut pending_entries: Vec<(i64, String)> = Vec::new();
+                // Buffer for accumulating normalized entries before batch insert.
+                // Use a HashMap keyed by entry_index so that streaming replace
+                // patches for the same index overwrite earlier versions instead
+                // of accumulating redundant rows.
+                let mut pending_entries: HashMap<i64, String> = HashMap::new();
                 const FLUSH_THRESHOLD: usize = 10;
 
                 while let Some(Ok(msg)) = stream.next().await {
@@ -1114,18 +1117,22 @@ pub trait ContainerService {
                             }
                         }
                         LogMsg::JsonPatch(patch) => {
-                            // Extract normalized entries and accumulate for batch insert
+                            // Extract normalized entries and accumulate for batch insert.
+                            // Inserting into the map by index deduplicates streaming
+                            // replace patches so only the latest version is persisted.
                             if let Some((index, entry)) = extract_normalized_entry_from_patch(patch)
                                 && let Ok(json) = serde_json::to_string(&entry)
                             {
-                                pending_entries.push((index as i64, json));
+                                pending_entries.insert(index as i64, json);
                             }
                             // Flush when threshold is reached
                             if pending_entries.len() >= FLUSH_THRESHOLD {
+                                let batch: Vec<(i64, String)> =
+                                    pending_entries.drain().collect();
                                 if let Err(e) = DbNormalizedEntry::insert_batch(
                                     &db.pool,
                                     execution_id,
-                                    &pending_entries,
+                                    &batch,
                                 )
                                 .await
                                 {
@@ -1135,7 +1142,6 @@ pub trait ContainerService {
                                         e
                                     );
                                 }
-                                pending_entries.clear();
                             }
                         }
                         LogMsg::SessionId(agent_session_id) => {
@@ -1178,50 +1184,52 @@ pub trait ContainerService {
                 }
 
                 // Flush any remaining normalized entries
-                if !pending_entries.is_empty()
-                    && let Err(e) =
-                        DbNormalizedEntry::insert_batch(&db.pool, execution_id, &pending_entries)
-                            .await
-                {
-                    tracing::error!(
-                        "Failed to flush remaining normalized entries for execution {}: {}",
-                        execution_id,
-                        e
-                    );
+                if !pending_entries.is_empty() {
+                    let batch: Vec<(i64, String)> = pending_entries.drain().collect();
+                    if let Err(e) =
+                        DbNormalizedEntry::insert_batch(&db.pool, execution_id, &batch).await
+                    {
+                        tracing::error!(
+                            "Failed to flush remaining normalized entries for execution {}: {}",
+                            execution_id,
+                            e
+                        );
+                    }
                 }
             }
         })
     }
 
-    /// Persist normalized entries from a MsgStore to the database
+    /// Persist normalized entries from a MsgStore to the database.
+    /// Deduplicates by entry_index so that only the latest version of each
+    /// entry (after all streaming replace patches) is written.
     async fn persist_normalized_entries(
         db_pool: sqlx::SqlitePool,
         execution_id: Uuid,
         store: Arc<MsgStore>,
     ) {
-        let entries: Vec<(i64, String)> = store
-            .get_history()
-            .iter()
-            .filter_map(|msg| {
-                if let LogMsg::JsonPatch(patch) = msg {
-                    extract_normalized_entry_from_patch(patch).and_then(|(index, entry)| {
-                        serde_json::to_string(&entry)
-                            .map(|json| (index as i64, json))
-                            .ok()
-                    })
-                } else {
-                    None
+        // Use a HashMap to deduplicate by entry_index — streaming replace
+        // patches for the same index will overwrite earlier versions.
+        let mut deduped: HashMap<i64, String> = HashMap::new();
+        for msg in store.get_history().iter() {
+            if let LogMsg::JsonPatch(patch) = msg {
+                if let Some((index, entry)) = extract_normalized_entry_from_patch(patch) {
+                    if let Ok(json) = serde_json::to_string(&entry) {
+                        deduped.insert(index as i64, json);
+                    }
                 }
-            })
-            .collect();
+            }
+        }
 
-        if entries.is_empty() {
+        if deduped.is_empty() {
             tracing::debug!(
                 "No normalized entries to persist for execution {}",
                 execution_id
             );
             return;
         }
+
+        let entries: Vec<(i64, String)> = deduped.into_iter().collect();
 
         tracing::debug!(
             "Persisting {} normalized entries for execution {}",
