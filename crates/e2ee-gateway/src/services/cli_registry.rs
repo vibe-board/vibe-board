@@ -12,6 +12,7 @@ pub struct CliRecord {
     pub machine_id: String,
     pub hostname: String,
     pub platform: String,
+    pub port: u16,
     pub user_id: String,
     pub sender: DaemonSender,
 }
@@ -118,6 +119,7 @@ mod tests {
             machine_id: machine_id.to_string(),
             hostname: "test-host".to_string(),
             platform: "linux".to_string(),
+            port: 3000,
             user_id: user_id.to_string(),
             sender: tx,
         };

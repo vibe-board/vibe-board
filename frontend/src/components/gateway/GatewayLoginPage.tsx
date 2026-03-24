@@ -56,6 +56,7 @@ export function GatewayLoginPage() {
           <input
             id="email"
             type="email"
+            autoComplete="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -71,6 +72,7 @@ export function GatewayLoginPage() {
           <input
             id="password"
             type="password"
+            autoComplete="current-password"
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}

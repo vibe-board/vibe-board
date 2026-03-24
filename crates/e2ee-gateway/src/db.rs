@@ -180,19 +180,22 @@ pub async fn upsert_machine(
     user_id: &str,
     hostname: Option<&str>,
     platform: Option<&str>,
+    port: i64,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
-        "INSERT INTO machines (id, user_id, hostname, platform, last_seen_at)
-         VALUES (?, ?, ?, ?, datetime('now'))
+        "INSERT INTO machines (id, user_id, hostname, platform, port, last_seen_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'))
          ON CONFLICT(id) DO UPDATE SET
            hostname = excluded.hostname,
            platform = excluded.platform,
+           port = excluded.port,
            last_seen_at = datetime('now')",
     )
     .bind(id)
     .bind(user_id)
     .bind(hostname)
     .bind(platform)
+    .bind(port)
     .execute(pool)
     .await?;
     Ok(())
@@ -204,6 +207,7 @@ pub struct MachineRow {
     pub user_id: String,
     pub hostname: Option<String>,
     pub platform: Option<String>,
+    pub port: Option<i64>,
     pub last_seen_at: Option<String>,
 }
 
@@ -212,7 +216,7 @@ pub async fn get_machines_for_user(
     user_id: &str,
 ) -> Result<Vec<MachineRow>, sqlx::Error> {
     let rows: Vec<MachineRow> = sqlx::query_as(
-        "SELECT id, user_id, hostname, platform, last_seen_at FROM machines WHERE user_id = ?",
+        "SELECT id, user_id, hostname, platform, port, last_seen_at FROM machines WHERE user_id = ?",
     )
     .bind(user_id)
     .fetch_all(pool)

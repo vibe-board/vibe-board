@@ -180,7 +180,7 @@ async fn connect_and_run(
     }
 
     // Send register message
-    let machine_id = get_machine_id();
+    let machine_id = get_machine_id(local_port);
     let hostname = hostname::get()
         .map(|h| h.to_string_lossy().to_string())
         .unwrap_or_else(|_| "unknown".to_string());
@@ -191,6 +191,7 @@ async fn connect_and_run(
         "machine_id": machine_id,
         "hostname": hostname,
         "platform": platform,
+        "port": local_port,
     });
 
     ws_sender
@@ -333,17 +334,17 @@ async fn handle_forward(ctx: &BridgeContext, payload: serde_json::Value) -> Resu
     // Read current DEK state — Option<[u8; 32]> is Copy
     let dek_opt = *ctx.dek_state.lock().await;
 
-    // Determine the request: decrypt if encrypted, otherwise parse directly
+    // Determine the request: decrypt if encrypted, otherwise reject
     let request: e2ee_core::BridgeRequest = if e2ee_core::is_encrypted_payload(&payload) {
         let encrypted: e2ee_core::envelope::EncryptedPayload =
             serde_json::from_value(payload).context("Failed to parse EncryptedPayload")?;
         let dek = dek_opt.context("Received encrypted payload but no DEK established")?;
         e2ee_core::decrypt_json(&encrypted, &dek).context("Failed to decrypt bridge request")?
     } else {
-        if dek_opt.is_some() {
-            anyhow::bail!("Received plaintext request after DEK exchange");
-        }
-        serde_json::from_value(payload).context("Failed to parse BridgeRequest")?
+        anyhow::bail!(
+            "Received plaintext BridgeRequest; all requests must be encrypted after DEK exchange \
+             or dek_exchange before it"
+        );
     };
 
     // Helper: send response encrypted with DEK if available
@@ -520,8 +521,8 @@ async fn handle_forward(ctx: &BridgeContext, payload: serde_json::Value) -> Resu
     Ok(())
 }
 
-/// Get a stable machine ID based on hostname + username
-fn get_machine_id() -> String {
+/// Get a stable machine ID based on hostname + username + port
+fn get_machine_id(port: u16) -> String {
     let hostname = hostname::get()
         .map(|h| h.to_string_lossy().to_string())
         .unwrap_or_else(|_| "unknown".to_string());
@@ -533,6 +534,7 @@ fn get_machine_id() -> String {
     let mut hasher = DefaultHasher::new();
     hostname.hash(&mut hasher);
     username.hash(&mut hasher);
+    port.hash(&mut hasher);
     format!("m-{:016x}", hasher.finish())
 }
 

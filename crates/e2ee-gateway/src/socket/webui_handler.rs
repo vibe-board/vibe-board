@@ -53,7 +53,12 @@ pub enum GatewayToWebUI {
     #[serde(rename = "machines")]
     Machines { machines: Vec<MachineStatus> },
     #[serde(rename = "machine_online")]
-    MachineOnline { machine_id: String },
+    MachineOnline {
+        machine_id: String,
+        hostname: String,
+        platform: String,
+        port: u16,
+    },
     #[serde(rename = "machine_offline")]
     MachineOffline { machine_id: String },
     #[serde(rename = "forward")]
@@ -70,6 +75,7 @@ pub struct MachineStatus {
     pub machine_id: String,
     pub hostname: String,
     pub platform: String,
+    pub port: u16,
 }
 
 async fn handle_webui_socket(socket: WebSocket, state: AppState, query: WebUIConnectQuery) {
@@ -117,6 +123,7 @@ async fn handle_webui_socket(socket: WebSocket, state: AppState, query: WebUICon
             machine_id: d.machine_id.clone(),
             hostname: d.hostname.clone(),
             platform: d.platform.clone(),
+            port: d.port,
         })
         .collect();
 

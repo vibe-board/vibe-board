@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { useE2EE } from '@/hooks/useE2ee';
 import { useGatewayAuth, type GatewaySession } from '@/hooks/useGatewayAuth';
 import { deriveAuthKeyPair } from '@/lib/e2ee';
+import { QRScanner } from '@/components/ui/qr-scanner';
 
 async function registerDevice(
   gatewayUrl: string,
@@ -69,9 +70,11 @@ const E2EESettingsDialogImpl = NiceModal.create<NoProps>(() => {
   const {
     machines,
     connected,
+    hasPairedSecrets,
+    clearSecrets,
     connectToGateway,
     disconnect,
-    addPairedSecret,
+    pairMachine,
     error: e2eeError,
   } = useE2EE();
 
@@ -95,10 +98,10 @@ const E2EESettingsDialogImpl = NiceModal.create<NoProps>(() => {
   const [registrationOpen, setRegistrationOpen] = useState(false);
 
   // Master secret state
-  const [masterSecret, setMasterSecret] = useState<string | null>(null);
   const [pastedSecret, setPastedSecret] = useState('');
   const [setupLoading, setSetupLoading] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
+  const [showScanner, setShowScanner] = useState(false);
 
   // Machine selection
   const [selectedMachineId, setSelectedMachineId] = useState<string | null>(
@@ -124,32 +127,55 @@ const E2EESettingsDialogImpl = NiceModal.create<NoProps>(() => {
     };
   }, [gatewayUrl, checkRegistrationStatus]);
 
+  // Pair secret with a specific machine (or first available)
+  const doPairSecret = useCallback(
+    async (secretB64: string) => {
+      if (!session) return;
+      setSetupLoading(true);
+      setSetupError(null);
+      try {
+        const secretBytes = Uint8Array.from(atob(secretB64), (c) =>
+          c.charCodeAt(0)
+        );
+        const authKp = await deriveAuthKeyPair(secretBytes);
+        const pubKeyB64 = btoa(String.fromCharCode(...authKp.publicKey));
+
+        await registerDevice(
+          session.gatewayUrl,
+          session.sessionToken,
+          pubKeyB64
+        );
+        await notifyBackendCredentials(secretB64, session);
+
+        // Pair with selected machine or first available
+        const targetMachineId =
+          selectedMachineId || machines[0]?.machine_id || 'default';
+        pairMachine(targetMachineId, secretB64);
+        setPastedSecret('');
+      } catch (e) {
+        setSetupError(e instanceof Error ? e.message : 'Setup failed');
+      } finally {
+        setSetupLoading(false);
+      }
+    },
+    [session, selectedMachineId, machines, pairMachine]
+  );
+
   // After login, user pastes OOB secret from bridge terminal
   const handleSetupFromSecret = async () => {
-    if (!session || !pastedSecret.trim()) return;
-    setSetupLoading(true);
-    setSetupError(null);
-    try {
-      const secretB64 = pastedSecret.trim();
-      const secretBytes = Uint8Array.from(atob(secretB64), (c) =>
-        c.charCodeAt(0)
-      );
-      const authKp = await deriveAuthKeyPair(secretBytes);
-      const pubKeyB64 = btoa(String.fromCharCode(...authKp.publicKey));
-
-      await registerDevice(session.gatewayUrl, session.sessionToken, pubKeyB64);
-
-      await notifyBackendCredentials(secretB64, session);
-
-      addPairedSecret(secretB64);
-      setMasterSecret(secretB64);
-      setPastedSecret('');
-    } catch (e) {
-      setSetupError(e instanceof Error ? e.message : 'Setup failed');
-    } finally {
-      setSetupLoading(false);
-    }
+    if (!pastedSecret.trim()) return;
+    await doPairSecret(pastedSecret.trim());
   };
+
+  const handleScan = useCallback(
+    async (result: string) => {
+      setShowScanner(false);
+      setPastedSecret(result);
+      if (!result.trim()) return;
+      await doPairSecret(result.trim());
+    },
+    [doPairSecret]
+  );
 
   const handleAuth = async () => {
     if (!gatewayUrl.trim()) return;
@@ -175,11 +201,11 @@ const E2EESettingsDialogImpl = NiceModal.create<NoProps>(() => {
 
   const handleLogout = useCallback(async () => {
     logout();
-    setMasterSecret(null);
+    clearSecrets();
     setPastedSecret('');
     setSetupError(null);
     await notifyBackendLogout();
-  }, [logout]);
+  }, [logout, clearSecrets]);
 
   return (
     <Dialog open={modal.visible} onOpenChange={() => modal.hide()}>
@@ -319,7 +345,7 @@ const E2EESettingsDialogImpl = NiceModal.create<NoProps>(() => {
                     'Registering device and setting up...'
                   )}
                 </p>
-              ) : masterSecret ? (
+              ) : hasPairedSecrets ? (
                 <p className="text-sm text-green-500">
                   {t(
                     'settings.general.e2ee.masterSecret.paired',
@@ -328,25 +354,47 @@ const E2EESettingsDialogImpl = NiceModal.create<NoProps>(() => {
                 </p>
               ) : (
                 <div className="space-y-2">
-                  <Input
-                    placeholder={t(
-                      'settings.general.e2ee.masterSecret.placeholder',
-                      'Paste master secret from bridge terminal'
-                    )}
-                    value={pastedSecret}
-                    onChange={(e) => setPastedSecret(e.target.value)}
-                  />
-                  <Button
-                    onClick={handleSetupFromSecret}
-                    disabled={!pastedSecret.trim() || setupLoading}
-                    className="w-full"
-                    size="sm"
-                  >
-                    {t(
-                      'settings.general.e2ee.masterSecret.pair',
-                      'Pair with Bridge'
-                    )}
-                  </Button>
+                  {showScanner ? (
+                    <QRScanner
+                      onScan={handleScan}
+                      onClose={() => setShowScanner(false)}
+                    />
+                  ) : (
+                    <>
+                      <Input
+                        placeholder={t(
+                          'settings.general.e2ee.masterSecret.placeholder',
+                          'Paste master secret from bridge terminal'
+                        )}
+                        value={pastedSecret}
+                        onChange={(e) => setPastedSecret(e.target.value)}
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={() => setShowScanner(true)}
+                          variant="outline"
+                          className="flex-1"
+                          size="sm"
+                        >
+                          {t(
+                            'settings.general.e2ee.masterSecret.scanQr',
+                            'Scan QR Code'
+                          )}
+                        </Button>
+                        <Button
+                          onClick={handleSetupFromSecret}
+                          disabled={!pastedSecret.trim() || setupLoading}
+                          className="flex-1"
+                          size="sm"
+                        >
+                          {t(
+                            'settings.general.e2ee.masterSecret.pair',
+                            'Pair with Bridge'
+                          )}
+                        </Button>
+                      </div>
+                    </>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     {t(
                       'settings.general.e2ee.masterSecret.localStorageWarning',
@@ -419,7 +467,10 @@ const E2EESettingsDialogImpl = NiceModal.create<NoProps>(() => {
                         variant="outline"
                         size="sm"
                         onClick={() => handleConnect(m.machine_id)}
-                        disabled={selectedMachineId === m.machine_id}
+                        disabled={
+                          selectedMachineId === m.machine_id ||
+                          !hasPairedSecrets
+                        }
                       >
                         {selectedMachineId === m.machine_id
                           ? t(

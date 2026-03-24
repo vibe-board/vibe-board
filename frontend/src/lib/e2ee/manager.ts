@@ -1,21 +1,22 @@
 /**
- * E2EEManager — singleton that manages paired secrets, content keypairs, and DEKs.
+ * E2EEManager — singleton that manages per-machine secrets, content keypairs, and DEKs.
  *
- * Usage:
- *   const mgr = E2EEManager.getInstance();
- *   mgr.addPairedSecret(base64MasterSecret);
- *   const dek = mgr.unwrapDek(wrappedDekBase64);
+ * Each machine has its own master secret. Secrets are stored as machineId → base64Secret
+ * in localStorage, and keypairs are derived on demand.
  */
 import { ContentKeyPair, deriveContentKeyPair } from './keys';
 import { unwrapDek as cryptoUnwrapDek } from './crypto';
 
-const STORAGE_KEY = 'vk_e2ee_secrets';
+const MACHINE_SECRETS_KEY = 'vk_e2ee_machine_secrets';
+const OLD_STORAGE_KEY = 'vk_e2ee_secrets';
 
 export class E2EEManager {
   private static instance: E2EEManager | null = null;
 
-  /** base64 secret → derived content keypair */
+  /** base64 secret → derived content keypair (cache) */
   private contentKeyPairs: Map<string, ContentKeyPair> = new Map();
+  /** machineId → base64 master secret */
+  private machineSecrets: Map<string, string> = new Map();
   /** machineId → DEK (per-connection) */
   private connectionDeks: Map<string, Uint8Array> = new Map();
 
@@ -30,28 +31,28 @@ export class E2EEManager {
     return E2EEManager.instance;
   }
 
-  /** Check if any paired secrets exist */
+  /** Check if any machines are paired */
   get hasPairedSecrets(): boolean {
-    return this.contentKeyPairs.size > 0;
+    return this.machineSecrets.size > 0;
   }
 
-  /** Get the content public key from the first content key pair */
-  getContentPublicKey(): Uint8Array | null {
-    const firstPair = this.contentKeyPairs.values().next().value;
-    return firstPair ? firstPair.publicKey : null;
+  /** Check if a specific machine is paired */
+  isMachinePaired(machineId: string): boolean {
+    return this.machineSecrets.has(machineId);
   }
 
-  /** Get all paired secret identifiers (truncated for display) */
-  get pairedSecretIds(): string[] {
-    return Array.from(this.contentKeyPairs.keys()).map(
-      (s) => s.substring(0, 8) + '...'
-    );
+  /** Get the base64 secret for a machine */
+  getMachineSecret(machineId: string): string | null {
+    return this.machineSecrets.get(machineId) ?? null;
   }
 
-  /** Add a paired master secret (base64-encoded 32 bytes) */
-  addPairedSecret(base64Secret: string): void {
-    if (this.contentKeyPairs.has(base64Secret)) return;
+  /** Get all paired machine IDs */
+  get pairedMachineIds(): string[] {
+    return Array.from(this.machineSecrets.keys());
+  }
 
+  /** Pair a machine with a master secret */
+  pairMachine(machineId: string, base64Secret: string): void {
     const secretBytes = base64ToBytes(base64Secret);
     if (secretBytes.length !== 32) {
       throw new Error(
@@ -59,22 +60,45 @@ export class E2EEManager {
       );
     }
 
-    const keypair = deriveContentKeyPair(secretBytes);
-    this.contentKeyPairs.set(base64Secret, keypair);
+    // Derive and cache keypair
+    if (!this.contentKeyPairs.has(base64Secret)) {
+      const keypair = deriveContentKeyPair(secretBytes);
+      this.contentKeyPairs.set(base64Secret, keypair);
+    }
+
+    this.machineSecrets.set(machineId, base64Secret);
     this.saveToStorage();
   }
 
-  /** Remove a paired master secret */
-  removePairedSecret(base64Secret: string): void {
-    this.contentKeyPairs.delete(base64Secret);
+  /** Unpair a machine */
+  unpairMachine(machineId: string): void {
+    const secret = this.machineSecrets.get(machineId);
+    this.machineSecrets.delete(machineId);
+
+    // Clean up keypair cache if no other machine uses this secret
+    if (secret) {
+      const stillUsed = Array.from(this.machineSecrets.values()).includes(
+        secret
+      );
+      if (!stillUsed) {
+        this.contentKeyPairs.delete(secret);
+      }
+    }
+
     this.saveToStorage();
   }
 
-  /** Remove all paired secrets */
-  clearAll(): void {
-    this.contentKeyPairs.clear();
-    this.connectionDeks.clear();
-    this.saveToStorage();
+  /** Get the content public key for a specific machine */
+  getContentPublicKey(machineId?: string): Uint8Array | null {
+    if (machineId) {
+      const secret = this.machineSecrets.get(machineId);
+      if (!secret) return null;
+      const keypair = this.contentKeyPairs.get(secret);
+      return keypair ? keypair.publicKey : null;
+    }
+    // Fallback: first keypair (for backward compat during migration)
+    const firstPair = this.contentKeyPairs.values().next().value;
+    return firstPair ? firstPair.publicKey : null;
   }
 
   /**
@@ -101,6 +125,14 @@ export class E2EEManager {
     return null;
   }
 
+  /** Remove all paired secrets */
+  clearAll(): void {
+    this.contentKeyPairs.clear();
+    this.machineSecrets.clear();
+    this.connectionDeks.clear();
+    this.saveToStorage();
+  }
+
   /** Store a per-connection DEK for a machine */
   setConnectionDek(machineId: string, dek: Uint8Array): void {
     this.connectionDeks.set(machineId, dek);
@@ -116,16 +148,26 @@ export class E2EEManager {
     this.connectionDeks.delete(machineId);
   }
 
-  /** Load paired secrets from localStorage */
+  /** Load per-machine secrets from localStorage */
   private loadFromStorage(): void {
+    // Migrate old global secrets format → clear it (can't map to machines)
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
+      const old = localStorage.getItem(OLD_STORAGE_KEY);
+      if (old) {
+        localStorage.removeItem(OLD_STORAGE_KEY);
+      }
+    } catch {
+      // ignore
+    }
+
+    try {
+      const stored = localStorage.getItem(MACHINE_SECRETS_KEY);
       if (!stored) return;
 
-      const secrets: string[] = JSON.parse(stored);
-      for (const secret of secrets) {
+      const entries: Record<string, string> = JSON.parse(stored);
+      for (const [machineId, secret] of Object.entries(entries)) {
         try {
-          this.addPairedSecret(secret);
+          this.pairMachine(machineId, secret);
         } catch {
           // Skip invalid secrets
         }
@@ -135,11 +177,14 @@ export class E2EEManager {
     }
   }
 
-  /** Save paired secrets to localStorage */
+  /** Save per-machine secrets to localStorage */
   private saveToStorage(): void {
     try {
-      const secrets = Array.from(this.contentKeyPairs.keys());
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(secrets));
+      const entries: Record<string, string> = {};
+      for (const [machineId, secret] of this.machineSecrets) {
+        entries[machineId] = secret;
+      }
+      localStorage.setItem(MACHINE_SECRETS_KEY, JSON.stringify(entries));
     } catch {
       // Ignore storage errors
     }

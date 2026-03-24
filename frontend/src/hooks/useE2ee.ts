@@ -27,7 +27,7 @@ function getSecretsSnapshot() {
  * React hook for E2EE state management.
  *
  * Provides:
- * - Paired secret management (add/remove)
+ * - Per-machine secret management (pair/unpair)
  * - Machine list (online daemons)
  * - Gateway connection state
  */
@@ -45,18 +45,18 @@ export function useE2EE() {
     return connection.onMachinesChanged((m) => setMachines(m));
   }, []);
 
-  const addPairedSecret = useCallback((base64Secret: string) => {
+  const pairMachine = useCallback((machineId: string, base64Secret: string) => {
     try {
-      manager.addPairedSecret(base64Secret);
+      manager.pairMachine(machineId, base64Secret);
       notifySecretsChanged();
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to add secret');
+      setError(e instanceof Error ? e.message : 'Failed to pair machine');
     }
   }, []);
 
-  const removePairedSecret = useCallback((base64Secret: string) => {
-    manager.removePairedSecret(base64Secret);
+  const unpairMachine = useCallback((machineId: string) => {
+    manager.unpairMachine(machineId);
     notifySecretsChanged();
   }, []);
 
@@ -80,7 +80,7 @@ export function useE2EE() {
         });
         connection.subscribeMachine(machineId);
         // Establish DEK before marking connection as ready
-        if (manager.hasPairedSecrets) {
+        if (manager.isMachinePaired(machineId)) {
           await connection.initDek();
         }
       } catch (e) {
@@ -101,9 +101,9 @@ export function useE2EE() {
   return {
     // Secrets
     hasPairedSecrets: manager.hasPairedSecrets,
-    pairedSecretIds: manager.pairedSecretIds,
-    addPairedSecret,
-    removePairedSecret,
+    pairedMachineIds: manager.pairedMachineIds,
+    pairMachine,
+    unpairMachine,
     clearSecrets,
 
     // Connection

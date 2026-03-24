@@ -134,11 +134,21 @@ impl WebUIRegistry {
     }
 
     /// Notify all WebUI clients of a user that a machine came online
-    pub fn notify_machine_online(&self, machine_id: &str, user_id: &str) {
+    pub fn notify_machine_online(
+        &self,
+        machine_id: &str,
+        user_id: &str,
+        hostname: &str,
+        platform: &str,
+        port: u16,
+    ) {
         self.broadcast_to_user(
             user_id,
             &GatewayToWebUI::MachineOnline {
                 machine_id: machine_id.to_string(),
+                hostname: hostname.to_string(),
+                platform: platform.to_string(),
+                port,
             },
         );
     }

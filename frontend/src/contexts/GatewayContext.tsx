@@ -1,6 +1,6 @@
 /**
  * GatewayContext — manages the full gateway lifecycle:
- * detecting → login → pair → machine_select → connecting → ready
+ * detecting → login → machine_select → connecting → ready
  */
 import {
   createContext,
@@ -13,11 +13,11 @@ import {
 } from 'react';
 import { E2EEManager, E2EEConnection, type MachineStatus } from '@/lib/e2ee';
 import { detectGatewayMode, setGatewayConnection } from '@/lib/gatewayMode';
+import { QueryClient, QueryCache } from '@tanstack/react-query';
 
 export type GatewayPhase =
   | 'detecting'
   | 'login'
-  | 'pair'
   | 'machine_select'
   | 'connecting'
   | 'ready'
@@ -38,21 +38,27 @@ interface GatewayContextValue {
   signup: (email: string, password: string, name?: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
-  // Pairing
-  addPairedSecret: (base64Secret: string) => void;
+  // Per-machine pairing
+  pairMachine: (machineId: string, base64Secret: string) => void;
+  unpairMachine: (machineId: string) => void;
+  isMachinePaired: (machineId: string) => boolean;
   pairError: string | null;
   // Machines
   machines: MachineStatus[];
   selectedMachineId: string | null;
   selectMachine: (machineId: string) => Promise<void>;
+  disconnectMachine: () => void;
   // Connection
   connectionError: string | null;
   connection: E2EEConnection | null;
+  // Per-machine query client (for cache isolation)
+  machineQueryClient: QueryClient | null;
 }
 
 const GatewayContext = createContext<GatewayContextValue | null>(null);
 
 const SESSION_KEY = 'vk_gateway_session';
+const SELECTED_MACHINE_KEY = 'vk_gateway_selected_machine';
 
 function loadSession(): GatewaySession | null {
   try {
@@ -72,6 +78,18 @@ function clearStoredSession(): void {
   localStorage.removeItem(SESSION_KEY);
 }
 
+function loadSelectedMachine(): string | null {
+  return localStorage.getItem(SELECTED_MACHINE_KEY);
+}
+
+function saveSelectedMachine(machineId: string): void {
+  localStorage.setItem(SELECTED_MACHINE_KEY, machineId);
+}
+
+function clearSelectedMachine(): void {
+  localStorage.removeItem(SELECTED_MACHINE_KEY);
+}
+
 export function GatewayProvider({ children }: { children: ReactNode }) {
   const [phase, setPhase] = useState<GatewayPhase>('detecting');
   const [session, setSession] = useState<GatewaySession | null>(null);
@@ -89,6 +107,37 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
   const [connectionInstance] = useState(() => new E2EEConnection());
   const [manager] = useState(() => E2EEManager.getInstance());
 
+  // Per-machine QueryClient cache: each machine gets its own QueryClient
+  // so data from machine A never leaks into machine B's UI.
+  const queryClientMapRef = useRef(new Map<string, QueryClient>());
+  const getQueryClientForMachine = useCallback((machineId: string) => {
+    let qc = queryClientMapRef.current.get(machineId);
+    if (!qc) {
+      qc = new QueryClient({
+        queryCache: new QueryCache({
+          onError: (error, query) => {
+            console.error('[React Query Error]', {
+              queryKey: query.queryKey,
+              error,
+              message: error instanceof Error ? error.message : String(error),
+            });
+          },
+        }),
+        defaultOptions: {
+          queries: {
+            staleTime: 1000 * 60 * 5,
+            refetchOnWindowFocus: false,
+          },
+        },
+      });
+      queryClientMapRef.current.set(machineId, qc);
+    }
+    return qc;
+  }, []);
+
+  // Track whether we should auto-connect on startup (set during detection)
+  const pendingAutoConnectRef = useRef<string | null>(null);
+
   // Step 1: Detect gateway mode
   useEffect(() => {
     detectGatewayMode().then((isGateway) => {
@@ -100,12 +149,14 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
       const stored = loadSession();
       if (stored) {
         setSession(stored);
-        // Check if we have paired secrets
-        if (manager.hasPairedSecrets) {
-          setPhase('machine_select');
-        } else {
-          setPhase('pair');
+        // Check if we had a machine selected and it's still paired
+        const savedMachine = loadSelectedMachine();
+        if (savedMachine && manager.isMachinePaired(savedMachine)) {
+          // Will auto-connect once connectToMachine is available
+          pendingAutoConnectRef.current = savedMachine;
+          setSelectedMachineId(savedMachine);
         }
+        setPhase('machine_select');
       } else {
         setPhase('login');
       }
@@ -150,6 +201,7 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
                 machine_id: msg.machine_id,
                 hostname: msg.hostname || '',
                 platform: msg.platform || '',
+                port: msg.port || 0,
               },
             ];
           });
@@ -194,54 +246,43 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
         };
         saveSession(newSession);
         setSession(newSession);
-        if (manager.hasPairedSecrets) {
-          setPhase('machine_select');
-        } else {
-          setPhase('pair');
-        }
+        setPhase('machine_select');
       } catch (e) {
         setAuthError(e instanceof Error ? e.message : 'Signup failed');
       } finally {
         setAuthLoading(false);
       }
     },
-    [manager]
+    []
   );
 
-  const login = useCallback(
-    async (email: string, password: string) => {
-      setAuthLoading(true);
-      setAuthError(null);
-      try {
-        const resp = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password }),
-        });
-        if (!resp.ok) {
-          const text = await resp.text();
-          throw new Error(text || `Login failed (${resp.status})`);
-        }
-        const data: { token: string; user_id: string } = await resp.json();
-        const newSession = {
-          sessionToken: data.token,
-          userId: data.user_id,
-        };
-        saveSession(newSession);
-        setSession(newSession);
-        if (manager.hasPairedSecrets) {
-          setPhase('machine_select');
-        } else {
-          setPhase('pair');
-        }
-      } catch (e) {
-        setAuthError(e instanceof Error ? e.message : 'Login failed');
-      } finally {
-        setAuthLoading(false);
+  const login = useCallback(async (email: string, password: string) => {
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      const resp = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text || `Login failed (${resp.status})`);
       }
-    },
-    [manager]
-  );
+      const data: { token: string; user_id: string } = await resp.json();
+      const newSession = {
+        sessionToken: data.token,
+        userId: data.user_id,
+      };
+      saveSession(newSession);
+      setSession(newSession);
+      setPhase('machine_select');
+    } catch (e) {
+      setAuthError(e instanceof Error ? e.message : 'Login failed');
+    } finally {
+      setAuthLoading(false);
+    }
+  }, []);
 
   const logout = useCallback(() => {
     if (reconnectTimerRef.current) {
@@ -251,22 +292,37 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
     connectionInstance.disconnect();
     setGatewayConnection(null);
     clearStoredSession();
+    clearSelectedMachine();
     setSession(null);
     setSelectedMachineId(null);
     setMachines([]);
     setPhase('login');
   }, [connectionInstance]);
 
-  // Pairing
-  const addPairedSecret = useCallback(
-    (base64Secret: string) => {
+  // Per-machine pairing
+  const pairMachine = useCallback(
+    (machineId: string, base64Secret: string) => {
       try {
-        manager.addPairedSecret(base64Secret);
+        manager.pairMachine(machineId, base64Secret);
         setPairError(null);
-        setPhase('machine_select');
       } catch (e) {
         setPairError(e instanceof Error ? e.message : 'Invalid master secret');
       }
+    },
+    [manager]
+  );
+
+  const unpairMachine = useCallback(
+    (machineId: string) => {
+      manager.unpairMachine(machineId);
+      setPairError(null);
+    },
+    [manager]
+  );
+
+  const isMachinePaired = useCallback(
+    (machineId: string) => {
+      return manager.isMachinePaired(machineId);
     },
     [manager]
   );
@@ -278,8 +334,16 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
   const connectToMachine = useCallback(
     async (machineId: string, isReconnect = false) => {
       if (!session) return;
+
+      // Check that machine is paired before connecting
+      if (!manager.isMachinePaired(machineId)) {
+        setConnectionError('Machine not paired. Add the master secret first.');
+        return;
+      }
+
       if (!isReconnect) {
         setSelectedMachineId(machineId);
+        saveSelectedMachine(machineId);
         reconnectAttemptsRef.current = 0;
       }
       setPhase('connecting');
@@ -315,6 +379,8 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
           onError: (err) => setConnectionError(err),
         });
         conn.subscribeMachine(machineId);
+        // Initialize DEK exchange before exposing the connection to the app
+        await conn.initDek();
         setGatewayConnection(conn);
         setPhase('ready');
       } catch (e) {
@@ -333,7 +399,7 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [session, connectionInstance]
+    [session, connectionInstance, manager]
   );
 
   const selectMachine = useCallback(
@@ -348,6 +414,34 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
     [connectToMachine]
   );
 
+  // Auto-connect to previously selected machine after refresh.
+  // We wait for the machine_select WS to deliver the machine list, then connect
+  // if the saved machine is online.
+  useEffect(() => {
+    const machineId = pendingAutoConnectRef.current;
+    if (!machineId || phase !== 'machine_select' || !session) return;
+    const isOnline = machines.some((m) => m.machine_id === machineId);
+    if (isOnline) {
+      pendingAutoConnectRef.current = null;
+      connectToMachine(machineId);
+    }
+  }, [machines, phase, session, connectToMachine]);
+
+  const disconnectMachine = useCallback(() => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    reconnectAttemptsRef.current = 0;
+    // disconnect() clears WS event handlers before closing, so onDisconnect
+    // won't fire and auto-reconnect won't be triggered.
+    connectionInstance.disconnect();
+    setGatewayConnection(null);
+    setSelectedMachineId(null);
+    clearSelectedMachine();
+    setPhase('machine_select');
+  }, [connectionInstance]);
+
   const value: GatewayContextValue = {
     phase,
     session,
@@ -357,13 +451,19 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
     signup,
     login,
     logout,
-    addPairedSecret,
+    pairMachine,
+    unpairMachine,
+    isMachinePaired,
     pairError,
     machines,
     selectedMachineId,
     selectMachine,
+    disconnectMachine,
     connectionError,
     connection: phase === 'ready' ? connectionInstance : null,
+    machineQueryClient: selectedMachineId
+      ? getQueryClientForMachine(selectedMachineId)
+      : null,
   };
 
   return (

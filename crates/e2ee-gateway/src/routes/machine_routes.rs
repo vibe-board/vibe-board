@@ -8,6 +8,7 @@ pub struct MachineInfo {
     pub machine_id: String,
     pub hostname: String,
     pub platform: String,
+    pub port: u16,
     pub online: bool,
 }
 
@@ -42,6 +43,7 @@ pub async fn list_machines(
             machine_id: m.id.clone(),
             hostname: m.hostname.unwrap_or_default(),
             platform: m.platform.unwrap_or_default(),
+            port: m.port.unwrap_or(0) as u16,
             online: online_ids.contains(&m.id),
         })
         .collect();
@@ -53,6 +55,7 @@ pub async fn list_machines(
                 machine_id: daemon.machine_id.clone(),
                 hostname: daemon.hostname.clone(),
                 platform: daemon.platform.clone(),
+                port: daemon.port,
                 online: true,
             });
         }

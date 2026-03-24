@@ -37,6 +37,7 @@ enum DaemonMessage {
         machine_id: String,
         hostname: String,
         platform: String,
+        port: u16,
     },
     #[serde(rename = "forward")]
     Forward { payload: serde_json::Value },
@@ -164,6 +165,7 @@ async fn handle_daemon_socket(socket: WebSocket, state: AppState, query: DaemonC
                 machine_id: mid,
                 hostname,
                 platform,
+                port,
             } => {
                 let Some(ref uid) = user_id else {
                     warn!("Daemon tried to register before auth");
@@ -177,6 +179,7 @@ async fn handle_daemon_socket(socket: WebSocket, state: AppState, query: DaemonC
                     uid,
                     Some(&hostname),
                     Some(&platform),
+                    port as i64,
                 )
                 .await
                 {
@@ -186,14 +189,15 @@ async fn handle_daemon_socket(socket: WebSocket, state: AppState, query: DaemonC
                 // Register in CliRegistry
                 state.cli_registry.register(CliRecord {
                     machine_id: mid.clone(),
-                    hostname,
-                    platform,
+                    hostname: hostname.clone(),
+                    platform: platform.clone(),
+                    port,
                     user_id: uid.clone(),
                     sender: tx.clone(),
                 });
 
                 machine_id = Some(mid.clone());
-                info!("Daemon registered: machine_id={mid}, user_id={uid}");
+                info!("Daemon registered: machine_id={mid}, user_id={uid}, port={port}");
 
                 let resp = serde_json::to_string(&GatewayToDaemon::Registered { machine_id: mid })
                     .unwrap();
@@ -203,6 +207,9 @@ async fn handle_daemon_socket(socket: WebSocket, state: AppState, query: DaemonC
                 state.webui_registry.notify_machine_online(
                     machine_id.as_deref().unwrap_or_default(),
                     user_id.as_deref().unwrap_or_default(),
+                    &hostname,
+                    &platform,
+                    port,
                 );
             }
 

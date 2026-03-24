@@ -38,7 +38,13 @@ type GatewayMessage =
   | { type: 'auth_ok'; user_id: string }
   | { type: 'auth_error'; message: string }
   | { type: 'machines'; machines: MachineStatus[] }
-  | { type: 'machine_online'; machine_id: string }
+  | {
+      type: 'machine_online';
+      machine_id: string;
+      hostname: string;
+      platform: string;
+      port: number;
+    }
   | { type: 'machine_offline'; machine_id: string }
   | { type: 'forward'; machine_id: string; payload: unknown }
   | { type: 'error'; message: string };
@@ -47,6 +53,7 @@ export interface MachineStatus {
   machine_id: string;
   hostname: string;
   platform: string;
+  port: number;
 }
 
 export class E2EEConnection {
@@ -59,6 +66,7 @@ export class E2EEConnection {
   private wsStreams: Map<number, RemoteWs> = new Map();
   private options: ConnectionOptions | null = null;
   private _connected = false;
+  private _dekInFlight: Promise<void> | null = null;
   private _machines: MachineStatus[] = [];
   private machineListeners: Set<(machines: MachineStatus[]) => void> =
     new Set();
@@ -123,12 +131,18 @@ export class E2EEConnection {
     }
 
     if (this.ws) {
+      // Clear event handlers BEFORE closing so the async onclose
+      // doesn't fire onDisconnect (which would trigger auto-reconnect).
+      this.ws.onclose = null;
+      this.ws.onmessage = null;
+      this.ws.onerror = null;
       this.ws.close();
       this.ws = null;
     }
     this._connected = false;
     this.dek = null;
     this.dekResolver = null;
+    this._dekInFlight = null;
     this.rejectAllPending('Disconnected');
   }
 
@@ -152,17 +166,34 @@ export class E2EEConnection {
       throw new Error('Not connected');
     }
 
-    // Skip if DEK already established (e.g., from a concurrent initDek call)
+    // Skip if DEK already established
     if (this.dek) return;
 
+    // If a DEK exchange is already in-flight, await it instead of starting another.
+    // This prevents a race where both machine_online handler and connectToMachine
+    // call initDek() concurrently, sending two different wrapped DEKs to the bridge.
+    if (this._dekInFlight) {
+      await this._dekInFlight;
+      return;
+    }
+
+    this._dekInFlight = this._doDekExchange();
+    try {
+      await this._dekInFlight;
+    } finally {
+      this._dekInFlight = null;
+    }
+  }
+
+  private async _doDekExchange(): Promise<void> {
     // Generate random 32-byte DEK
     const dek = crypto.getRandomValues(new Uint8Array(32));
 
-    // Get content public key from manager
+    // Get content public key for this specific machine
     const manager = E2EEManager.getInstance();
-    const publicKey = manager.getContentPublicKey();
+    const publicKey = manager.getContentPublicKey(this.options!.machineId);
     if (!publicKey) {
-      throw new Error('No content public key available');
+      throw new Error('No content public key available for this machine');
     }
 
     // Wrap the DEK with the content public key
@@ -185,7 +216,7 @@ export class E2EEConnection {
     // Send dek_exchange message
     this.send({
       type: 'forward',
-      machine_id: this.options.machineId,
+      machine_id: this.options!.machineId,
       payload: {
         type: 'dek_exchange',
         wrapped_dek: wrappedDekB64,
@@ -204,6 +235,9 @@ export class E2EEConnection {
   async remoteFetch(url: string, init?: RequestInit): Promise<Response> {
     if (!this._connected || !this.options) {
       throw new Error('Not connected');
+    }
+    if (!this.dek) {
+      throw new Error('DEK not established — pair with a master secret first');
     }
 
     const id = this.nextRequestId++;
@@ -256,8 +290,8 @@ export class E2EEConnection {
       body,
     };
 
-    // Send as forward message (optionally encrypted with DEK)
-    const payload = this.dek ? encryptJson(request, this.dek) : request;
+    // Send as forward message (encrypted with DEK)
+    const payload = encryptJson(request, this.dek!);
 
     this.send({
       type: 'forward',
@@ -308,6 +342,9 @@ export class E2EEConnection {
     if (!this._connected || !this.options) {
       throw new Error('Not connected');
     }
+    if (!this.dek) {
+      throw new Error('DEK not established — pair with a master secret first');
+    }
 
     const id = this.nextWsStreamId++;
     const remote = new RemoteWs(
@@ -325,7 +362,7 @@ export class E2EEConnection {
       ...(query ? { query } : {}),
     };
 
-    const payload = this.dek ? encryptJson(request, this.dek) : request;
+    const payload = encryptJson(request, this.dek!);
     this.send({
       type: 'forward',
       machine_id: this.options.machineId,
@@ -345,7 +382,7 @@ export class E2EEConnection {
       data: base64Data,
     };
 
-    const payload = this.dek ? encryptJson(request, this.dek) : request;
+    const payload = encryptJson(request, this.dek!);
     this.send({
       type: 'forward',
       machine_id: this.options.machineId,
@@ -365,7 +402,7 @@ export class E2EEConnection {
       id,
     };
 
-    const payload = this.dek ? encryptJson(request, this.dek) : request;
+    const payload = encryptJson(request, this.dek!);
     this.send({
       type: 'forward',
       machine_id: this.options.machineId,
@@ -401,7 +438,12 @@ export class E2EEConnection {
         if (!this._machines.find((m) => m.machine_id === msg.machine_id)) {
           this._machines = [
             ...this._machines,
-            { machine_id: msg.machine_id, hostname: '', platform: '' },
+            {
+              machine_id: msg.machine_id,
+              hostname: msg.hostname || '',
+              platform: msg.platform || '',
+              port: msg.port || 0,
+            },
           ];
           this.machineListeners.forEach((cb) => cb(this._machines));
         }
