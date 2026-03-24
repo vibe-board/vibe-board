@@ -77,14 +77,20 @@ pub struct SlashCommandCache {
 pub struct SlashCommandCacheKey {
     path: PathBuf,
     executor_id: String,
+    command_override: Option<String>,
 }
 
 impl SlashCommandCacheKey {
     /// Create a new cache key for an executor.
-    pub fn new(path: impl Into<PathBuf>, executor: &BaseCodingAgent) -> Self {
+    pub fn new(
+        path: impl Into<PathBuf>,
+        executor: &BaseCodingAgent,
+        command_override: Option<String>,
+    ) -> Self {
         Self {
             path: path.into(),
             executor_id: executor.to_string(),
+            command_override,
         }
     }
 }

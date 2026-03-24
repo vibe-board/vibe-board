@@ -265,7 +265,11 @@ impl ClaudeCode {
         &self,
         current_dir: &Path,
     ) -> Result<Vec<SlashCommandDescription>, ExecutorError> {
-        let key = SlashCommandCacheKey::new(current_dir, &BaseCodingAgent::ClaudeCode);
+        let key = SlashCommandCacheKey::new(
+            current_dir,
+            &BaseCodingAgent::ClaudeCode,
+            self.cmd.base_command_override.clone(),
+        );
         if let Some(cached) = SlashCommandCache::instance().get(&key) {
             return Ok(cached.as_ref().clone());
         }

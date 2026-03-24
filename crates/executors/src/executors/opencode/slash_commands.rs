@@ -59,7 +59,11 @@ impl Opencode {
         &self,
         current_dir: &Path,
     ) -> Result<Vec<SlashCommandDescription>, ExecutorError> {
-        let key = SlashCommandCacheKey::new(current_dir, &BaseCodingAgent::Opencode);
+        let key = SlashCommandCacheKey::new(
+            current_dir,
+            &BaseCodingAgent::Opencode,
+            self.cmd.base_command_override.clone(),
+        );
         if let Some(cached) = SlashCommandCache::instance().get(&key) {
             return Ok((*cached).clone());
         }
