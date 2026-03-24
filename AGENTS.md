@@ -52,3 +52,6 @@ Do not manually edit shared/types.ts, instead edit crates/server/src/bin/generat
 ## Security & Config Tips
 - Use `.env` for local overrides; never commit secrets. Key envs: `FRONTEND_PORT`, `BACKEND_PORT`, `HOST`
 - Dev ports and assets are managed by `scripts/setup-dev-environment.js`.
+
+## Worktree Configuration
+- Worktree directory: `~/.config/superpowers/worktrees/` (global, outside repo). Do NOT create worktrees inside `.worktrees/` or `.claude/worktrees/` within the repo.
