@@ -777,6 +777,8 @@
     "count_one": "{{count}} commit",
     "count_other": "{{count}} commits",
     "backToCommits": "Volver a commits",
-    "errorLoadingHistory": "Error al cargar el historial de commits: {{error}}"
+    "errorLoadingHistory": "Error al cargar el historial de commits: {{error}}",
+    "expandBody": "Mostrar mensaje completo",
+    "collapseBody": "Ocultar mensaje completo"
   }
 }

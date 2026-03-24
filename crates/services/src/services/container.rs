@@ -1127,14 +1127,10 @@ pub trait ContainerService {
                             }
                             // Flush when threshold is reached
                             if pending_entries.len() >= FLUSH_THRESHOLD {
-                                let batch: Vec<(i64, String)> =
-                                    pending_entries.drain().collect();
-                                if let Err(e) = DbNormalizedEntry::insert_batch(
-                                    &db.pool,
-                                    execution_id,
-                                    &batch,
-                                )
-                                .await
+                                let batch: Vec<(i64, String)> = pending_entries.drain().collect();
+                                if let Err(e) =
+                                    DbNormalizedEntry::insert_batch(&db.pool, execution_id, &batch)
+                                        .await
                                 {
                                     tracing::error!(
                                         "Failed to persist normalized entries for execution {}: {}",

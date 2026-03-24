@@ -91,6 +91,8 @@ pub struct GitRemote {
 pub struct CommitInfo {
     pub sha: String,
     pub message: String,
+    /// The commit body (everything after the first line), if present.
+    pub body: Option<String>,
     pub author: String,
     #[ts(type = "Date")]
     pub timestamp: DateTime<Utc>,
@@ -2016,13 +2018,18 @@ impl GitService {
                 break;
             }
 
-            let message = commit
-                .message()
-                .unwrap_or("")
-                .lines()
-                .next()
-                .unwrap_or("")
-                .to_string();
+            let full_message = commit.message().unwrap_or("");
+            let message = full_message.lines().next().unwrap_or("").to_string();
+            let body = {
+                let rest: String = full_message
+                    .lines()
+                    .skip(1)
+                    .collect::<Vec<_>>()
+                    .join("\n")
+                    .trim()
+                    .to_string();
+                if rest.is_empty() { None } else { Some(rest) }
+            };
 
             let author = commit.author().name().unwrap_or("Unknown").to_string();
 
@@ -2045,6 +2052,7 @@ impl GitService {
             commits.push(CommitInfo {
                 sha: oid.to_string(),
                 message,
+                body,
                 author,
                 timestamp,
                 additions: stats.insertions() as u32,

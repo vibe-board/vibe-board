@@ -487,7 +487,11 @@ export type QueueStatus = { "status": "empty" } | { "status": "queued", message:
 
 export type ConflictOp = "rebase" | "merge" | "cherry_pick" | "revert";
 
-export type CommitInfo = { sha: string, message: string, author: string, timestamp: Date, additions: number, deletions: number, files_changed: number, };
+export type CommitInfo = { sha: string, message: string, 
+/**
+ * The commit body (everything after the first line), if present.
+ */
+body: string | null, author: string, timestamp: Date, additions: number, deletions: number, files_changed: number, };
 
 export type ExecutorAction = { typ: ExecutorActionType, next_action: ExecutorAction | null, };
 

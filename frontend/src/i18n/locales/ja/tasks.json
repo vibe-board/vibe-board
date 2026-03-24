@@ -777,6 +777,8 @@
     "count_one": "{{count}}件のコミット",
     "count_other": "{{count}}件のコミット",
     "backToCommits": "コミット一覧に戻る",
-    "errorLoadingHistory": "コミット履歴の読み込みに失敗しました: {{error}}"
+    "errorLoadingHistory": "コミット履歴の読み込みに失敗しました: {{error}}",
+    "expandBody": "全文を表示",
+    "collapseBody": "全文を非表示"
   }
 }

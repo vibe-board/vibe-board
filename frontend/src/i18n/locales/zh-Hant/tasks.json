@@ -777,6 +777,8 @@
     "count_one": "{{count}} 個提交",
     "count_other": "{{count}} 個提交",
     "backToCommits": "返回提交列表",
-    "errorLoadingHistory": "載入提交歷史失敗: {{error}}"
+    "errorLoadingHistory": "載入提交歷史失敗: {{error}}",
+    "expandBody": "展開完整訊息",
+    "collapseBody": "收起完整訊息"
   }
 }

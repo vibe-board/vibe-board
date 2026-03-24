@@ -777,6 +777,8 @@
     "count_one": "{{count}} commit",
     "count_other": "{{count}} commits",
     "backToCommits": "Back to commits",
-    "errorLoadingHistory": "Failed to load commit history: {{error}}"
+    "errorLoadingHistory": "Failed to load commit history: {{error}}",
+    "expandBody": "Show full message",
+    "collapseBody": "Hide full message"
   }
 }

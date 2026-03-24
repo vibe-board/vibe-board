@@ -777,6 +777,8 @@
     "count_one": "{{count}}개의 커밋",
     "count_other": "{{count}}개의 커밋",
     "backToCommits": "커밋 목록으로 돌아가기",
-    "errorLoadingHistory": "커밋 기록 로드 실패: {{error}}"
+    "errorLoadingHistory": "커밋 기록 로드 실패: {{error}}",
+    "expandBody": "전체 메시지 보기",
+    "collapseBody": "전체 메시지 숨기기"
   }
 }
