@@ -93,3 +93,6 @@ vibe-board-cloud/
 
 # Vite temp files
 *.timestamp-*.mjs
+
+.claude/worktrees/
+.worktrees/
