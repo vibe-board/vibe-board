@@ -86,6 +86,11 @@ export function streamJsonPatchEntries<E = unknown>(
         const next = structuredClone(snapshot);
         applyUpsertPatch(next, ops);
 
+        // Skip notify if the patch was a no-op (e.g., replace with identical content)
+        if (JSON.stringify(next) === JSON.stringify(snapshot)) {
+          return;
+        }
+
         snapshot = next;
         notify();
       }

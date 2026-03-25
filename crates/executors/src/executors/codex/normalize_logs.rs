@@ -487,12 +487,16 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                     );
                 }
                 EventMsg::AgentMessageDelta(AgentMessageDeltaEvent { delta }) => {
-                    state.thinking = None;
+                    if delta.is_empty() {
+                        return;
+                    }
                     let (entry, index, is_new) = state.assistant_message_append(delta);
                     upsert_normalized_entry(&msg_store, index, entry, is_new);
                 }
                 EventMsg::AgentReasoningDelta(AgentReasoningDeltaEvent { delta }) => {
-                    state.assistant = None;
+                    if delta.is_empty() {
+                        return;
+                    }
                     let (entry, index, is_new) = state.thinking_append(delta);
                     upsert_normalized_entry(&msg_store, index, entry, is_new);
                 }
@@ -512,7 +516,6 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                     item_id: _,
                     summary_index: _,
                 }) => {
-                    state.assistant = None;
                     state.thinking = None;
                 }
                 EventMsg::ExecApprovalRequest(ExecApprovalRequestEvent {

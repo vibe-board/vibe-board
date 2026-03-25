@@ -1416,9 +1416,11 @@ impl ClaudeLogProcessor {
                     }
                 }
                 ClaudeStreamEvent::MessageStop => {
-                    if let Some(message_id) = self.streaming_message_id.take() {
-                        let _ = self.streaming_messages.remove(&message_id);
-                    }
+                    // Only clear the current message_id reference, NOT the
+                    // streaming_messages entry. The Assistant message handler
+                    // (line ~1047) will remove it when it processes the final
+                    // message and converts streaming Add patches to Replace.
+                    self.streaming_message_id.take();
                 }
                 ClaudeStreamEvent::Unknown => {}
             },

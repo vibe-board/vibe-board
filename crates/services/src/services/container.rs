@@ -1208,12 +1208,11 @@ pub trait ContainerService {
         // patches for the same index will overwrite earlier versions.
         let mut deduped: HashMap<i64, String> = HashMap::new();
         for msg in store.get_history().iter() {
-            if let LogMsg::JsonPatch(patch) = msg {
-                if let Some((index, entry)) = extract_normalized_entry_from_patch(patch) {
-                    if let Ok(json) = serde_json::to_string(&entry) {
-                        deduped.insert(index as i64, json);
-                    }
-                }
+            if let LogMsg::JsonPatch(patch) = msg
+                && let Some((index, entry)) = extract_normalized_entry_from_patch(patch)
+                && let Ok(json) = serde_json::to_string(&entry)
+            {
+                deduped.insert(index as i64, json);
             }
         }
 
