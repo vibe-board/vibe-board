@@ -979,6 +979,17 @@ export function GeneralSettings() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('settings.general.about.title', 'About')}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            Vibe Kanban {__APP_VERSION__}
+          </p>
+        </CardContent>
+      </Card>
+
       {/* Sticky Save Button */}
       <div className="sticky bottom-0 z-10 bg-background/80 backdrop-blur-sm border-t py-4">
         <div className="flex items-center justify-between">

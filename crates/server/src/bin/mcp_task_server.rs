@@ -27,7 +27,7 @@ fn main() -> anyhow::Result<()> {
                 .with(sentry_layer())
                 .init();
 
-            let version = env!("CARGO_PKG_VERSION");
+            let version = utils::version::APP_VERSION_WITH_SHA;
             tracing::debug!("[MCP] Starting MCP task server version {version}...");
 
             // Read backend port from port file or environment variable

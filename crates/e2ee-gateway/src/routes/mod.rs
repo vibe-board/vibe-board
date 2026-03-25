@@ -7,6 +7,6 @@ pub mod machine_routes;
 pub async fn gateway_info() -> axum::Json<serde_json::Value> {
     axum::Json(serde_json::json!({
         "mode": "gateway",
-        "version": env!("CARGO_PKG_VERSION"),
+        "version": concat!(env!("CARGO_PKG_VERSION"), "+", env!("GIT_COMMIT_HASH")),
     }))
 }

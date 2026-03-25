@@ -11,6 +11,6 @@ pub struct HealthResponse {
 pub async fn health() -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok".to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
+        version: concat!(env!("CARGO_PKG_VERSION"), "+", env!("GIT_COMMIT_HASH")).to_string(),
     })
 }

@@ -4,6 +4,7 @@ import { createLogger, defineConfig, Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import fs from "fs";
+import { execSync } from 'child_process';
 import pkg from "./package.json";
 
 function createFilteredLogger() {
@@ -80,7 +81,11 @@ export default schemas;
 export default defineConfig({
   customLogger: createFilteredLogger(),
   define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
+    __APP_VERSION__: JSON.stringify(
+      `${pkg.version}+${
+        execSync('git rev-parse --short=7 HEAD', { encoding: 'utf-8' }).trim() || 'unknown'
+      }`,
+    ),
   },
   plugins: [
     react({
