@@ -477,6 +477,8 @@ pub struct ClaudeLogProcessor {
     main_model_name: Option<String>,
     main_model_context_window: u32,
     context_tokens_used: u32,
+    // Buffer for status updates that arrive before the ToolUse entry is in tool_map
+    pending_tool_statuses: HashMap<String, Vec<(ToolStatus, String)>>,
 }
 
 impl ClaudeLogProcessor {
@@ -496,6 +498,7 @@ impl ClaudeLogProcessor {
             last_assistant_message: None,
             main_model_context_window: DEFAULT_CLAUDE_CONTEXT_WINDOW,
             context_tokens_used: 0,
+            pending_tool_statuses: HashMap::new(),
         }
     }
 
@@ -752,6 +755,12 @@ impl ClaudeLogProcessor {
                 info.content.clone(),
             );
             patches.push(ConversationPatch::replace(info.entry_index, entry));
+        } else {
+            // Buffer for later when ToolUse entry is added to tool_map
+            self.pending_tool_statuses
+                .entry(tool_call_id.to_string())
+                .or_default()
+                .push((status, worktree_path.to_string()));
         }
     }
 
@@ -1069,6 +1078,17 @@ impl ClaudeLogProcessor {
                                     content: content_text,
                                 },
                             );
+                            // Apply any buffered statuses that arrived before this ToolUse
+                            if let Some(buffered) = self.pending_tool_statuses.remove(id) {
+                                for (status, buffered_worktree) in buffered {
+                                    self.replace_tool_entry_status(
+                                        id,
+                                        status,
+                                        &buffered_worktree,
+                                        &mut patches,
+                                    );
+                                }
+                            }
                             let patch = if is_new {
                                 ConversationPatch::add_normalized_entry(id_num, entry)
                             } else {
@@ -1342,6 +1362,17 @@ impl ClaudeLogProcessor {
                         content: content_text,
                     },
                 );
+                // Apply any buffered statuses that arrived before this ToolUse
+                if let Some(buffered) = self.pending_tool_statuses.remove(id) {
+                    for (status, buffered_worktree) in buffered {
+                        self.replace_tool_entry_status(
+                            id,
+                            status,
+                            &buffered_worktree,
+                            &mut patches,
+                        );
+                    }
+                }
             }
             ClaudeJson::ToolResult { .. } => {
                 // Add proper ToolResult support to NormalizedEntry when the type system supports it
@@ -2900,5 +2931,56 @@ mod tests {
         let control_request_json = r#"{"type":"control_request","request_id":"f559d907-b139-475b-addd-79c05591eb99","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"./gradlew :web:testApi","timeout":300000,"description":"Run API tests"},"permission_suggestions":[{"type":"addRules","rules":[{"toolName":"Bash","ruleContent":"./gradlew :web:testApi:"}],"behavior":"allow","destination":"localSettings"}],"tool_use_id":"toolu_014PR3WXsJfiftSCbjcjEbeM"}}"#;
         let parsed: ClaudeJson = serde_json::from_str(control_request_json).unwrap();
         assert!(matches!(parsed, ClaudeJson::ControlRequest { .. }));
+    }
+
+    #[test]
+    fn test_approval_requested_before_tool_use_is_buffered() {
+        let mut processor = ClaudeLogProcessor::new();
+        let provider = EntryIndexProvider::test_new();
+
+        // Step 1: ApprovalRequested arrives BEFORE the ToolUse entry is in tool_map
+        let approval_json = ClaudeJson::ApprovalRequested {
+            tool_call_id: "toolu_abc123".to_string(),
+            tool_name: "ask_user_question".to_string(),
+            approval_id: "approval-001".to_string(),
+        };
+        let patches = processor.normalize_entries(&approval_json, "/tmp/work", &provider);
+        assert_eq!(
+            patches.len(),
+            0,
+            "No patches expected when tool_map doesn't have the entry yet"
+        );
+
+        // Step 2: The assistant message with ToolUse arrives
+        let assistant_json: ClaudeJson = serde_json::from_str(
+            r#"{
+                "type":"assistant",
+                "message":{
+                    "role":"assistant",
+                    "content":[
+                        {"type":"tool_use","id":"toolu_abc123","name":"ask_user_question","input":{"question":"What is your favorite color?"}}
+                    ]
+                }
+            }"#,
+        )
+        .unwrap();
+        let patches = processor.normalize_entries(&assistant_json, "/tmp/work", &provider);
+
+        // Step 3: The ToolUse entry should have PendingApproval status (buffered status was applied)
+        let entries = patches_to_entries(&patches);
+        let tool_entry = entries
+            .iter()
+            .find(|e| matches!(e.entry_type, NormalizedEntryType::ToolUse { .. }));
+        assert!(tool_entry.is_some(), "Expected a ToolUse entry");
+        match &tool_entry.unwrap().entry_type {
+            NormalizedEntryType::ToolUse { status, .. } => {
+                assert!(
+                    matches!(status, ToolStatus::PendingApproval { .. }),
+                    "Expected PendingApproval, got {:?}",
+                    status
+                );
+            }
+            _ => unreachable!(),
+        }
     }
 }
