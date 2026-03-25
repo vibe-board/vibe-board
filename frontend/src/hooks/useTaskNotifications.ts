@@ -104,9 +104,7 @@ export function useTaskNotifications(
       if (prevStatus && prevStatus !== task.status) {
         const agent =
           task.executor + (task.variant ? ` (${task.variant})` : '');
-        if (task.status === 'done') {
-          triggerNotification('Task Completed', `${task.title}\n${agent}`);
-        } else if (task.status === 'inreview') {
+        if (task.status === 'inreview') {
           triggerNotification('Review Needed', `${task.title}\n${agent}`);
         }
       }
