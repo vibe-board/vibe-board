@@ -129,7 +129,7 @@ async fn get_user_system_info(
 
 async fn update_config(
     State(deployment): State<DeploymentImpl>,
-    Json(new_config): Json<Config>,
+    Json(mut new_config): Json<Config>,
 ) -> ResponseJson<ApiResponse<Config>> {
     let config_path = config_path();
 
@@ -142,6 +142,10 @@ async fn update_config(
 
     // Get old config state before updating
     let old_config = deployment.config().read().await.clone();
+
+    // Carry over extra_fields from in-memory config — the frontend has no
+    // knowledge of these fields, so they would be lost without this.
+    new_config.extra_fields = old_config.extra_fields.clone();
 
     match save_config_to_file(&new_config, &config_path).await {
         Ok(_) => {

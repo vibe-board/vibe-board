@@ -1,6 +1,6 @@
 use anyhow::Error;
 use executors::{executors::BaseCodingAgent, profile::ExecutorProfileId};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::Deserializer};
 use ts_rs::TS;
 pub use v9::{
     EditorConfig, EditorType, GitHubConfig, NotificationConfig, SendMessageShortcut, ShowcaseState,
@@ -8,6 +8,26 @@ pub use v9::{
 };
 
 use crate::services::config::versions::v9;
+
+/// Deserialize a Vec of enum values, silently skipping any unknown variants.
+/// Logs a warning for each unknown variant encountered.
+fn deserialize_vec_skip_unknown<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: serde::de::DeserializeOwned + std::fmt::Debug,
+{
+    let values: Vec<serde_json::Value> = Vec::deserialize(deserializer)?;
+    let mut result = Vec::with_capacity(values.len());
+    for v in values {
+        match serde_json::from_value::<T>(v.clone()) {
+            Ok(item) => result.push(item),
+            Err(_) => {
+                tracing::warn!("Skipping unknown enum variant in config: {}", v);
+            }
+        }
+    }
+    Ok(result)
+}
 
 fn default_git_branch_prefix() -> String {
     "vb".to_string()
@@ -72,11 +92,14 @@ pub struct Config {
     pub commit_reminder_prompt: Option<String>,
     #[serde(default)]
     pub send_message_shortcut: SendMessageShortcut,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_vec_skip_unknown")]
     pub agent_order: Vec<BaseCodingAgent>,
     #[serde(default)]
     pub project_order: Vec<uuid::Uuid>,
-    #[serde(default = "default_agent_enabled")]
+    #[serde(
+        default = "default_agent_enabled",
+        deserialize_with = "deserialize_vec_skip_unknown"
+    )]
     pub agent_enabled: Vec<BaseCodingAgent>,
     #[serde(default)]
     pub commit_message_executor_profile: Option<ExecutorProfileId>,
@@ -86,6 +109,11 @@ pub struct Config {
     pub commit_message_prompt: Option<String>,
     #[serde(default)]
     pub commit_message_single_commit: bool,
+    /// Unknown fields from newer config versions, preserved through round-trips.
+    /// Populated manually during two-phase parse; not part of serde or ts-rs.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub extra_fields: serde_json::Map<String, serde_json::Value>,
 }
 
 impl Config {
@@ -118,33 +146,13 @@ impl Config {
             commit_message_enabled: default_commit_message_enabled(),
             commit_message_prompt: None,
             commit_message_single_commit: false,
+            extra_fields: serde_json::Map::new(),
         }
     }
 
     pub fn from_previous_version(raw_config: &str) -> Result<Self, Error> {
         let old_config = v9::Config::from(raw_config.to_string());
         Ok(Self::from_v9_config(old_config))
-    }
-}
-
-impl From<String> for Config {
-    fn from(raw_config: String) -> Self {
-        if let Ok(config) = serde_json::from_str::<Config>(&raw_config)
-            && config.config_version == "v10"
-        {
-            return config;
-        }
-
-        match Self::from_previous_version(&raw_config) {
-            Ok(config) => {
-                tracing::info!("Config upgraded to v10");
-                config
-            }
-            Err(e) => {
-                tracing::warn!("Config migration failed: {}, using default", e);
-                Self::default()
-            }
-        }
     }
 }
 
@@ -178,6 +186,51 @@ impl Default for Config {
             commit_message_enabled: default_commit_message_enabled(),
             commit_message_prompt: None,
             commit_message_single_commit: false,
+            extra_fields: serde_json::Map::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extra_fields_default_is_empty() {
+        let config = Config::default();
+        assert!(config.extra_fields.is_empty());
+    }
+
+    #[test]
+    fn test_deserialize_skips_unknown_agent_variants() {
+        // Start from a valid default config, then inject unknown agent variants
+        let config = Config::default();
+        let mut json: serde_json::Value = serde_json::to_value(&config).unwrap();
+        let obj = json.as_object_mut().unwrap();
+        obj.insert(
+            "agent_enabled".to_string(),
+            serde_json::json!(["CLAUDE_CODE", "TOTALLY_UNKNOWN_AGENT", "AMP"]),
+        );
+        obj.insert(
+            "agent_order".to_string(),
+            serde_json::json!(["TOTALLY_UNKNOWN_AGENT", "CLAUDE_CODE"]),
+        );
+
+        let parsed: Config = serde_json::from_value(json).unwrap();
+        // Unknown variant should be skipped, known ones kept
+        assert!(parsed.agent_enabled.contains(&BaseCodingAgent::ClaudeCode));
+        assert!(parsed.agent_enabled.contains(&BaseCodingAgent::Amp));
+        assert_eq!(parsed.agent_enabled.len(), 2); // TOTALLY_UNKNOWN_AGENT filtered out
+        assert_eq!(parsed.agent_order.len(), 1); // Only CLAUDE_CODE
+    }
+
+    #[test]
+    fn test_serde_roundtrip_preserves_all_fields() {
+        let config = Config::default();
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: Config = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.config_version, config.config_version);
+        assert_eq!(parsed.git_branch_prefix, config.git_branch_prefix);
+        assert_eq!(parsed.commit_message_enabled, config.commit_message_enabled);
     }
 }

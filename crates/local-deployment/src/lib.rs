@@ -10,7 +10,7 @@ use services::services::{
     analytics::{AnalyticsConfig, AnalyticsContext, AnalyticsService, generate_user_id},
     approvals::Approvals,
     auth::AuthContext,
-    config::{Config, load_config_from_file, save_config_to_file},
+    config::{Config, LoadOutcome, load_config_from_file, save_config_to_file},
     container::ContainerService,
     events::EventService,
     file_search::FileSearchCache,
@@ -66,17 +66,34 @@ struct PendingHandoff {
 #[async_trait]
 impl Deployment for LocalDeployment {
     async fn new() -> Result<Self, DeploymentError> {
-        let mut raw_config = load_config_from_file(&config_path()).await;
+        let (mut raw_config, load_outcome) = load_config_from_file(&config_path()).await;
+
+        let mut needs_save = !matches!(load_outcome, LoadOutcome::Loaded);
 
         let profiles = ExecutorConfigs::get_cached();
         if !raw_config.onboarding_acknowledged
             && let Ok(recommended_executor) = profiles.get_recommended_executor_profile().await
         {
             raw_config.executor_profile = recommended_executor;
+            needs_save = true;
         }
 
-        // Always save config (may have been migrated)
-        save_config_to_file(&raw_config, &config_path()).await?;
+        if needs_save {
+            save_config_to_file(&raw_config, &config_path()).await?;
+        }
+
+        match &load_outcome {
+            LoadOutcome::Migrated { backup_path } => {
+                tracing::info!("Config migrated. Backup at {:?}", backup_path);
+            }
+            LoadOutcome::ParseFailed { backup_path } => {
+                tracing::warn!(
+                    "Config parse failed. Backup at {:?}. Using defaults.",
+                    backup_path
+                );
+            }
+            _ => {}
+        }
 
         if let Some(workspace_dir) = &raw_config.workspace_dir {
             let path = utils::path::expand_tilde(workspace_dir);
