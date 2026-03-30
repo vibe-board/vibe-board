@@ -280,6 +280,7 @@ impl LogState {
             | SdkEvent::QuestionRejected
             | SdkEvent::CommandExecuted
             | SdkEvent::SessionDiff
+            | SdkEvent::SessionUpdated
             | SdkEvent::TuiSessionSelect => {}
             SdkEvent::SessionError(event) => {
                 let (error_type, message) = match event.error {

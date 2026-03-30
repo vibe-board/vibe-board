@@ -69,6 +69,7 @@ pub(super) enum SdkEvent {
     PermissionReplied,
     SessionIdle,
     SessionStatus(SessionStatusEvent),
+    SessionUpdated,
     SessionDiff,
     SessionCompacted,
     SessionError(SessionErrorEvent),
@@ -106,6 +107,7 @@ impl SdkEvent {
             "session.status" => {
                 SdkEvent::SessionStatus(serde_json::from_value(envelope.properties).ok()?)
             }
+            "session.updated" => SdkEvent::SessionUpdated,
             "session.diff" => SdkEvent::SessionDiff,
             "session.compacted" => SdkEvent::SessionCompacted,
             "session.error" => {
