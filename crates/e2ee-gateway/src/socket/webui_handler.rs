@@ -177,19 +177,36 @@ async fn handle_webui_socket(socket: WebSocket, state: AppState, query: WebUICon
                 state
                     .webui_registry
                     .subscribe(&client_id, &machine_id, &user_id);
+                // Notify daemon that a new client subscribed (for per-client DEK tracking)
+                let notify = serde_json::json!({
+                    "type": "client_connected",
+                    "client_id": client_id,
+                });
+                let _ = state
+                    .cli_registry
+                    .send_to_daemon(&machine_id, &user_id, notify.to_string());
             }
 
             WebUIMessage::Unsubscribe { machine_id } => {
                 state.webui_registry.unsubscribe(&client_id, &machine_id);
+                // Notify daemon that a client unsubscribed (for DEK cleanup)
+                let notify = serde_json::json!({
+                    "type": "client_disconnected",
+                    "client_id": client_id,
+                });
+                let _ = state
+                    .cli_registry
+                    .send_to_daemon(&machine_id, &user_id, notify.to_string());
             }
 
             WebUIMessage::Forward {
                 machine_id,
                 payload,
             } => {
-                // Verify the machine belongs to this user, then forward
+                // Include client_id so the daemon can route responses back to this specific tab
                 let fwd_msg = serde_json::json!({
                     "type": "forward",
+                    "client_id": client_id,
                     "payload": payload
                 });
                 if let Err(e) =
@@ -203,8 +220,18 @@ async fn handle_webui_socket(socket: WebSocket, state: AppState, query: WebUICon
         }
     }
 
-    // Cleanup
+    // Cleanup: notify daemons of disconnected client for DEK cleanup
     info!("WebUI disconnected: client_id={client_id}");
+    let subscribed_machines = state.webui_registry.get_subscriptions(&client_id);
+    for machine_id in &subscribed_machines {
+        let notify = serde_json::json!({
+            "type": "client_disconnected",
+            "client_id": client_id,
+        });
+        let _ = state
+            .cli_registry
+            .send_to_daemon(machine_id, &user_id, notify.to_string());
+    }
     state.webui_registry.unregister(&client_id);
     send_task.abort();
 }

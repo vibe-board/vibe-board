@@ -40,7 +40,10 @@ enum DaemonMessage {
         port: u16,
     },
     #[serde(rename = "forward")]
-    Forward { payload: serde_json::Value },
+    Forward {
+        client_id: String,
+        payload: serde_json::Value,
+    },
 }
 
 /// Messages from gateway → daemon
@@ -55,11 +58,14 @@ enum GatewayToDaemon {
     #[serde(rename = "registered")]
     Registered { machine_id: String },
     #[serde(rename = "client_connected")]
-    ClientConnected,
+    ClientConnected { client_id: String },
     #[serde(rename = "client_disconnected")]
-    ClientDisconnected,
+    ClientDisconnected { client_id: String },
     #[serde(rename = "forward")]
-    Forward { payload: serde_json::Value },
+    Forward {
+        client_id: String,
+        payload: serde_json::Value,
+    },
 }
 
 #[allow(unused_assignments)]
@@ -213,12 +219,14 @@ async fn handle_daemon_socket(socket: WebSocket, state: AppState, query: DaemonC
                 );
             }
 
-            DaemonMessage::Forward { payload } => {
+            DaemonMessage::Forward { client_id, payload } => {
                 let Some(ref uid) = user_id else { continue };
                 let Some(ref mid) = machine_id else { continue };
 
-                // Forward to all subscribed WebUI clients for this machine
-                state.webui_registry.forward_to_webui(mid, uid, payload);
+                // Route response to the specific WebUI client that sent the request
+                if !state.webui_registry.send_to_client(&client_id, mid, uid, payload) {
+                    warn!("Failed to route response to client {client_id}");
+                }
             }
         }
     }

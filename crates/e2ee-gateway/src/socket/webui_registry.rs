@@ -106,31 +106,36 @@ impl WebUIRegistry {
         }
     }
 
-    /// Forward an encrypted payload from a daemon to all WebUI clients subscribed to that machine
-    pub fn forward_to_webui(&self, machine_id: &str, user_id: &str, payload: serde_json::Value) {
-        let msg = serde_json::to_string(&GatewayToWebUI::Forward {
-            machine_id: machine_id.to_string(),
-            payload,
-        });
+    /// Get the set of machine_ids a client is subscribed to (for disconnect cleanup)
+    pub fn get_subscriptions(&self, client_id: &str) -> Vec<String> {
+        self.clients
+            .get(client_id)
+            .map(|c| c.subscriptions.iter().cloned().collect())
+            .unwrap_or_default()
+    }
 
-        let msg = match msg {
-            Ok(m) => m,
-            Err(e) => {
-                warn!("Failed to serialize forward message: {e}");
-                return;
+    /// Send a response to a specific WebUI client (targeted routing by client_id)
+    pub fn send_to_client(
+        &self,
+        client_id: &str,
+        machine_id: &str,
+        user_id: &str,
+        payload: serde_json::Value,
+    ) -> bool {
+        if let Some(client) = self.clients.get(client_id) {
+            if client.user_id != user_id {
+                return false;
             }
-        };
-
-        if let Some(subscriber_ids) = self.subscriptions.get(machine_id) {
-            for client_id in subscriber_ids.iter() {
-                if let Some(client) = self.clients.get(client_id) {
-                    // Verify user ownership
-                    if client.user_id == user_id {
-                        let _ = client.sender.send(msg.clone());
-                    }
-                }
+            let msg = serde_json::to_string(&GatewayToWebUI::Forward {
+                machine_id: machine_id.to_string(),
+                payload,
+            });
+            if let Ok(msg) = msg {
+                let _ = client.sender.send(msg);
+                return true;
             }
         }
+        false
     }
 
     /// Notify all WebUI clients of a user that a machine came online
