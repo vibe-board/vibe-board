@@ -33,7 +33,11 @@ const TaskAttemptPanel = ({
             <VirtualizedList key={attempt.id} attempt={attempt} task={task} />
           ),
           followUp: (
-            <TaskFollowUpSection task={task} session={attempt.session} />
+            <TaskFollowUpSection
+              key={attempt.id}
+              task={task}
+              session={attempt.session}
+            />
           ),
         })}
       </RetryUiProvider>
