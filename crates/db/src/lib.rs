@@ -83,9 +83,7 @@ impl DBService {
             .create_if_missing(true)
             .journal_mode(SqliteJournalMode::Wal)
             .busy_timeout(std::time::Duration::from_secs(5));
-        let pool = SqlitePoolOptions::new()
-            .connect_with(options)
-            .await?;
+        let pool = SqlitePoolOptions::new().connect_with(options).await?;
         run_migrations(&pool).await?;
         data_migrations::run(&pool).await?;
         Ok(DBService { pool })

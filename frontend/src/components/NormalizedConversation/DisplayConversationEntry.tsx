@@ -981,13 +981,8 @@ function DisplayConversationEntry({
   }
 
   if (entry.entry_type.type === 'token_usage_info') {
-    const { total_tokens, model_context_window } = entry.entry_type;
-    if (model_context_window === 0) return null;
+    const { total_tokens, model_context_window, model_name } = entry.entry_type;
 
-    const percentage = Math.min(
-      100,
-      (total_tokens / model_context_window) * 100
-    );
     const formatTokens = (n: number) => {
       if (n >= 1_000_000) {
         const m = n / 1_000_000;
@@ -996,6 +991,26 @@ function DisplayConversationEntry({
       if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
       return n.toString();
     };
+
+    // Streaming mode: only token count known, no context window yet
+    if (model_context_window == null) {
+      return (
+        <div className="px-4 py-1.5 text-xs text-muted-foreground flex items-center gap-2">
+          <Gauge className="h-3 w-3" />
+          <span className="font-medium">
+            {formatTokens(total_tokens)} tokens
+          </span>
+        </div>
+      );
+    }
+
+    // Final mode: full bar with percentage and model name
+    if (model_context_window === 0) return null;
+
+    const percentage = Math.min(
+      100,
+      (total_tokens / model_context_window) * 100
+    );
 
     const barColor =
       percentage >= 90
@@ -1009,6 +1024,7 @@ function DisplayConversationEntry({
     return (
       <div className="px-4 py-1.5 text-xs text-muted-foreground flex items-center gap-2">
         <Gauge className="h-3 w-3" />
+        {model_name && <span className="opacity-70">{model_name}</span>}
         <span className="font-medium">
           {formatTokens(total_tokens)} / {formatTokens(model_context_window)}
         </span>

@@ -1060,10 +1060,10 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                                 entry_type: NormalizedEntryType::TokenUsageInfo(
                                     crate::logs::TokenUsageInfo {
                                         total_tokens: info.last_token_usage.total_tokens as u32,
-                                        model_context_window: info
-                                            .model_context_window
-                                            .unwrap_or_default()
-                                            as u32,
+                                        model_context_window: Some(
+                                            info.model_context_window.unwrap_or_default() as u32,
+                                        ),
+                                        model_name: None,
                                     },
                                 ),
                                 content: format!(

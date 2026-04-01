@@ -116,7 +116,10 @@ pub struct AnsweredQuestion {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct TokenUsageInfo {
     pub total_tokens: u32,
-    pub model_context_window: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_context_window: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

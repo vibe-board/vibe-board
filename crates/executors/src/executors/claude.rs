@@ -460,9 +460,6 @@ pub enum HistoryStrategy {
     AmpResume,
 }
 
-/// Default context window for models (used until we get actual value from result)
-const DEFAULT_CLAUDE_CONTEXT_WINDOW: u32 = 200_000;
-
 /// Handles log processing and interpretation for Claude executor
 pub struct ClaudeLogProcessor {
     model_name: Option<String>,
@@ -473,10 +470,6 @@ pub struct ClaudeLogProcessor {
     streaming_messages: HashMap<String, StreamingMessageState>,
     streaming_message_id: Option<String>,
     last_assistant_message: Option<String>,
-    // Main model name (excluding subagents). Only used internally for context window tracking.
-    main_model_name: Option<String>,
-    main_model_context_window: u32,
-    context_tokens_used: u32,
     // Buffer for status updates that arrive before the ToolUse entry is in tool_map
     pending_tool_statuses: HashMap<String, Vec<(ToolStatus, String)>>,
 }
@@ -490,14 +483,11 @@ impl ClaudeLogProcessor {
     fn new_with_strategy(strategy: HistoryStrategy) -> Self {
         Self {
             model_name: None,
-            main_model_name: None,
             tool_map: HashMap::new(),
             strategy,
             streaming_messages: HashMap::new(),
             streaming_message_id: None,
             last_assistant_message: None,
-            main_model_context_window: DEFAULT_CLAUDE_CONTEXT_WINDOW,
-            context_tokens_used: 0,
             pending_tool_statuses: HashMap::new(),
         }
     }
@@ -989,7 +979,7 @@ impl ClaudeLogProcessor {
             ClaudeJson::System {
                 subtype,
                 api_key_source,
-                model,
+                model: _,
                 status,
                 ..
             } => {
@@ -1002,14 +992,10 @@ impl ClaudeLogProcessor {
                 // keep the existing behaviour for the normal system message
                 match subtype.as_deref() {
                     Some("init") => {
-                        if self.main_model_name.is_none() {
-                            // this name matches the model names in the usage report in the result message
-                            if let Some(model) = model {
-                                self.main_model_name = Some(model.clone());
-                            }
-                        }
-                        // Skip system init messages because it doesn't contain the actual model that will be used in assistant messages in case of claude-code-router.
-                        // We'll send system initialized message with first assistant message that has a model field.
+                        // Skip system init messages because it doesn't contain the actual model
+                        // that will be used in assistant messages in case of claude-code-router.
+                        // We'll send system initialized message with first assistant message
+                        // that has a model field.
                     }
                     Some("status") => {
                         if let Some(status) = status {
@@ -1432,7 +1418,7 @@ impl ClaudeLogProcessor {
                 }
                 ClaudeStreamEvent::ContentBlockStop { .. } => {}
                 ClaudeStreamEvent::MessageDelta { usage, .. } => {
-                    // do not report context token usage for subagents
+                    // Emit token-only usage (no context window — that comes in Result)
                     if parent_tool_use_id.is_none()
                         && let Some(usage) = usage
                     {
@@ -1440,10 +1426,22 @@ impl ClaudeLogProcessor {
                             + usage.cache_creation_input_tokens.unwrap_or(0)
                             + usage.cache_read_input_tokens.unwrap_or(0);
                         let output_tokens = usage.output_tokens.unwrap_or(0);
-                        let total_tokens = input_tokens + output_tokens;
-                        self.context_tokens_used = total_tokens as u32;
+                        let total_tokens = (input_tokens + output_tokens) as u32;
 
-                        patches.push(self.add_token_usage_entry(entry_index_provider));
+                        let entry = NormalizedEntry {
+                            timestamp: None,
+                            entry_type: NormalizedEntryType::TokenUsageInfo(
+                                crate::logs::TokenUsageInfo {
+                                    total_tokens,
+                                    model_context_window: None,
+                                    model_name: None,
+                                },
+                            ),
+                            content: format!("Tokens used: {}", total_tokens),
+                            metadata: None,
+                        };
+                        let idx = entry_index_provider.next();
+                        patches.push(ConversationPatch::add_normalized_entry(idx, entry));
                     }
                 }
                 ClaudeStreamEvent::MessageStop => {
@@ -1462,15 +1460,38 @@ impl ClaudeLogProcessor {
                 result,
                 ..
             } => {
-                // get the real model context window and correct the context usage entry
-                if let Some(context_window) = model_usage.as_ref().and_then(|model_usage| {
-                    self.main_model_name
-                        .as_ref()
-                        .and_then(|name| model_usage.get(name))
-                        .and_then(|usage| usage.context_window)
-                }) {
-                    self.main_model_context_window = context_window;
-                    patches.push(self.add_token_usage_entry(entry_index_provider));
+                // Emit one usage entry per model with full context window info
+                if let Some(model_usage) = model_usage.as_ref() {
+                    for (name, usage) in model_usage {
+                        let input_tokens = usage.input_tokens.unwrap_or(0)
+                            + usage.cache_read_input_tokens.unwrap_or(0)
+                            + usage.cache_creation_input_tokens.unwrap_or(0);
+                        let output_tokens = usage.output_tokens.unwrap_or(0);
+                        let total_tokens = (input_tokens + output_tokens) as u32;
+
+                        let entry = NormalizedEntry {
+                            timestamp: None,
+                            entry_type: NormalizedEntryType::TokenUsageInfo(
+                                crate::logs::TokenUsageInfo {
+                                    total_tokens,
+                                    model_context_window: usage.context_window,
+                                    model_name: Some(name.clone()),
+                                },
+                            ),
+                            content: format!(
+                                "Model: {} — Tokens used: {}{}",
+                                name,
+                                total_tokens,
+                                usage
+                                    .context_window
+                                    .map(|cw| format!(" / Context window: {}", cw))
+                                    .unwrap_or_default()
+                            ),
+                            metadata: None,
+                        };
+                        let idx = entry_index_provider.next();
+                        patches.push(ConversationPatch::add_normalized_entry(idx, entry));
+                    }
                 }
 
                 if matches!(self.strategy, HistoryStrategy::AmpResume) && is_error.unwrap_or(false)
@@ -1717,26 +1738,6 @@ impl ClaudeLogProcessor {
                 _ => tool_data.get_name().to_string(),
             },
         }
-    }
-
-    fn add_token_usage_entry(
-        &mut self,
-        entry_index_provider: &EntryIndexProvider,
-    ) -> json_patch::Patch {
-        let entry = NormalizedEntry {
-            timestamp: None,
-            entry_type: NormalizedEntryType::TokenUsageInfo(crate::logs::TokenUsageInfo {
-                total_tokens: self.context_tokens_used,
-                model_context_window: self.main_model_context_window,
-            }),
-            content: format!(
-                "Tokens used: {} / Context window: {}",
-                self.context_tokens_used, self.main_model_context_window
-            ),
-            metadata: None,
-        };
-        let idx = entry_index_provider.next();
-        ConversationPatch::add_normalized_entry(idx, entry)
     }
 }
 
@@ -2169,6 +2170,14 @@ pub struct ClaudeUsage {
 pub struct ClaudeModelUsage {
     #[serde(default)]
     pub context_window: Option<u32>,
+    #[serde(default)]
+    pub input_tokens: Option<u64>,
+    #[serde(default)]
+    pub output_tokens: Option<u64>,
+    #[serde(default)]
+    pub cache_read_input_tokens: Option<u64>,
+    #[serde(default)]
+    pub cache_creation_input_tokens: Option<u64>,
 }
 
 /// Structured tool data for Claude tools based on real samples
