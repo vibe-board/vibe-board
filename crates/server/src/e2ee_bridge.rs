@@ -310,7 +310,11 @@ fn send_encrypted_response(
     dek: &[u8; 32],
 ) -> Result<()> {
     let encrypted = e2ee_core::encrypt_json(&response, dek)?;
-    send_response(tx, client_id, e2ee_core::BridgeResponse::Encrypted(encrypted));
+    send_response(
+        tx,
+        client_id,
+        e2ee_core::BridgeResponse::Encrypted(encrypted),
+    );
     Ok(())
 }
 
@@ -698,11 +702,8 @@ mod tests {
 
         // Send an encrypted payload without having exchanged a DEK
         let dek = e2ee_core::generate_dek();
-        let payload = e2ee_core::encrypt_json(
-            &e2ee_core::BridgeRequest::Ping { id: 1 },
-            &dek,
-        )
-        .unwrap();
+        let payload =
+            e2ee_core::encrypt_json(&e2ee_core::BridgeRequest::Ping { id: 1 }, &dek).unwrap();
         let payload_value = serde_json::to_value(payload).unwrap();
 
         let result = handle_forward(&ctx, "unknown-client", payload_value).await;
@@ -763,11 +764,8 @@ mod tests {
         let _ = rx.try_recv(); // consume dek_ok
 
         // Request encrypted with client A's DEK should fail for client B
-        let payload_a = e2ee_core::encrypt_json(
-            &e2ee_core::BridgeRequest::Ping { id: 1 },
-            &dek_a,
-        )
-        .unwrap();
+        let payload_a =
+            e2ee_core::encrypt_json(&e2ee_core::BridgeRequest::Ping { id: 1 }, &dek_a).unwrap();
         let payload_value = serde_json::to_value(payload_a).unwrap();
 
         let result = handle_forward(&ctx, "client-b", payload_value).await;

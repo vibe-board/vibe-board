@@ -7,6 +7,7 @@ use std::{
 
 use convert_case::{Case, Casing};
 use serde::{Deserialize, Deserializer, Serialize, de::Error as DeError};
+use serde_json::Value;
 use thiserror::Error;
 use ts_rs::TS;
 
@@ -119,26 +120,40 @@ impl std::fmt::Display for ExecutorProfileId {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+pub struct VariantConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inherit_from: Option<String>,
+    #[serde(flatten)]
+    pub agent: CodingAgent,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct ExecutorConfig {
     #[serde(flatten)]
-    pub configurations: HashMap<String, CodingAgent>,
+    pub configurations: HashMap<String, VariantConfig>,
 }
 
 impl ExecutorConfig {
     /// Get variant configuration by name, or None if not found
     pub fn get_variant(&self, variant: &str) -> Option<&CodingAgent> {
-        self.configurations.get(variant)
+        self.configurations.get(variant).map(|vc| &vc.agent)
     }
 
     /// Get the default configuration for this executor
     pub fn get_default(&self) -> Option<&CodingAgent> {
-        self.configurations.get("DEFAULT")
+        self.configurations.get("DEFAULT").map(|vc| &vc.agent)
     }
 
     /// Create a new executor profile with just a default configuration
     pub fn new_with_default(default_config: CodingAgent) -> Self {
         let mut configurations = HashMap::new();
-        configurations.insert("DEFAULT".to_string(), default_config);
+        configurations.insert(
+            "DEFAULT".to_string(),
+            VariantConfig {
+                inherit_from: None,
+                agent: default_config,
+            },
+        );
         Self { configurations }
     }
 
@@ -154,13 +169,39 @@ impl ExecutorConfig {
                 "Cannot override 'DEFAULT' variant using set_variant, use set_default instead",
             );
         }
-        self.configurations.insert(key, config);
+        self.configurations.insert(
+            key,
+            VariantConfig {
+                inherit_from: None,
+                agent: config,
+            },
+        );
         Ok(())
     }
 
     /// Set the default configuration
     pub fn set_default(&mut self, config: CodingAgent) {
-        self.configurations.insert("DEFAULT".to_string(), config);
+        self.configurations.insert(
+            "DEFAULT".to_string(),
+            VariantConfig {
+                inherit_from: None,
+                agent: config,
+            },
+        );
+    }
+
+    /// Resolve a variant, applying inheritance if configured.
+    /// Returns the fully-resolved CodingAgent, or None if the variant
+    /// (or its parent) doesn't exist.
+    pub fn resolve_variant(&self, variant: &str) -> Option<CodingAgent> {
+        let config = self.configurations.get(variant)?;
+        match &config.inherit_from {
+            None => Some(config.agent.clone()),
+            Some(parent_name) => {
+                let parent = self.configurations.get(parent_name)?;
+                Some(merge_coding_agent(&parent.agent, &config.agent))
+            }
+        }
     }
 
     /// Get all variant names (excluding "DEFAULT")
@@ -170,6 +211,37 @@ impl ExecutorConfig {
             .filter(|k| *k != "DEFAULT")
             .collect()
     }
+}
+
+/// Deep-merge two JSON values. `overlay` wins for scalar fields.
+/// When both sides are objects, keys are merged recursively so that
+/// parent fields not present in the child are preserved.
+/// For the `env` key specifically this means environment variables from
+/// the parent carry through unless the child overrides them.
+/// Non-object values (arrays, scalars) are always replaced by the overlay.
+fn json_deep_merge(base: Value, overlay: Value) -> Value {
+    match (base, overlay) {
+        (Value::Object(mut base_map), Value::Object(overlay_map)) => {
+            for (key, overlay_val) in overlay_map {
+                let merged_val = if let Some(base_val) = base_map.remove(&key) {
+                    json_deep_merge(base_val, overlay_val)
+                } else {
+                    overlay_val
+                };
+                base_map.insert(key, merged_val);
+            }
+            Value::Object(base_map)
+        }
+        (_, overlay) => overlay,
+    }
+}
+
+/// Merge a parent CodingAgent with a child CodingAgent.
+fn merge_coding_agent(parent: &CodingAgent, child: &CodingAgent) -> CodingAgent {
+    let parent_val = serde_json::to_value(parent).expect("parent serializes");
+    let child_val = serde_json::to_value(child).expect("child serializes");
+    let merged = json_deep_merge(parent_val, child_val);
+    serde_json::from_value(merged).expect("merged value deserializes")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
@@ -192,6 +264,15 @@ impl ExecutorConfigs {
                 if let Some(cfg) = profile.configurations.remove(&old) {
                     // If both lowercase and canonical forms existed, keep canonical one
                     profile.configurations.entry(new).or_insert(cfg);
+                }
+            }
+            // Also canonicalise inherit_from references
+            for vc in profile.configurations.values_mut() {
+                if let Some(ref parent) = vc.inherit_from {
+                    let canon = canonical_variant_key(parent);
+                    if canon != *parent {
+                        vc.inherit_from = Some(canon);
+                    }
                 }
             }
         }
@@ -363,9 +444,10 @@ impl ExecutorConfigs {
             })?;
 
             // Validate that the default agent type matches the executor key
-            if BaseCodingAgent::from(default_config) != *executor_key {
+            if BaseCodingAgent::from(&default_config.agent) != *executor_key {
                 return Err(ProfileError::Validation(format!(
-                    "Executor key '{executor_key}' does not match the agent variant '{default_config}'"
+                    "Executor key '{executor_key}' does not match the agent variant '{}'",
+                    default_config.agent
                 )));
             }
 
@@ -375,6 +457,33 @@ impl ExecutorConfigs {
                     return Err(ProfileError::Validation(format!(
                         "Configuration name '{config_name}' is reserved (starts with '__')"
                     )));
+                }
+            }
+
+            // Validate inherit_from references
+            for (config_name, variant_config) in &profile.configurations {
+                if let Some(ref parent_name) = variant_config.inherit_from {
+                    // No self-reference
+                    if parent_name == config_name {
+                        return Err(ProfileError::Validation(format!(
+                            "Configuration '{executor_key}:{config_name}' cannot inherit from itself"
+                        )));
+                    }
+
+                    // Parent must exist
+                    let parent =
+                        profile.configurations.get(parent_name).ok_or_else(|| {
+                            ProfileError::Validation(format!(
+                                "Configuration '{executor_key}:{config_name}' inherits from '{parent_name}' which does not exist"
+                            ))
+                        })?;
+
+                    // Single-layer: parent must not itself inherit
+                    if parent.inherit_from.is_some() {
+                        return Err(ProfileError::Validation(format!(
+                            "Configuration '{executor_key}:{config_name}' inherits from '{parent_name}' which already inherits from another configuration. Only single-layer inheritance is allowed."
+                        )));
+                    }
                 }
             }
         }
@@ -393,14 +502,13 @@ impl ExecutorConfigs {
         self.executors
             .get(&executor_profile_id.executor)
             .and_then(|executor| {
-                executor.get_variant(
+                executor.resolve_variant(
                     &executor_profile_id
                         .variant
                         .clone()
                         .unwrap_or("DEFAULT".to_string()),
                 )
             })
-            .cloned()
     }
 
     pub fn get_coding_agent_or_default(
@@ -482,5 +590,288 @@ pub fn to_default_variant(id: &ExecutorProfileId) -> ExecutorProfileId {
     ExecutorProfileId {
         executor: id.executor,
         variant: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn variant_config_without_inherit_from_deserializes() {
+        let json = json!({
+            "executors": {
+                "CLAUDE_CODE": {
+                    "DEFAULT": {
+                        "CLAUDE_CODE": {
+                            "dangerously_skip_permissions": true
+                        }
+                    }
+                }
+            }
+        });
+        let configs: ExecutorConfigs = serde_json::from_value(json).unwrap();
+        let claude = configs.executors.get(&BaseCodingAgent::ClaudeCode).unwrap();
+        let default = claude.configurations.get("DEFAULT").unwrap();
+        assert!(default.inherit_from.is_none());
+    }
+
+    #[test]
+    fn variant_config_with_inherit_from_deserializes() {
+        let json = json!({
+            "executors": {
+                "CLAUDE_CODE": {
+                    "DEFAULT": {
+                        "CLAUDE_CODE": {
+                            "dangerously_skip_permissions": true
+                        }
+                    },
+                    "OPUS": {
+                        "inherit_from": "DEFAULT",
+                        "CLAUDE_CODE": {
+                            "model": "opus"
+                        }
+                    }
+                }
+            }
+        });
+        let configs: ExecutorConfigs = serde_json::from_value(json).unwrap();
+        let claude = configs.executors.get(&BaseCodingAgent::ClaudeCode).unwrap();
+        let opus = claude.configurations.get("OPUS").unwrap();
+        assert_eq!(opus.inherit_from, Some("DEFAULT".to_string()));
+    }
+
+    #[test]
+    fn resolve_variant_without_inheritance() {
+        let json = json!({
+            "executors": {
+                "CLAUDE_CODE": {
+                    "DEFAULT": {
+                        "CLAUDE_CODE": {
+                            "dangerously_skip_permissions": true
+                        }
+                    }
+                }
+            }
+        });
+        let configs: ExecutorConfigs = serde_json::from_value(json).unwrap();
+        let claude = configs.executors.get(&BaseCodingAgent::ClaudeCode).unwrap();
+        let resolved = claude.resolve_variant("DEFAULT");
+        assert!(resolved.is_some());
+    }
+
+    #[test]
+    fn resolve_variant_inherits_scalar_fields() {
+        let json = json!({
+            "executors": {
+                "CLAUDE_CODE": {
+                    "DEFAULT": {
+                        "CLAUDE_CODE": {
+                            "dangerously_skip_permissions": true
+                        }
+                    },
+                    "OPUS": {
+                        "inherit_from": "DEFAULT",
+                        "CLAUDE_CODE": {
+                            "model": "opus"
+                        }
+                    }
+                }
+            }
+        });
+        let configs: ExecutorConfigs = serde_json::from_value(json).unwrap();
+        let claude = configs.executors.get(&BaseCodingAgent::ClaudeCode).unwrap();
+        let resolved = claude.resolve_variant("OPUS").unwrap();
+
+        let val = serde_json::to_value(&resolved).unwrap();
+        let inner = val.get("CLAUDE_CODE").unwrap();
+        assert_eq!(inner.get("model").unwrap(), "opus");
+        assert_eq!(inner.get("dangerously_skip_permissions").unwrap(), true);
+    }
+
+    #[test]
+    fn resolve_variant_deep_merges_env() {
+        let json = json!({
+            "executors": {
+                "CLAUDE_CODE": {
+                    "DEFAULT": {
+                        "CLAUDE_CODE": {
+                            "env": {
+                                "API_KEY": "default-key",
+                                "PROXY": "http://default"
+                            }
+                        }
+                    },
+                    "OPUS": {
+                        "inherit_from": "DEFAULT",
+                        "CLAUDE_CODE": {
+                            "model": "opus",
+                            "env": {
+                                "PROXY": "http://opus"
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        let configs: ExecutorConfigs = serde_json::from_value(json).unwrap();
+        let claude = configs.executors.get(&BaseCodingAgent::ClaudeCode).unwrap();
+        let resolved = claude.resolve_variant("OPUS").unwrap();
+
+        let val = serde_json::to_value(&resolved).unwrap();
+        let inner = val.get("CLAUDE_CODE").unwrap();
+        let env = inner.get("env").unwrap();
+        assert_eq!(env.get("API_KEY").unwrap(), "default-key");
+        assert_eq!(env.get("PROXY").unwrap(), "http://opus");
+    }
+
+    #[test]
+    fn resolve_variant_missing_parent_returns_none() {
+        let json = json!({
+            "executors": {
+                "CLAUDE_CODE": {
+                    "DEFAULT": {
+                        "CLAUDE_CODE": {}
+                    },
+                    "BAD": {
+                        "inherit_from": "NONEXISTENT",
+                        "CLAUDE_CODE": {}
+                    }
+                }
+            }
+        });
+        let configs: ExecutorConfigs = serde_json::from_value(json).unwrap();
+        let claude = configs.executors.get(&BaseCodingAgent::ClaudeCode).unwrap();
+        assert!(claude.resolve_variant("BAD").is_none());
+    }
+
+    #[test]
+    fn validate_rejects_self_reference() {
+        let json = json!({
+            "executors": {
+                "CLAUDE_CODE": {
+                    "DEFAULT": {
+                        "CLAUDE_CODE": { "dangerously_skip_permissions": true }
+                    },
+                    "BAD": {
+                        "inherit_from": "BAD",
+                        "CLAUDE_CODE": {}
+                    }
+                }
+            }
+        });
+        let configs: ExecutorConfigs = serde_json::from_value(json).unwrap();
+        let result = ExecutorConfigs::validate_merged(&configs);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("cannot inherit from itself")
+        );
+    }
+
+    #[test]
+    fn validate_rejects_missing_parent() {
+        let json = json!({
+            "executors": {
+                "CLAUDE_CODE": {
+                    "DEFAULT": {
+                        "CLAUDE_CODE": { "dangerously_skip_permissions": true }
+                    },
+                    "BAD": {
+                        "inherit_from": "NONEXISTENT",
+                        "CLAUDE_CODE": {}
+                    }
+                }
+            }
+        });
+        let configs: ExecutorConfigs = serde_json::from_value(json).unwrap();
+        let result = ExecutorConfigs::validate_merged(&configs);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("NONEXISTENT"));
+    }
+
+    #[test]
+    fn validate_rejects_chain_inheritance() {
+        let json = json!({
+            "executors": {
+                "CLAUDE_CODE": {
+                    "DEFAULT": {
+                        "CLAUDE_CODE": { "dangerously_skip_permissions": true }
+                    },
+                    "MID": {
+                        "inherit_from": "DEFAULT",
+                        "CLAUDE_CODE": { "model": "opus" }
+                    },
+                    "LEAF": {
+                        "inherit_from": "MID",
+                        "CLAUDE_CODE": {}
+                    }
+                }
+            }
+        });
+        let configs: ExecutorConfigs = serde_json::from_value(json).unwrap();
+        let result = ExecutorConfigs::validate_merged(&configs);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("already inherits"));
+    }
+
+    #[test]
+    fn canonicalise_normalizes_inherit_from_references() {
+        let json = json!({
+            "executors": {
+                "CLAUDE_CODE": {
+                    "default": {
+                        "CLAUDE_CODE": { "dangerously_skip_permissions": true }
+                    },
+                    "child": {
+                        "inherit_from": "default",
+                        "CLAUDE_CODE": { "model": "opus" }
+                    }
+                }
+            }
+        });
+        let mut configs: ExecutorConfigs = serde_json::from_value(json).unwrap();
+        configs.canonicalise();
+
+        // Keys should be canonical
+        let executor = configs.executors.values().next().unwrap();
+        assert!(executor.configurations.contains_key("DEFAULT"));
+        assert!(executor.configurations.contains_key("CHILD"));
+
+        // inherit_from should also be canonical
+        let child = executor.configurations.get("CHILD").unwrap();
+        assert_eq!(child.inherit_from.as_deref(), Some("DEFAULT"));
+
+        // resolve should work after canonicalisation
+        let resolved = executor.resolve_variant("CHILD");
+        assert!(resolved.is_some());
+    }
+
+    #[test]
+    fn validate_accepts_valid_inheritance() {
+        let json = json!({
+            "executors": {
+                "CLAUDE_CODE": {
+                    "DEFAULT": {
+                        "CLAUDE_CODE": { "dangerously_skip_permissions": true }
+                    },
+                    "OPUS": {
+                        "inherit_from": "DEFAULT",
+                        "CLAUDE_CODE": { "model": "opus" }
+                    },
+                    "PLAN": {
+                        "inherit_from": "DEFAULT",
+                        "CLAUDE_CODE": { "plan": true }
+                    }
+                }
+            }
+        });
+        let configs: ExecutorConfigs = serde_json::from_value(json).unwrap();
+        let result = ExecutorConfigs::validate_merged(&configs);
+        assert!(result.is_ok());
     }
 }

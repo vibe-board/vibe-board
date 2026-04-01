@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { cloneDeep, isEqual } from 'lodash';
+import { cloneDeep, isEqual, merge } from 'lodash';
 import {
   Card,
   CardContent,
@@ -179,18 +179,26 @@ export function AgentSettings() {
   // Open create dialog
   const openCreateDialog = async () => {
     try {
+      const executorsMap =
+        localParsedProfiles?.executors as unknown as ExecutorsMap;
+      const configs = executorsMap?.[selectedExecutorType] || {};
       const result = await CreateConfigurationDialog.show({
         executorType: selectedExecutorType,
-        existingConfigs: Object.keys(
-          localParsedProfiles?.executors?.[selectedExecutorType] || {}
-        ),
+        existingConfigs: Object.keys(configs),
+        configInfos: Object.entries(configs).map(([name, variant]) => ({
+          name,
+          inheritFrom: (variant as Record<string, unknown>)?.inherit_from as
+            | string
+            | undefined,
+        })),
       });
 
       if (result.action === 'created' && result.configName) {
         createConfiguration(
           selectedExecutorType,
           result.configName,
-          result.cloneFrom
+          result.cloneFrom,
+          result.inheritFrom
         );
       }
     } catch (error) {
@@ -202,16 +210,41 @@ export function AgentSettings() {
   const createConfiguration = (
     executorType: string,
     configName: string,
-    baseConfig?: string | null
+    baseConfig?: string | null,
+    inheritFrom?: string | null
   ) => {
     if (!localParsedProfiles || !localParsedProfiles.executors) return;
 
     const executorsMap =
       localParsedProfiles.executors as unknown as ExecutorsMap;
-    const base =
-      baseConfig && executorsMap[executorType]?.[baseConfig]?.[executorType]
-        ? executorsMap[executorType][baseConfig][executorType]
-        : {};
+
+    let newVariant: Record<string, unknown>;
+    if (inheritFrom) {
+      // Explicit "inherit" mode from dialog
+      newVariant = {
+        inherit_from: inheritFrom,
+        [executorType]: {},
+      };
+    } else if (baseConfig && executorsMap[executorType]?.[baseConfig]) {
+      const sourceVariant = executorsMap[executorType][baseConfig];
+      const sourceAgent = sourceVariant[executorType] ?? {};
+      const parentName = sourceVariant.inherit_from as string | undefined;
+      if (parentName) {
+        // Source inherits — clone the inheritance relationship + overrides
+        newVariant = {
+          inherit_from: parentName,
+          [executorType]: cloneDeep(sourceAgent),
+        };
+      } else {
+        newVariant = {
+          [executorType]: cloneDeep(sourceAgent),
+        };
+      }
+    } else {
+      newVariant = {
+        [executorType]: {},
+      };
+    }
 
     const updatedProfiles = {
       ...localParsedProfiles,
@@ -219,9 +252,7 @@ export function AgentSettings() {
         ...localParsedProfiles.executors,
         [executorType]: {
           ...executorsMap[executorType],
-          [configName]: {
-            [executorType]: base,
-          },
+          [configName]: newVariant,
         },
       },
     };
@@ -368,6 +399,36 @@ export function AgentSettings() {
     }
   };
 
+  /**
+   * Given merged formData (parent + child) and the parent agent config,
+   * extract only the fields that differ from the parent (child overrides).
+   */
+  const extractOverrides = (
+    mergedData: Record<string, unknown>,
+    parentAgent: Record<string, unknown>
+  ): Record<string, unknown> => {
+    const overrides: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(mergedData)) {
+      if (key === 'env') {
+        // For env, diff per-key
+        const parentEnv = (parentAgent.env as Record<string, string>) ?? {};
+        const mergedEnv = (value as Record<string, string>) ?? {};
+        const envOverrides: Record<string, string> = {};
+        for (const [envKey, envValue] of Object.entries(mergedEnv)) {
+          if (!(envKey in parentEnv) || parentEnv[envKey] !== envValue) {
+            envOverrides[envKey] = envValue;
+          }
+        }
+        if (Object.keys(envOverrides).length > 0) {
+          overrides.env = envOverrides;
+        }
+      } else if (JSON.stringify(value) !== JSON.stringify(parentAgent[key])) {
+        overrides[key] = value;
+      }
+    }
+    return overrides;
+  };
+
   const handleExecutorConfigChange = (
     executorType: string,
     configuration: string,
@@ -377,6 +438,28 @@ export function AgentSettings() {
 
     const executorsMap =
       localParsedProfiles.executors as unknown as ExecutorsMap;
+
+    const existing = executorsMap[executorType]?.[configuration];
+    const inheritFrom = existing?.inherit_from as string | undefined;
+
+    let agentData = formData;
+    if (inheritFrom) {
+      const parentVariant = executorsMap[executorType]?.[inheritFrom];
+      const parentAgent =
+        (parentVariant?.[executorType] as Record<string, unknown>) ?? {};
+      agentData = extractOverrides(
+        formData as Record<string, unknown>,
+        parentAgent
+      );
+    }
+
+    const updatedVariant: Record<string, unknown> = {
+      [executorType]: agentData,
+    };
+    if (inheritFrom) {
+      updatedVariant.inherit_from = inheritFrom;
+    }
+
     // Update the parsed profiles with the new config
     const updatedProfiles = {
       ...localParsedProfiles,
@@ -384,9 +467,7 @@ export function AgentSettings() {
         ...localParsedProfiles.executors,
         [executorType]: {
           ...executorsMap[executorType],
-          [configuration]: {
-            [executorType]: formData,
-          },
+          [configuration]: updatedVariant,
         },
       },
     };
@@ -397,39 +478,54 @@ export function AgentSettings() {
   const handleExecutorConfigSave = async (formData: unknown) => {
     if (!localParsedProfiles || !localParsedProfiles.executors) return;
 
-    // Clear any previous errors
     setSaveError(null);
 
-    // Update the parsed profiles with the saved config
+    const executorsMap =
+      localParsedProfiles.executors as unknown as ExecutorsMap;
+
+    const existing =
+      executorsMap[selectedExecutorType]?.[selectedConfiguration];
+    const inheritFrom = existing?.inherit_from as string | undefined;
+
+    let agentData = formData;
+    if (inheritFrom) {
+      const parentVariant = executorsMap[selectedExecutorType]?.[inheritFrom];
+      const parentAgent =
+        (parentVariant?.[selectedExecutorType] as Record<string, unknown>) ??
+        {};
+      agentData = extractOverrides(
+        formData as Record<string, unknown>,
+        parentAgent
+      );
+    }
+
+    const updatedVariant: Record<string, unknown> = {
+      [selectedExecutorType]: agentData,
+    };
+    if (inheritFrom) {
+      updatedVariant.inherit_from = inheritFrom;
+    }
+
     const updatedProfiles = {
       ...localParsedProfiles,
       executors: {
         ...localParsedProfiles.executors,
         [selectedExecutorType]: {
           ...localParsedProfiles.executors[selectedExecutorType],
-          [selectedConfiguration]: {
-            [selectedExecutorType]: formData,
-          },
+          [selectedConfiguration]: updatedVariant,
         },
       },
     };
 
-    // Update state
     setLocalParsedProfiles(updatedProfiles);
 
-    // Save the updated profiles directly
     try {
       const contentToSave = JSON.stringify(updatedProfiles, null, 2);
-
       await saveProfiles(contentToSave);
       setProfilesSuccess(true);
       setIsDirty(false);
       setTimeout(() => setProfilesSuccess(false), 3000);
-
-      // Update the local content as well
       setLocalProfilesContent(contentToSave);
-
-      // Refresh global system so new profiles are available elsewhere
       reloadSystem();
     } catch (err: unknown) {
       console.error('Failed to save profiles:', err);
@@ -708,42 +804,76 @@ export function AgentSettings() {
                         {Object.keys(
                           localParsedProfiles.executors[selectedExecutorType] ||
                             {}
-                        ).map((configuration) => (
-                          <SelectItem key={configuration} value={configuration}>
-                            {configuration}
-                          </SelectItem>
-                        ))}
+                        ).map((configuration) => {
+                          const variant = (
+                            localParsedProfiles.executors as unknown as ExecutorsMap
+                          )[selectedExecutorType]?.[configuration];
+                          const parentName = variant?.inherit_from as
+                            | string
+                            | undefined;
+                          return (
+                            <SelectItem
+                              key={configuration}
+                              value={configuration}
+                            >
+                              {configuration}
+                              {parentName && (
+                                <span className="ml-2 text-xs text-info">
+                                  ← {parentName}
+                                </span>
+                              )}
+                            </SelectItem>
+                          );
+                        })}
                         <SelectItem value="__create__">
                           {t('settings.agents.editor.createNew')}
                         </SelectItem>
                       </SelectContent>
                     </Select>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      className="h-10"
-                      onClick={() => openDeleteDialog(selectedConfiguration)}
-                      disabled={
-                        profilesSaving ||
-                        !localParsedProfiles.executors[selectedExecutorType] ||
-                        Object.keys(
-                          localParsedProfiles.executors[selectedExecutorType] ||
-                            {}
-                        ).length <= 1
-                      }
-                      title={
-                        Object.keys(
-                          localParsedProfiles.executors[selectedExecutorType] ||
-                            {}
-                        ).length <= 1
-                          ? t('settings.agents.editor.deleteTitle')
-                          : t('settings.agents.editor.deleteButton', {
-                              name: selectedConfiguration,
-                            })
-                      }
-                    >
-                      {t('settings.agents.editor.deleteText')}
-                    </Button>
+                    {(() => {
+                      const executorsMap =
+                        localParsedProfiles.executors as unknown as ExecutorsMap;
+                      const currentExecutor =
+                        executorsMap[selectedExecutorType] || {};
+                      const dependents = Object.entries(currentExecutor)
+                        .filter(
+                          ([, vc]) =>
+                            (vc as Record<string, unknown>)?.inherit_from ===
+                            selectedConfiguration
+                        )
+                        .map(([name]) => name);
+                      const hasDependents = dependents.length > 0;
+                      const isLastConfig =
+                        Object.keys(currentExecutor).length <= 1;
+
+                      return (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          className="h-10"
+                          onClick={() =>
+                            openDeleteDialog(selectedConfiguration)
+                          }
+                          disabled={
+                            profilesSaving ||
+                            !currentExecutor ||
+                            isLastConfig ||
+                            hasDependents
+                          }
+                          title={
+                            hasDependents
+                              ? `Cannot delete: inherited by ${dependents.join(', ')}`
+                              : isLastConfig
+                                ? t('settings.agents.editor.deleteTitle')
+                                : t('settings.agents.editor.deleteButton', {
+                                    name: selectedConfiguration,
+                                  })
+                          }
+                        >
+                          {t('settings.agents.editor.deleteText')}
+                        </Button>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -751,32 +881,85 @@ export function AgentSettings() {
               {(() => {
                 const executorsMap =
                   localParsedProfiles.executors as unknown as ExecutorsMap;
+                const currentVariant =
+                  executorsMap[selectedExecutorType]?.[selectedConfiguration];
+                const inheritFrom = currentVariant?.inherit_from as
+                  | string
+                  | undefined;
+
+                // Resolve merged config for display when inheriting
+                let displayValue: Record<string, unknown> =
+                  (currentVariant?.[selectedExecutorType] as Record<
+                    string,
+                    unknown
+                  >) || {};
+                let ownFields: Set<string> | undefined;
+                let parentEnv: Record<string, string> | undefined;
+
+                if (inheritFrom) {
+                  const parentVariant =
+                    executorsMap[selectedExecutorType]?.[inheritFrom];
+                  const parentAgent =
+                    (parentVariant?.[selectedExecutorType] as Record<
+                      string,
+                      unknown
+                    >) ?? {};
+                  const childAgent =
+                    (currentVariant?.[selectedExecutorType] as Record<
+                      string,
+                      unknown
+                    >) ?? {};
+
+                  // ownFields = keys explicitly set on child
+                  ownFields = new Set(Object.keys(childAgent));
+
+                  // Merge parent + child for display
+                  displayValue = merge({}, parentAgent, childAgent);
+
+                  // Pass parent env for per-key inheritance styling
+                  if (parentAgent.env && typeof parentAgent.env === 'object') {
+                    parentEnv = parentAgent.env as Record<string, string>;
+                  }
+                }
+
                 return (
-                  !!executorsMap[selectedExecutorType]?.[
-                    selectedConfiguration
-                  ]?.[selectedExecutorType] && (
-                    <ExecutorConfigForm
-                      key={`${selectedExecutorType}-${selectedConfiguration}`}
-                      executor={selectedExecutorType}
-                      value={
-                        (executorsMap[selectedExecutorType][
-                          selectedConfiguration
-                        ][selectedExecutorType] as Record<string, unknown>) ||
-                        {}
-                      }
-                      onChange={(formData) =>
-                        handleExecutorConfigChange(
-                          selectedExecutorType,
-                          selectedConfiguration,
-                          formData
-                        )
-                      }
-                      onSave={handleExecutorConfigSave}
-                      disabled={profilesSaving}
-                      isSaving={profilesSaving}
-                      isDirty={isDirty}
-                    />
-                  )
+                  <>
+                    {inheritFrom && (
+                      <Alert>
+                        <AlertDescription>
+                          Inherits from{' '}
+                          <span className="font-mono font-medium">
+                            {inheritFrom}
+                          </span>
+                          . Fields marked{' '}
+                          <span className="text-info font-medium">
+                            inherited
+                          </span>{' '}
+                          come from the parent configuration.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    {!!currentVariant?.[selectedExecutorType] && (
+                      <ExecutorConfigForm
+                        key={`${selectedExecutorType}-${selectedConfiguration}`}
+                        executor={selectedExecutorType}
+                        value={displayValue}
+                        ownFields={ownFields}
+                        parentEnv={parentEnv}
+                        onChange={(formData) =>
+                          handleExecutorConfigChange(
+                            selectedExecutorType,
+                            selectedConfiguration,
+                            formData
+                          )
+                        }
+                        onSave={handleExecutorConfigSave}
+                        disabled={profilesSaving}
+                        isSaving={profilesSaving}
+                        isDirty={isDirty}
+                      />
+                    )}
+                  </>
                 );
               })()}
             </div>

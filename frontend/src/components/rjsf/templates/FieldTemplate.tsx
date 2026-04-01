@@ -1,5 +1,9 @@
 import { FieldTemplateProps } from '@rjsf/utils';
 
+interface InheritanceFormContext {
+  ownFields?: Set<string>;
+}
+
 export const FieldTemplate = (props: FieldTemplateProps) => {
   const {
     children,
@@ -9,11 +13,25 @@ export const FieldTemplate = (props: FieldTemplateProps) => {
     label,
     required,
     schema,
+    id,
+    registry,
   } = props;
 
   if (schema.type === 'object') {
     return children;
   }
+
+  // Determine if this field is inherited (not explicitly set on the child)
+  const formContext = registry.formContext as
+    | InheritanceFormContext
+    | undefined;
+  const ownFields = formContext?.ownFields;
+  // RJSF field ids are like "root_fieldName" — extract the field name
+  const fieldName = id?.replace(/^root_/, '');
+  const isInherited =
+    ownFields !== undefined &&
+    fieldName !== undefined &&
+    !ownFields.has(fieldName);
 
   // Two-column layout for other field types
   return (
@@ -24,6 +42,11 @@ export const FieldTemplate = (props: FieldTemplateProps) => {
           <div className="text-sm font-bold leading-relaxed">
             {label}
             {required && <span className="text-destructive ml-1">*</span>}
+            {isInherited && (
+              <span className="ml-2 text-xs font-normal text-info">
+                inherited
+              </span>
+            )}
           </div>
         )}
 

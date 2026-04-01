@@ -8,6 +8,8 @@ type KeyValueData = Record<string, string>;
 
 interface EnvFormContext {
   onEnvChange?: (envData: KeyValueData | undefined) => void;
+  ownFields?: Set<string>;
+  parentEnv?: KeyValueData;
 }
 
 export function KeyValueField({
@@ -21,10 +23,23 @@ export function KeyValueField({
 
   // Get the custom env change handler from formContext
   const formContext = registry.formContext as EnvFormContext | undefined;
+  const parentEnv = formContext?.parentEnv;
 
   // Ensure we have a stable object reference
   const data: KeyValueData = useMemo(() => formData ?? {}, [formData]);
   const entries = useMemo(() => Object.entries(data), [data]);
+
+  // Determine which keys are inherited (present in parent with same value, not overridden by child)
+  const ownEnvKeys = useMemo(() => {
+    if (!parentEnv) return null;
+    const own = new Set<string>();
+    for (const [key, value] of entries) {
+      if (!(key in parentEnv) || parentEnv[key] !== value) {
+        own.add(key);
+      }
+    }
+    return own;
+  }, [entries, parentEnv]);
 
   // Use the formContext handler to update env correctly
   const updateValue = useCallback(
@@ -66,35 +81,42 @@ export function KeyValueField({
 
   return (
     <div className="space-y-3">
-      {entries.map(([key, value]) => (
-        <div key={key} className="flex gap-2 items-center">
-          <Input
-            value={key}
-            disabled
-            className="flex-1 font-mono text-sm"
-            aria-label="Environment variable key"
-          />
-          <Input
-            value={value ?? ''}
-            onChange={(e) => handleValueChange(key, e.target.value)}
-            disabled={isDisabled}
-            className="flex-1 font-mono text-sm"
-            placeholder="Value"
-            aria-label={`Value for ${key}`}
-          />
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => handleRemove(key)}
-            disabled={isDisabled}
-            className="h-8 w-8 p-0 shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-            aria-label={`Remove ${key}`}
-          >
-            <X className="w-4 h-4" />
-          </Button>
-        </div>
-      ))}
+      {entries.map(([key, value]) => {
+        const isInherited = ownEnvKeys !== null && !ownEnvKeys.has(key);
+        return (
+          <div key={key} className="flex gap-2 items-center">
+            <Input
+              value={key}
+              disabled
+              className={`flex-1 font-mono text-sm${isInherited ? ' text-info' : ''}`}
+              aria-label="Environment variable key"
+            />
+            <Input
+              value={value ?? ''}
+              onChange={(e) => handleValueChange(key, e.target.value)}
+              disabled={isDisabled}
+              className={`flex-1 font-mono text-sm${isInherited ? ' text-info' : ''}`}
+              placeholder="Value"
+              aria-label={`Value for ${key}`}
+            />
+            {isInherited ? (
+              <span className="h-8 w-8 shrink-0" />
+            ) : (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => handleRemove(key)}
+                disabled={isDisabled}
+                className="h-8 w-8 p-0 shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                aria-label={`Remove ${key}`}
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
+        );
+      })}
 
       {/* Add new entry row */}
       <div className="flex gap-2 items-center">

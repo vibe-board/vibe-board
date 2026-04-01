@@ -182,9 +182,10 @@ async fn handle_webui_socket(socket: WebSocket, state: AppState, query: WebUICon
                     "type": "client_connected",
                     "client_id": client_id,
                 });
-                let _ = state
-                    .cli_registry
-                    .send_to_daemon(&machine_id, &user_id, notify.to_string());
+                let _ =
+                    state
+                        .cli_registry
+                        .send_to_daemon(&machine_id, &user_id, notify.to_string());
             }
 
             WebUIMessage::Unsubscribe { machine_id } => {
@@ -194,9 +195,10 @@ async fn handle_webui_socket(socket: WebSocket, state: AppState, query: WebUICon
                     "type": "client_disconnected",
                     "client_id": client_id,
                 });
-                let _ = state
-                    .cli_registry
-                    .send_to_daemon(&machine_id, &user_id, notify.to_string());
+                let _ =
+                    state
+                        .cli_registry
+                        .send_to_daemon(&machine_id, &user_id, notify.to_string());
             }
 
             WebUIMessage::Forward {

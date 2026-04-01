@@ -224,7 +224,10 @@ async fn handle_daemon_socket(socket: WebSocket, state: AppState, query: DaemonC
                 let Some(ref mid) = machine_id else { continue };
 
                 // Route response to the specific WebUI client that sent the request
-                if !state.webui_registry.send_to_client(&client_id, mid, uid, payload) {
+                if !state
+                    .webui_registry
+                    .send_to_client(&client_id, mid, uid, payload)
+                {
                     warn!("Failed to route response to client {client_id}");
                 }
             }

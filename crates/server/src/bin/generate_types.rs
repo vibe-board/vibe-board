@@ -192,6 +192,7 @@ fn generate_types_content() -> String {
         executors::executors::AvailabilityInfo::decl(),
         executors::command::CommandBuilder::decl(),
         executors::profile::ExecutorProfileId::decl(),
+        executors::profile::VariantConfig::decl(),
         executors::profile::ExecutorConfig::decl(),
         executors::profile::ExecutorConfigs::decl(),
         executors::executors::BaseAgentCapability::decl(),

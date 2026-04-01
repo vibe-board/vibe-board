@@ -53,6 +53,10 @@ interface ExecutorConfigFormProps {
   disabled?: boolean;
   isSaving?: boolean;
   isDirty?: boolean;
+  /** Set of field names that are explicitly set on the child variant (not inherited). */
+  ownFields?: Set<string>;
+  /** Parent's env entries, used to show inherited env keys in KeyValueField. */
+  parentEnv?: Record<string, string>;
 }
 
 import schemas from 'virtual:executor-schemas';
@@ -66,6 +70,8 @@ export function ExecutorConfigForm({
   disabled = false,
   isSaving = false,
   isDirty = false,
+  ownFields,
+  parentEnv,
 }: ExecutorConfigFormProps) {
   const [formData, setFormData] = useState<unknown>(value || {});
   const formDataRef = useRef<unknown>(formData);
@@ -108,12 +114,14 @@ export function ExecutorConfigForm({
     [executor]
   );
 
-  // Pass the env update handler via formContext
+  // Pass the env update handler and inheritance info via formContext
   const formContext = useMemo(
     () => ({
       onEnvChange: handleEnvChange,
+      ownFields,
+      parentEnv,
     }),
-    [handleEnvChange]
+    [handleEnvChange, ownFields, parentEnv]
   );
 
   useEffect(() => {
