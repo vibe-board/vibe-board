@@ -84,7 +84,6 @@ impl DBService {
             .journal_mode(SqliteJournalMode::Wal)
             .busy_timeout(std::time::Duration::from_secs(5));
         let pool = SqlitePoolOptions::new()
-            .max_connections(4)
             .connect_with(options)
             .await?;
         run_migrations(&pool).await?;
@@ -125,7 +124,7 @@ impl DBService {
             .journal_mode(SqliteJournalMode::Wal)
             .busy_timeout(std::time::Duration::from_secs(5));
 
-        let mut pool_options = SqlitePoolOptions::new().max_connections(4);
+        let mut pool_options = SqlitePoolOptions::new();
 
         if let Some(hook) = after_connect {
             pool_options = pool_options.after_connect(move |conn, _meta| {
