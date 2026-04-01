@@ -17,6 +17,7 @@ pub mod project;
 #[cfg(feature = "qa-mode")]
 pub mod qa_repos;
 pub mod queued_message;
+pub mod normalized_entry_store;
 pub mod raw_log_store;
 pub mod repo;
 pub mod workspace_manager;

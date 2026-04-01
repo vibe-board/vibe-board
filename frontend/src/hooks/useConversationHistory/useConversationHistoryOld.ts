@@ -685,81 +685,37 @@ export const useConversationHistoryOld = ({
         });
       }
 
-      // Normalized logs: REST first, then live WS
-      // Step 1: REST load current snapshot (last 50 entries)
-      let result;
-      try {
-        result = await executionProcessesApi.getEntries(
-          executionProcess.id,
-          undefined,
-          50
-        );
-      } catch (err) {
-        console.debug(
-          `Could not load entries for running execution process ${executionProcess.id}`,
-          err
-        );
-        return;
-      }
+      // Normalized logs: WS replay full history + live updates
+      const url = `/api/execution-processes/${executionProcess.id}/normalized-logs/ws`;
 
-      const entriesWithKey: PatchTypeWithKey[] = [];
-      for (const record of result.entries) {
-        const parsed = parseEntryJson(record.entry_json);
-        if (parsed) {
-          entriesWithKey.push(
-            patchWithKey(parsed, executionProcess.id, record.entry_index)
-          );
-        }
-      }
-
-      // Track max entry index for live WS cursor (highest entry_index from REST)
-      const maxEntryIndex =
-        result.entries.length > 0
-          ? Math.max(...result.entries.map((e) => e.entry_index))
-          : -1;
-
-      // Display initial snapshot immediately
-      mergeIntoDisplayed((state) => {
-        state[executionProcess.id] = {
-          executionProcess,
-          entries: entriesWithKey,
-        };
-      });
-      emitState(displayedExecutionProcesses.current, 'running');
-
-      // Step 2: Connect live WS for deltas only (wrapped in Promise for backoff retry)
-      // Build padded initial snapshot so entries sit at their DB entry_indices.
-      // This allows "replace" patches (for streaming text updates) to target
-      // the correct array position.
-      const liveUrl = `/api/execution-processes/${executionProcess.id}/normalized-logs-live/ws?after=${maxEntryIndex}`;
-      const initialEntries: (PatchType | null)[] =
-        maxEntryIndex >= 0 ? new Array(maxEntryIndex + 1).fill(null) : [];
-      for (const e of entriesWithKey) {
-        const idx = parseInt(e.patchKey.split(':').pop()!, 10);
-        if (!Number.isNaN(idx) && idx < initialEntries.length) {
-          initialEntries[idx] = {
-            type: e.type,
-            content: e.content,
-          } as PatchType;
-        }
-      }
       return new Promise<void>((resolve, reject) => {
-        const controller = streamJsonPatchEntries<PatchType>(liveUrl, {
-          initial: {
-            entries: initialEntries as unknown as PatchType[],
-          },
+        const controller = streamJsonPatchEntries<PatchType>(url, {
           onEntries(allEntries) {
-            // Sync full displayed state from snapshot on every update.
-            // This handles both additions and replacements (streaming text updates).
             const patchesWithKey = (allEntries as (PatchType | null)[])
               .map((entry, index) =>
                 entry ? patchWithKey(entry, executionProcess.id, index) : null
               )
               .filter(Boolean) as PatchTypeWithKey[];
+
+            let minEntryIndex: number | undefined;
+            for (const e of patchesWithKey) {
+              const idx = parseInt(e.patchKey.split(':').pop()!, 10);
+              if (!Number.isNaN(idx)) {
+                if (minEntryIndex === undefined || idx < minEntryIndex) {
+                  minEntryIndex = idx;
+                }
+              }
+            }
+
+            const hasMoreEntries =
+              minEntryIndex !== undefined && minEntryIndex > 0;
+
             mergeIntoDisplayed((state) => {
               state[executionProcess.id] = {
                 executionProcess,
                 entries: patchesWithKey,
+                hasMoreEntries,
+                minEntryIndex,
               };
             });
             emitState(displayedExecutionProcesses.current, 'running');
@@ -992,8 +948,7 @@ export const useConversationHistoryOld = ({
       const processWithMore = Object.values(displayedExecutionProcesses.current)
         .filter((p) => {
           if (!p.hasMoreEntries || p.minEntryIndex === undefined) return false;
-          const live = getLiveExecutionProcess(p.executionProcess.id);
-          return live?.status !== ExecutionProcessStatus.running;
+          return true;
         })
         .sort(
           (a, b) =>

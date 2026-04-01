@@ -56,6 +56,7 @@ use utils::{
 use uuid::Uuid;
 
 use crate::services::{
+    normalized_entry_store::NormalizedEntryStore,
     notification::NotificationService, raw_log_store,
     workspace_manager::WorkspaceError as WorkspaceManagerError, worktree_manager::WorktreeError,
 };
@@ -90,6 +91,8 @@ pub enum ContainerError {
 #[async_trait]
 pub trait ContainerService {
     fn msg_stores(&self) -> &Arc<RwLock<HashMap<Uuid, Arc<MsgStore>>>>;
+
+    fn normalized_entry_stores(&self) -> &Arc<RwLock<HashMap<Uuid, Arc<NormalizedEntryStore>>>>;
 
     fn db(&self) -> &DBService;
 
@@ -777,6 +780,14 @@ pub trait ContainerService {
         map.get(uuid).cloned()
     }
 
+    async fn get_normalized_entry_store_by_id(
+        &self,
+        uuid: &Uuid,
+    ) -> Option<Arc<NormalizedEntryStore>> {
+        let map = self.normalized_entry_stores().read().await;
+        map.get(uuid).cloned()
+    }
+
     async fn git_branch_prefix(&self) -> String;
 
     async fn git_branch_from_workspace(&self, workspace_id: &Uuid, task_title: &str) -> String {
@@ -833,12 +844,11 @@ pub trait ContainerService {
         &self,
         id: &Uuid,
     ) -> Option<futures::stream::BoxStream<'static, Result<LogMsg, std::io::Error>>> {
-        // First try in-memory store (existing behavior)
-        if let Some(store) = self.get_msg_store_by_id(id).await {
+        // First try NormalizedEntryStore for running tasks
+        if let Some(ne_store) = self.get_normalized_entry_store_by_id(id).await {
             return Some(
-                store
-                    .history_plus_stream() // BoxStream<Result<LogMsg, io::Error>>
-                    .filter(|msg| future::ready(matches!(msg, Ok(LogMsg::JsonPatch(..)))))
+                ne_store
+                    .history_plus_live()
                     .chain(futures::stream::once(async {
                         Ok::<_, std::io::Error>(LogMsg::Finished)
                     }))
@@ -895,10 +905,10 @@ pub trait ContainerService {
         id: &Uuid,
         after_index: i64,
     ) -> Option<futures::stream::BoxStream<'static, Result<LogMsg, std::io::Error>>> {
-        let store = self.get_msg_store_by_id(id).await?;
+        let ne_store = self.get_normalized_entry_store_by_id(id).await?;
 
-        let stream = store
-            .live_stream()
+        let stream = ne_store
+            .history_plus_live()
             .filter(move |msg| {
                 future::ready(match msg {
                     Ok(LogMsg::JsonPatch(patch)) => {
@@ -906,8 +916,6 @@ pub trait ContainerService {
                             let is_replace = patch
                                 .iter()
                                 .any(|op| matches!(op, PatchOperation::Replace(_)));
-                            // Allow replace patches for any index (streaming text updates).
-                            // Only filter add patches by cursor to avoid duplicates.
                             is_replace || (index as i64) > after_index
                         } else {
                             false
@@ -928,6 +936,7 @@ pub trait ContainerService {
     fn spawn_stream_raw_logs_to_file(&self, execution_id: &Uuid) -> JoinHandle<()> {
         let execution_id = *execution_id;
         let msg_stores = self.msg_stores().clone();
+        let normalized_entry_stores = self.normalized_entry_stores().clone();
         let db = self.db().clone();
 
         tokio::spawn(async move {
@@ -943,6 +952,12 @@ pub trait ContainerService {
             };
 
             if let Some(store) = store {
+                let ne_store = Arc::new(NormalizedEntryStore::new());
+                {
+                    let mut map = normalized_entry_stores.write().await;
+                    map.insert(execution_id, ne_store.clone());
+                }
+
                 let mut stream = store.history_plus_stream();
                 let mut pending_entries: HashMap<i64, String> = HashMap::new();
                 const FLUSH_THRESHOLD: usize = 10;
@@ -976,10 +991,23 @@ pub trait ContainerService {
                             }
                         }
                         LogMsg::JsonPatch(patch) => {
-                            if let Some((index, entry)) = extract_normalized_entry_from_patch(patch)
-                                && let Ok(json) = serde_json::to_string(&entry)
+                            let is_replace = patch
+                                .iter()
+                                .any(|op| matches!(op, PatchOperation::Replace(_)));
+
+                            if let Some((index, entry)) =
+                                extract_normalized_entry_from_patch(patch)
                             {
-                                pending_entries.insert(index as i64, json);
+                                let json = serde_json::to_string(&entry)
+                                    .unwrap_or_default();
+                                if is_replace {
+                                    ne_store.replace(index, entry);
+                                } else {
+                                    ne_store.push(index, entry);
+                                }
+                                if !json.is_empty() {
+                                    pending_entries.insert(index as i64, json);
+                                }
                             }
                             if pending_entries.len() >= FLUSH_THRESHOLD {
                                 let batch: Vec<(i64, String)> = pending_entries.drain().collect();
@@ -1055,6 +1083,12 @@ pub trait ContainerService {
                         execution_id,
                         e
                     );
+                }
+
+                // Remove the NormalizedEntryStore since execution is done
+                {
+                    let mut map = normalized_entry_stores.write().await;
+                    map.remove(&execution_id);
                 }
             }
         })

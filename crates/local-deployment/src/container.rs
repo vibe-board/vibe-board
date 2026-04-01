@@ -46,6 +46,7 @@ use services::services::{
     config::{Config, DEFAULT_COMMIT_REMINDER_PROMPT, DEFAULT_LINTER_FIX_FOLLOW_UP_PROMPT},
     container::{ContainerError, ContainerRef, ContainerService},
     image::ImageService,
+    normalized_entry_store::NormalizedEntryStore,
     notification::NotificationService,
     queued_message::QueuedMessageService,
     raw_log_store,
@@ -85,6 +86,7 @@ pub struct LocalContainerService {
     child_store: Arc<RwLock<HashMap<Uuid, Arc<RwLock<AsyncGroupChild>>>>>,
     cancellation_tokens: Arc<RwLock<HashMap<Uuid, CancellationToken>>>,
     msg_stores: Arc<RwLock<HashMap<Uuid, Arc<MsgStore>>>>,
+    normalized_entry_stores: Arc<RwLock<HashMap<Uuid, Arc<NormalizedEntryStore>>>>,
     /// Tracks background tasks that stream logs to the database.
     /// When stopping execution, we await these to ensure logs are fully persisted.
     db_stream_handles: Arc<RwLock<HashMap<Uuid, JoinHandle<()>>>>,
@@ -114,6 +116,7 @@ impl LocalContainerService {
         let cancellation_tokens = Arc::new(RwLock::new(HashMap::new()));
         let db_stream_handles = Arc::new(RwLock::new(HashMap::new()));
         let exit_monitor_handles = Arc::new(RwLock::new(HashMap::new()));
+        let normalized_entry_stores = Arc::new(RwLock::new(HashMap::new()));
         let notification_service = NotificationService::new(config.clone());
 
         let container = LocalContainerService {
@@ -121,6 +124,7 @@ impl LocalContainerService {
             child_store,
             cancellation_tokens,
             msg_stores,
+            normalized_entry_stores,
             db_stream_handles,
             exit_monitor_handles,
             config,
@@ -446,6 +450,7 @@ impl LocalContainerService {
         let exec_id = *exec_id;
         let child_store = self.child_store.clone();
         let msg_stores = self.msg_stores.clone();
+        let normalized_entry_stores = self.normalized_entry_stores.clone();
         let db = self.db.clone();
         let config = self.config.clone();
         let container = self.clone();
@@ -700,6 +705,9 @@ impl LocalContainerService {
             if let Some(handle) = db_stream_handle {
                 let _ = tokio::time::timeout(Duration::from_secs(5), handle).await;
             }
+
+            // Safety cleanup: remove NormalizedEntryStore
+            normalized_entry_stores.write().await.remove(&exec_id);
 
             // Cleanup child handle
             child_store.write().await.remove(&exec_id);
@@ -1033,6 +1041,10 @@ fn failure_exit_status() -> std::process::ExitStatus {
 impl ContainerService for LocalContainerService {
     fn msg_stores(&self) -> &Arc<RwLock<HashMap<Uuid, Arc<MsgStore>>>> {
         &self.msg_stores
+    }
+
+    fn normalized_entry_stores(&self) -> &Arc<RwLock<HashMap<Uuid, Arc<NormalizedEntryStore>>>> {
+        &self.normalized_entry_stores
     }
 
     fn db(&self) -> &DBService {
@@ -1426,6 +1438,9 @@ impl ContainerService for LocalContainerService {
         if let Some(handle) = db_stream_handle {
             let _ = tokio::time::timeout(Duration::from_secs(5), handle).await;
         }
+
+        // Safety cleanup: remove NormalizedEntryStore if spawn task didn't clean it up
+        self.normalized_entry_stores.write().await.remove(&execution_process.id);
 
         // Update task status to InReview when execution is stopped
         if let Ok(ctx) = ExecutionProcess::load_context(&self.db.pool, execution_process.id).await
