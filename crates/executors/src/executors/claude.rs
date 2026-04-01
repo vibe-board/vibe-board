@@ -1036,15 +1036,27 @@ impl ClaudeLogProcessor {
                     patches.push(patch);
                 }
 
-                let mut streaming_message_state = message
+                let streaming_state_indices = message
                     .id
                     .as_ref()
-                    .and_then(|id| self.streaming_messages.remove(id));
+                    .and_then(|id| self.streaming_messages.get(id))
+                    .map(|state| {
+                        (
+                            state.content_entry_index_by_kind(StreamingContentKind::Text),
+                            state.content_entry_index_by_kind(StreamingContentKind::Thinking),
+                        )
+                    });
 
-                for (content_index, item) in message.content.items().enumerate() {
-                    let entry_index = streaming_message_state
-                        .as_mut()
-                        .and_then(|state| state.content_entry_index(content_index));
+                for item in message.content.items() {
+                    let entry_index = match item {
+                        ClaudeContentItem::Text { .. } => {
+                            streaming_state_indices.and_then(|(text_idx, _)| text_idx)
+                        }
+                        ClaudeContentItem::Thinking { .. } => {
+                            streaming_state_indices.and_then(|(_, think_idx)| think_idx)
+                        }
+                        _ => None,
+                    };
 
                     match item {
                         ClaudeContentItem::ToolUse { id, tool_data } => {
@@ -1445,11 +1457,9 @@ impl ClaudeLogProcessor {
                     }
                 }
                 ClaudeStreamEvent::MessageStop => {
-                    // Only clear the current message_id reference, NOT the
-                    // streaming_messages entry. The Assistant message handler
-                    // (line ~1047) will remove it when it processes the final
-                    // message and converts streaming Add patches to Replace.
-                    self.streaming_message_id.take();
+                    if let Some(id) = self.streaming_message_id.take() {
+                        self.streaming_messages.remove(&id);
+                    }
                 }
                 ClaudeStreamEvent::Unknown => {}
             },
@@ -1829,9 +1839,10 @@ impl StreamingMessageState {
         }
     }
 
-    fn content_entry_index(&self, content_index: usize) -> Option<usize> {
+    fn content_entry_index_by_kind(&self, kind: StreamingContentKind) -> Option<usize> {
         self.contents
-            .get(&content_index)
+            .values()
+            .find(|s| s.kind == kind && s.entry_index.is_some())
             .and_then(|s| s.entry_index)
     }
 }
@@ -2991,5 +3002,229 @@ mod tests {
             }
             _ => unreachable!(),
         }
+    }
+
+    #[test]
+    fn test_partial_assistant_messages_no_duplicate_or_reorder() {
+        let mut processor = ClaudeLogProcessor::new();
+        let provider = EntryIndexProvider::test_new();
+        let worktree = "/tmp/test";
+        let msg_id = "gen-test-123";
+
+        // 1. message_start
+        let message_start = ClaudeJson::StreamEvent {
+            event: ClaudeStreamEvent::MessageStart {
+                message: ClaudeMessage {
+                    id: Some(msg_id.to_string()),
+                    message_type: None,
+                    role: "assistant".to_string(),
+                    model: Some("claude-test".to_string()),
+                    content: ClaudeMessageContent::Array(vec![]),
+                    stop_reason: None,
+                },
+            },
+            session_id: None,
+            parent_tool_use_id: None,
+            uuid: None,
+        };
+        processor.normalize_entries(&message_start, worktree, &provider);
+
+        // 2. content_block_start index=0 (thinking)
+        let thinking_block_start = ClaudeJson::StreamEvent {
+            event: ClaudeStreamEvent::ContentBlockStart {
+                index: 0,
+                content_block: ClaudeContentItem::Thinking {
+                    thinking: String::new(),
+                },
+            },
+            session_id: None,
+            parent_tool_use_id: None,
+            uuid: None,
+        };
+        processor.normalize_entries(&thinking_block_start, worktree, &provider);
+
+        // 3. content_block_delta index=0 (thinking)
+        let thinking_delta = ClaudeJson::StreamEvent {
+            event: ClaudeStreamEvent::ContentBlockDelta {
+                index: 0,
+                delta: ClaudeContentBlockDelta::ThinkingDelta {
+                    thinking: "Let me think...".to_string(),
+                },
+            },
+            session_id: None,
+            parent_tool_use_id: None,
+            uuid: None,
+        };
+        let thinking_patches = processor.normalize_entries(&thinking_delta, worktree, &provider);
+        assert_eq!(thinking_patches.len(), 1);
+        let thinking_entries = patches_to_entries(&thinking_patches);
+        assert_eq!(thinking_entries.len(), 1);
+        assert!(matches!(thinking_entries[0].entry_type, NormalizedEntryType::Thinking));
+
+        // 4. content_block_start index=1 (text)
+        let text_block_start = ClaudeJson::StreamEvent {
+            event: ClaudeStreamEvent::ContentBlockStart {
+                index: 1,
+                content_block: ClaudeContentItem::Text {
+                    text: String::new(),
+                },
+            },
+            session_id: None,
+            parent_tool_use_id: None,
+            uuid: None,
+        };
+        processor.normalize_entries(&text_block_start, worktree, &provider);
+
+        // 5. content_block_delta index=1 (text)
+        let text_delta = ClaudeJson::StreamEvent {
+            event: ClaudeStreamEvent::ContentBlockDelta {
+                index: 1,
+                delta: ClaudeContentBlockDelta::TextDelta {
+                    text: "Hi! How can I help you today?".to_string(),
+                },
+            },
+            session_id: None,
+            parent_tool_use_id: None,
+            uuid: None,
+        };
+        let text_patches = processor.normalize_entries(&text_delta, worktree, &provider);
+        assert_eq!(text_patches.len(), 1);
+        let text_entries = patches_to_entries(&text_patches);
+        assert_eq!(text_entries.len(), 1);
+        assert!(matches!(text_entries[0].entry_type, NormalizedEntryType::AssistantMessage));
+
+        // 6. First partial assistant message: only text
+        let assistant_text_only = ClaudeJson::Assistant {
+            message: ClaudeMessage {
+                id: Some(msg_id.to_string()),
+                message_type: None,
+                role: "assistant".to_string(),
+                model: None,
+                content: ClaudeMessageContent::Array(vec![ClaudeContentItem::Text {
+                    text: "Hi! How can I help you today?".to_string(),
+                }]),
+                stop_reason: None,
+            },
+            session_id: None,
+            uuid: None,
+        };
+        let patches_1 = processor.normalize_entries(&assistant_text_only, worktree, &provider);
+        let entries_1: Vec<_> = patches_1
+            .iter()
+            .filter_map(|p| extract_normalized_entry_from_patch(p))
+            .collect();
+
+        // Should produce a Replace for the existing text entry, NOT a new Add
+        for (idx, entry) in &entries_1 {
+            if matches!(entry.entry_type, NormalizedEntryType::AssistantMessage) {
+                assert!(
+                    patches_1.iter().any(|p| {
+                        let v = serde_json::to_value(p).unwrap();
+                        let ops = v.as_array().unwrap();
+                        ops.iter().any(|op| {
+                            op.get("op").and_then(|o| o.as_str()) == Some("replace")
+                                && op.get("path").and_then(|p| p.as_str())
+                                    == Some(&format!("/entries/{idx}"))
+                        })
+                    }),
+                    "Text entry should be a Replace, not Add"
+                );
+            }
+        }
+
+        // 7. Second partial assistant message: only thinking
+        let assistant_thinking_only = ClaudeJson::Assistant {
+            message: ClaudeMessage {
+                id: Some(msg_id.to_string()),
+                message_type: None,
+                role: "assistant".to_string(),
+                model: None,
+                content: ClaudeMessageContent::Array(vec![ClaudeContentItem::Thinking {
+                    thinking: "Let me think...".to_string(),
+                }]),
+                stop_reason: None,
+            },
+            session_id: None,
+            uuid: None,
+        };
+        let patches_2 = processor.normalize_entries(&assistant_thinking_only, worktree, &provider);
+        let entries_2: Vec<_> = patches_2
+            .iter()
+            .filter_map(|p| extract_normalized_entry_from_patch(p))
+            .collect();
+
+        // Should produce a Replace for the existing thinking entry, NOT a new Add
+        for (idx, entry) in &entries_2 {
+            if matches!(entry.entry_type, NormalizedEntryType::Thinking) {
+                assert!(
+                    patches_2.iter().any(|p| {
+                        let v = serde_json::to_value(p).unwrap();
+                        let ops = v.as_array().unwrap();
+                        ops.iter().any(|op| {
+                            op.get("op").and_then(|o| o.as_str()) == Some("replace")
+                                && op.get("path").and_then(|p| p.as_str())
+                                    == Some(&format!("/entries/{idx}"))
+                        })
+                    }),
+                    "Thinking entry should be a Replace, not Add"
+                );
+            }
+        }
+
+        // 8. message_stop
+        let message_stop = ClaudeJson::StreamEvent {
+            event: ClaudeStreamEvent::MessageStop,
+            session_id: None,
+            parent_tool_use_id: None,
+            uuid: None,
+        };
+        processor.normalize_entries(&message_stop, worktree, &provider);
+
+        // Verify: no duplicate entries, correct order
+        let all_patches: Vec<json_patch::Patch> = [
+            &thinking_patches[..],
+            &text_patches[..],
+            &patches_1[..],
+            &patches_2[..],
+        ]
+        .concat();
+
+        let mut final_entries: std::collections::HashMap<usize, NormalizedEntry> =
+            std::collections::HashMap::new();
+        for patch in &all_patches {
+            if let Some((idx, entry)) = extract_normalized_entry_from_patch(patch) {
+                final_entries.insert(idx, entry);
+            }
+        }
+
+        let mut entry_count = 0;
+        let mut has_thinking = false;
+        let mut has_text = false;
+        let mut thinking_idx = usize::MAX;
+        let mut text_idx = usize::MAX;
+
+        for (idx, entry) in &final_entries {
+            match entry.entry_type {
+                NormalizedEntryType::Thinking => {
+                    has_thinking = true;
+                    thinking_idx = *idx;
+                    entry_count += 1;
+                }
+                NormalizedEntryType::AssistantMessage => {
+                    has_text = true;
+                    text_idx = *idx;
+                    entry_count += 1;
+                }
+                _ => {}
+            }
+        }
+
+        assert!(has_thinking, "Should have a thinking entry");
+        assert!(has_text, "Should have a text entry");
+        assert_eq!(entry_count, 2, "Should have exactly 2 content entries (no duplicates)");
+        assert!(
+            thinking_idx < text_idx,
+            "Thinking (index {thinking_idx}) should come before text (index {text_idx})"
+        );
     }
 }
