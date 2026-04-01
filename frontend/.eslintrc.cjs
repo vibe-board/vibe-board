@@ -192,6 +192,17 @@ module.exports = {
       },
     },
     {
+      // Disable type-aware linting for test files (not included in tsconfig)
+      files: ['**/*.test.{ts,tsx}', '**/test-setup.ts'],
+      parserOptions: {
+        project: null,
+      },
+      rules: {
+        '@typescript-eslint/switch-exhaustiveness-check': 'off',
+        '@typescript-eslint/triple-slash-reference': 'off',
+      },
+    },
+    {
       // Allow NiceModal usage in lib/modals.ts, design scope files (for Provider), and dialog component files
       files: [
         'src/lib/modals.ts',

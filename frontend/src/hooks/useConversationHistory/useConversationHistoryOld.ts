@@ -486,7 +486,7 @@ export const useConversationHistoryOld = ({
         (sum, p) => sum + p.entries.length,
         0
       );
-      let evictedCount = 0;
+      let _evictedCount = 0;
       if (totalEntries > MAX_IN_MEMORY_ENTRIES) {
         const ascending = (
           [, a]: [string, ExecutionProcessState],
@@ -507,7 +507,7 @@ export const useConversationHistoryOld = ({
           const live = getLiveExecutionProcess(id);
           if (live?.status === ExecutionProcessStatus.running) continue;
           remaining -= proc.entries.length;
-          evictedCount += proc.entries.length;
+          _evictedCount += proc.entries.length;
           delete executionProcessState[id];
           // Track as evicted so loadMore can re-load them if user scrolls back.
           // Do NOT remove from loadedProcessIds — that would cause an infinite
@@ -850,7 +850,6 @@ export const useConversationHistoryOld = ({
       isLoadingMoreRef.current = false;
       setIsLoadingMore(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const ensureProcessVisible = useCallback((p: ExecutionProcess) => {
