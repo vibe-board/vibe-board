@@ -55,7 +55,6 @@ impl EventService {
                             // Filter events based on project_id
                             if let Some(patch_op) = patch.0.first() {
                                 // Check if this is a direct task patch (new format)
-                                // Check if this is a direct task patch (new format)
                                 if patch_op.path().starts_with("/tasks/") {
                                     match patch_op {
                                         json_patch::PatchOperation::Add(op) => {

@@ -141,6 +141,7 @@ export const useJsonPatchWsStream = <T extends object>(
           // Handle JsonPatch messages (same as SSE json_patch event)
           if ('JsonPatch' in msg) {
             const patches: Operation[] = msg.JsonPatch;
+
             const dedupe = deduplicatePatchesRef.current;
             const filtered = dedupe ? dedupe(patches) : patches;
 

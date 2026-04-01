@@ -13,6 +13,47 @@ use tokio::sync::RwLock;
 use utils::msg_store::MsgStore;
 use uuid::Uuid;
 
+const HOOK_RETRY_COUNT: u32 = 3;
+const HOOK_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(5);
+
+/// Retry a find_by_rowid query that may return None due to the SQLite
+/// update_hook firing before the write transaction commits on the
+/// querying connection.
+async fn retry_find_by_rowid<T, F, Fut>(
+    table: &str,
+    rowid: i64,
+    f: F,
+) -> Result<Option<T>, sqlx::Error>
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = Result<Option<T>, sqlx::Error>>,
+{
+    for attempt in 0..=HOOK_RETRY_COUNT {
+        match f().await {
+            Ok(Some(val)) => return Ok(Some(val)),
+            Ok(None) if attempt < HOOK_RETRY_COUNT => {
+                tracing::debug!(
+                    table = table,
+                    rowid = rowid,
+                    attempt = attempt + 1,
+                    "[event-hook] find_by_rowid returned None, retrying"
+                );
+                tokio::time::sleep(HOOK_RETRY_DELAY).await;
+            }
+            Ok(None) => {
+                tracing::warn!(
+                    table = table,
+                    rowid = rowid,
+                    "[event-hook] find_by_rowid returned None after all retries"
+                );
+                return Ok(None);
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(None)
+}
+
 #[path = "events/patches.rs"]
 pub mod patches;
 #[path = "events/streams.rs"]
@@ -186,7 +227,11 @@ impl EventService {
                                     return;
                                 }
                                 (HookTables::Tasks, _) => {
-                                    match Task::find_by_rowid(&db.pool, rowid).await {
+                                    match retry_find_by_rowid("tasks", rowid, || {
+                                        Task::find_by_rowid(&db.pool, rowid)
+                                    })
+                                    .await
+                                    {
                                         Ok(Some(task)) => RecordTypes::Task(task),
                                         Ok(None) => RecordTypes::DeletedTask {
                                             rowid,
@@ -200,7 +245,11 @@ impl EventService {
                                     }
                                 }
                                 (HookTables::Projects, _) => {
-                                    match Project::find_by_rowid(&db.pool, rowid).await {
+                                    match retry_find_by_rowid("projects", rowid, || {
+                                        Project::find_by_rowid(&db.pool, rowid)
+                                    })
+                                    .await
+                                    {
                                         Ok(Some(project)) => RecordTypes::Project(project),
                                         Ok(None) => RecordTypes::DeletedProject {
                                             rowid,
@@ -213,7 +262,11 @@ impl EventService {
                                     }
                                 }
                                 (HookTables::Workspaces, _) => {
-                                    match Workspace::find_by_rowid(&db.pool, rowid).await {
+                                    match retry_find_by_rowid("workspaces", rowid, || {
+                                        Workspace::find_by_rowid(&db.pool, rowid)
+                                    })
+                                    .await
+                                    {
                                         Ok(Some(workspace)) => RecordTypes::Workspace(workspace),
                                         Ok(None) => RecordTypes::DeletedWorkspace {
                                             rowid,
@@ -229,8 +282,14 @@ impl EventService {
                                     }
                                 }
                                 (HookTables::ExecutionProcesses, _) => {
-                                    match ExecutionProcess::find_by_rowid(&db.pool, rowid).await {
-                                        Ok(Some(process)) => RecordTypes::ExecutionProcess(process),
+                                    match retry_find_by_rowid("execution_processes", rowid, || {
+                                        ExecutionProcess::find_by_rowid(&db.pool, rowid)
+                                    })
+                                    .await
+                                    {
+                                        Ok(Some(process)) => {
+                                            RecordTypes::ExecutionProcess(process)
+                                        }
                                         Ok(None) => RecordTypes::DeletedExecutionProcess {
                                             rowid,
                                             session_id: None,
@@ -246,7 +305,18 @@ impl EventService {
                                     }
                                 }
                                 (HookTables::Scratch, _) => {
-                                    match Scratch::find_by_rowid(&db.pool, rowid).await {
+                                    match retry_find_by_rowid("scratch", rowid, || async {
+                                        Scratch::find_by_rowid(&db.pool, rowid)
+                                            .await
+                                            .map_err(|e| match e {
+                                                db::models::scratch::ScratchError::Database(
+                                                    sqlx_err,
+                                                ) => sqlx_err,
+                                                other => sqlx::Error::Protocol(other.to_string()),
+                                            })
+                                    })
+                                    .await
+                                    {
                                         Ok(Some(scratch)) => RecordTypes::Scratch(scratch),
                                         Ok(None) => RecordTypes::DeletedScratch {
                                             rowid,
@@ -272,26 +342,43 @@ impl EventService {
                             match &record_type {
                                 RecordTypes::Task(task) => {
                                     // Convert Task to TaskWithAttemptStatus
-                                    if let Ok(task_list) =
-                                        Task::find_by_project_id_with_attempt_status(
-                                            &db.pool,
-                                            task.project_id,
-                                        )
-                                        .await
-                                        && let Some(task_with_status) =
-                                            task_list.into_iter().find(|t| t.id == task.id)
+                                    match Task::find_by_project_id_with_attempt_status(
+                                        &db.pool,
+                                        task.project_id,
+                                    )
+                                    .await
                                     {
-                                        let patch = match hook.operation {
-                                            SqliteOperation::Insert => {
-                                                task_patch::add(&task_with_status)
+                                        Ok(task_list) => {
+                                            if let Some(task_with_status) =
+                                                task_list.into_iter().find(|t| t.id == task.id)
+                                            {
+                                                let patch = match hook.operation {
+                                                    SqliteOperation::Insert => {
+                                                        task_patch::add(&task_with_status)
+                                                    }
+                                                    SqliteOperation::Update => {
+                                                        task_patch::replace(&task_with_status)
+                                                    }
+                                                    _ => task_patch::replace(&task_with_status),
+                                                };
+                                                msg_store_for_hook.push_patch(patch);
+                                                return;
+                                            } else {
+                                                tracing::error!(
+                                                    task_id = %task.id,
+                                                    op = db_op,
+                                                    "task not found in project list after hook"
+                                                );
                                             }
-                                            SqliteOperation::Update => {
-                                                task_patch::replace(&task_with_status)
-                                            }
-                                            _ => task_patch::replace(&task_with_status), // fallback
-                                        };
-                                        msg_store_for_hook.push_patch(patch);
-                                        return;
+                                        }
+                                        Err(e) => {
+                                            tracing::error!(
+                                                task_id = %task.id,
+                                                op = db_op,
+                                                error = %e,
+                                                "find_by_project_id_with_attempt_status failed"
+                                            );
+                                        }
                                     }
                                 }
                                 RecordTypes::DeletedTask {
