@@ -945,18 +945,18 @@ pub trait ContainerService {
                 return;
             }
 
-            // Get the message store for this execution
+            // Get the message store and normalized entry store for this execution
             let store = {
                 let map = msg_stores.read().await;
                 map.get(&execution_id).cloned()
             };
+            let ne_store = {
+                let map = normalized_entry_stores.read().await;
+                map.get(&execution_id).cloned()
+            };
 
             if let Some(store) = store {
-                let ne_store = Arc::new(NormalizedEntryStore::new());
-                {
-                    let mut map = normalized_entry_stores.write().await;
-                    map.insert(execution_id, ne_store.clone());
-                }
+                let ne_store = ne_store.expect("NormalizedEntryStore must be created before spawn_stream_raw_logs_to_file");
 
                 let mut stream = store.history_plus_stream();
                 let mut pending_entries: HashMap<i64, String> = HashMap::new();

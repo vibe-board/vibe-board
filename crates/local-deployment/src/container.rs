@@ -778,6 +778,9 @@ impl LocalContainerService {
 
         let mut map = self.msg_stores().write().await;
         map.insert(id, store);
+
+        let ne_store = Arc::new(NormalizedEntryStore::new());
+        self.normalized_entry_stores.write().await.insert(id, ne_store);
     }
 
     /// Extract the last assistant message from the MsgStore history
