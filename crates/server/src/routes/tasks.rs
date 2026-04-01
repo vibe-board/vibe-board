@@ -14,8 +14,10 @@ use axum::{
 };
 use db::models::{
     coding_agent_turn::CodingAgentTurn,
+    execution_process::ExecutionProcess,
     image::TaskImage,
     repo::{Repo, RepoError},
+    session::Session,
     task::{CreateTask, Task, TaskWithAttemptStatus, UpdateTask},
     workspace::{CreateWorkspace, Workspace, WorkspaceMode},
     workspace_repo::{CreateWorkspaceRepo, WorkspaceRepo},
@@ -24,7 +26,9 @@ use deployment::Deployment;
 use executors::profile::ExecutorProfileId;
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
-use services::services::{container::ContainerService, workspace_manager::WorkspaceManager};
+use services::services::{
+    container::ContainerService, raw_log_store, workspace_manager::WorkspaceManager,
+};
 use sqlx::Error as SqlxError;
 use ts_rs::TS;
 use utils::response::ApiResponse;
@@ -351,6 +355,20 @@ pub async fn delete_task(
         })
         .collect();
 
+    // Collect execution process IDs for log file cleanup (must be before CASCADE delete)
+    let mut execution_ids: Vec<Uuid> = Vec::new();
+    for workspace in &attempts {
+        if let Ok(sessions) = Session::find_by_workspace_id(pool, workspace.id).await {
+            for session in &sessions {
+                if let Ok(processes) =
+                    ExecutionProcess::find_by_session_id(pool, session.id, true).await
+                {
+                    execution_ids.extend(processes.iter().map(|p| p.id));
+                }
+            }
+        }
+    }
+
     // Use a transaction to ensure atomicity: either all operations succeed or all are rolled back
     let mut tx = pool.begin().await?;
 
@@ -432,6 +450,9 @@ pub async fn delete_task(
             }
             _ => {}
         }
+
+        // Clean up raw log files
+        raw_log_store::delete_log_files(&execution_ids).await;
 
         tracing::info!("Background cleanup completed for task {}", task_id);
     });

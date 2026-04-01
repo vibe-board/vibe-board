@@ -1761,10 +1761,12 @@ dependencies = [
  "strum",
  "strum_macros",
  "thiserror 2.0.18",
+ "tokio",
  "tracing",
  "ts-rs 11.0.1",
  "utils",
  "uuid",
+ "zstd",
 ]
 
 [[package]]
@@ -6674,6 +6676,7 @@ dependencies = [
  "url",
  "utils",
  "uuid",
+ "zstd",
 ]
 
 [[package]]

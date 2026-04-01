@@ -1,12 +1,13 @@
 use std::{str::FromStr, sync::Arc};
 
 use sqlx::{
-    Error, Pool, Sqlite, SqlitePool,
+    Error, Pool, Sqlite,
     migrate::MigrateError,
     sqlite::{SqliteConnectOptions, SqliteConnection, SqliteJournalMode, SqlitePoolOptions},
 };
 use utils::assets::asset_dir;
 
+mod data_migrations;
 pub mod models;
 
 async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), Error> {
@@ -80,9 +81,14 @@ impl DBService {
         );
         let options = SqliteConnectOptions::from_str(&database_url)?
             .create_if_missing(true)
-            .journal_mode(SqliteJournalMode::Delete);
-        let pool = SqlitePool::connect_with(options).await?;
+            .journal_mode(SqliteJournalMode::Wal)
+            .busy_timeout(std::time::Duration::from_secs(5));
+        let pool = SqlitePoolOptions::new()
+            .max_connections(4)
+            .connect_with(options)
+            .await?;
         run_migrations(&pool).await?;
+        data_migrations::run(&pool).await?;
         Ok(DBService { pool })
     }
 
@@ -116,24 +122,24 @@ impl DBService {
         );
         let options = SqliteConnectOptions::from_str(&database_url)?
             .create_if_missing(true)
-            .journal_mode(SqliteJournalMode::Delete);
+            .journal_mode(SqliteJournalMode::Wal)
+            .busy_timeout(std::time::Duration::from_secs(5));
 
-        let pool = if let Some(hook) = after_connect {
-            SqlitePoolOptions::new()
-                .after_connect(move |conn, _meta| {
-                    let hook = hook.clone();
-                    Box::pin(async move {
-                        hook(conn).await?;
-                        Ok(())
-                    })
+        let mut pool_options = SqlitePoolOptions::new().max_connections(4);
+
+        if let Some(hook) = after_connect {
+            pool_options = pool_options.after_connect(move |conn, _meta| {
+                let hook = hook.clone();
+                Box::pin(async move {
+                    hook(conn).await?;
+                    Ok(())
                 })
-                .connect_with(options)
-                .await?
-        } else {
-            SqlitePool::connect_with(options).await?
-        };
+            });
+        }
 
+        let pool = pool_options.connect_with(options).await?;
         run_migrations(&pool).await?;
+        data_migrations::run(&pool).await?;
         Ok(pool)
     }
 }

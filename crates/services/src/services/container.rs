@@ -14,7 +14,6 @@ use db::{
             CreateExecutionProcess, ExecutionContext, ExecutionProcess, ExecutionProcessError,
             ExecutionProcessRunReason, ExecutionProcessStatus,
         },
-        execution_process_logs::ExecutionProcessLogs,
         execution_process_repo_state::{
             CreateExecutionProcessRepoState, ExecutionProcessRepoState,
         },
@@ -57,8 +56,8 @@ use utils::{
 use uuid::Uuid;
 
 use crate::services::{
-    notification::NotificationService, workspace_manager::WorkspaceError as WorkspaceManagerError,
-    worktree_manager::WorktreeError,
+    notification::NotificationService, raw_log_store,
+    workspace_manager::WorkspaceError as WorkspaceManagerError, worktree_manager::WorktreeError,
 };
 pub type ContainerRef = String;
 
@@ -808,38 +807,26 @@ pub trait ContainerService {
                     })
                     .boxed(),
             );
-        } else {
-            // Fallback: load from DB and create direct stream
-            let log_records =
-                match ExecutionProcessLogs::find_by_execution_id(&self.db().pool, *id).await {
-                    Ok(records) if !records.is_empty() => records,
-                    Ok(_) => return None, // No logs exist
-                    Err(e) => {
-                        tracing::error!("Failed to fetch logs for execution {}: {}", id, e);
-                        return None;
-                    }
-                };
-
-            let messages = match ExecutionProcessLogs::parse_logs(&log_records) {
-                Ok(msgs) => msgs,
-                Err(e) => {
-                    tracing::error!("Failed to parse logs for execution {}: {}", id, e);
-                    return None;
-                }
-            };
-
-            // Direct stream from parsed messages
-            let stream = futures::stream::iter(
-                messages
-                    .into_iter()
-                    .filter(|m| matches!(m, LogMsg::Stdout(_) | LogMsg::Stderr(_)))
-                    .chain(std::iter::once(LogMsg::Finished))
-                    .map(Ok::<_, std::io::Error>),
-            )
-            .boxed();
-
-            Some(stream)
         }
+
+        // Fallback: load from log file
+        let lines = raw_log_store::read_log_lines(*id).await?;
+
+        let messages: Vec<LogMsg> = lines
+            .iter()
+            .filter_map(|line| serde_json::from_str::<LogMsg>(line).ok())
+            .filter(|m| matches!(m, LogMsg::Stdout(_) | LogMsg::Stderr(_)))
+            .collect();
+
+        let stream = futures::stream::iter(
+            messages
+                .into_iter()
+                .chain(std::iter::once(LogMsg::Finished))
+                .map(Ok::<_, std::io::Error>),
+        )
+        .boxed();
+
+        Some(stream)
     }
 
     async fn stream_normalized_logs(
@@ -848,7 +835,7 @@ pub trait ContainerService {
     ) -> Option<futures::stream::BoxStream<'static, Result<LogMsg, std::io::Error>>> {
         // First try in-memory store (existing behavior)
         if let Some(store) = self.get_msg_store_by_id(id).await {
-            Some(
+            return Some(
                 store
                     .history_plus_stream() // BoxStream<Result<LogMsg, io::Error>>
                     .filter(|msg| future::ready(matches!(msg, Ok(LogMsg::JsonPatch(..)))))
@@ -856,176 +843,51 @@ pub trait ContainerService {
                         Ok::<_, std::io::Error>(LogMsg::Finished)
                     }))
                     .boxed(),
-            )
-        } else {
-            // Fallback: load from DB and normalize
-            let log_records =
-                match ExecutionProcessLogs::find_by_execution_id(&self.db().pool, *id).await {
-                    Ok(records) if !records.is_empty() => records,
-                    Ok(_) => return None, // No logs exist
-                    Err(e) => {
-                        tracing::error!("Failed to fetch logs for execution {}: {}", id, e);
-                        return None;
-                    }
-                };
-
-            let raw_messages = match ExecutionProcessLogs::parse_logs(&log_records) {
-                Ok(msgs) => msgs,
-                Err(e) => {
-                    tracing::error!("Failed to parse logs for execution {}: {}", id, e);
-                    return None;
-                }
-            };
-
-            // Create temporary store and populate
-            // Include JsonPatch messages (already normalized) and Stdout/Stderr (need normalization)
-            let temp_store = Arc::new(MsgStore::new());
-            for msg in raw_messages {
-                if matches!(
-                    msg,
-                    LogMsg::Stdout(_) | LogMsg::Stderr(_) | LogMsg::JsonPatch(_)
-                ) {
-                    temp_store.push(msg);
-                }
-            }
-            temp_store.push_finished();
-
-            let process = match ExecutionProcess::find_by_id(&self.db().pool, *id).await {
-                Ok(Some(process)) => process,
-                Ok(None) => {
-                    tracing::error!("No execution process found for ID: {}", id);
-                    return None;
-                }
-                Err(e) => {
-                    tracing::error!("Failed to fetch execution process {}: {}", id, e);
-                    return None;
-                }
-            };
-
-            // Get the workspace to determine correct directory
-            let (workspace, _session) =
-                match process.parent_workspace_and_session(&self.db().pool).await {
-                    Ok(Some((workspace, session))) => (workspace, session),
-                    Ok(None) => {
-                        tracing::error!(
-                            "No workspace/session found for session ID: {}",
-                            process.session_id
-                        );
-                        return None;
-                    }
-                    Err(e) => {
-                        tracing::error!(
-                            "Failed to fetch workspace for session {}: {}",
-                            process.session_id,
-                            e
-                        );
-                        return None;
-                    }
-                };
-
-            if let Err(err) = self.ensure_container_exists(&workspace).await {
-                tracing::warn!(
-                    "Failed to recreate worktree before log normalization for workspace {}: {}",
-                    workspace.id,
-                    err
-                );
-            }
-
-            let current_dir = self.workspace_to_current_dir(&workspace);
-
-            let executor_action = if let Ok(executor_action) = process.executor_action() {
-                executor_action
-            } else {
-                tracing::error!(
-                    "Failed to parse executor action: {:?}",
-                    process.executor_action()
-                );
-                return None;
-            };
-
-            // Spawn normalizer on populated store
-            match executor_action.typ() {
-                ExecutorActionType::CodingAgentInitialRequest(request) => {
-                    #[cfg(feature = "qa-mode")]
-                    {
-                        let executor = QaMockExecutor;
-                        executor.normalize_logs(
-                            temp_store.clone(),
-                            &request.effective_dir(&current_dir),
-                        );
-                    }
-                    #[cfg(not(feature = "qa-mode"))]
-                    {
-                        let executor = ExecutorConfigs::get_cached()
-                            .get_coding_agent_or_default(&request.executor_profile_id);
-                        executor.normalize_logs(
-                            temp_store.clone(),
-                            &request.effective_dir(&current_dir),
-                        );
-                    }
-                }
-                ExecutorActionType::CodingAgentFollowUpRequest(request) => {
-                    #[cfg(feature = "qa-mode")]
-                    {
-                        let executor = QaMockExecutor;
-                        executor.normalize_logs(
-                            temp_store.clone(),
-                            &request.effective_dir(&current_dir),
-                        );
-                    }
-                    #[cfg(not(feature = "qa-mode"))]
-                    {
-                        let executor = ExecutorConfigs::get_cached()
-                            .get_coding_agent_or_default(&request.executor_profile_id);
-                        executor.normalize_logs(
-                            temp_store.clone(),
-                            &request.effective_dir(&current_dir),
-                        );
-                    }
-                }
-                #[cfg(feature = "qa-mode")]
-                ExecutorActionType::ReviewRequest(_request) => {
-                    let executor = QaMockExecutor;
-                    executor.normalize_logs(temp_store.clone(), &current_dir);
-                }
-                #[cfg(not(feature = "qa-mode"))]
-                ExecutorActionType::ReviewRequest(request) => {
-                    let executor = ExecutorConfigs::get_cached()
-                        .get_coding_agent_or_default(&request.executor_profile_id);
-                    executor.normalize_logs(temp_store.clone(), &current_dir);
-                }
-                _ => {
-                    tracing::debug!(
-                        "Executor action doesn't support log normalization: {:?}",
-                        process.executor_action()
-                    );
-                    return None;
-                }
-            }
-
-            // Spawn background task to persist normalized entries to DB
-            let db_pool = self.db().pool.clone();
-            let temp_store_for_persist = temp_store.clone();
-            let execution_id_for_persist = *id;
-            tokio::spawn(async move {
-                Self::persist_normalized_entries(
-                    db_pool,
-                    execution_id_for_persist,
-                    temp_store_for_persist,
-                )
-                .await;
-            });
-
-            Some(
-                temp_store
-                    .history_plus_stream()
-                    .filter(|msg| future::ready(matches!(msg, Ok(LogMsg::JsonPatch(..)))))
-                    .chain(futures::stream::once(async {
-                        Ok::<_, std::io::Error>(LogMsg::Finished)
-                    }))
-                    .boxed(),
-            )
+            );
         }
+
+        // Fallback: load from normalized_entries table directly
+        let pool = self.db().pool.clone();
+        let execution_id = *id;
+
+        // Check if entries exist
+        let exists = DbNormalizedEntry::exists_for_execution_id(&pool, execution_id)
+            .await
+            .ok()?;
+        if !exists {
+            return None;
+        }
+
+        // Load all entries and convert to JsonPatch messages
+        let total = DbNormalizedEntry::count_by_execution_id(&pool, execution_id)
+            .await
+            .ok()?;
+
+        let paginated =
+            DbNormalizedEntry::find_by_execution_id_paginated(&pool, execution_id, 0, total)
+                .await
+                .ok()?;
+
+        let patches: Vec<LogMsg> = paginated
+            .entries
+            .into_iter()
+            .filter_map(|entry| {
+                let normalized: NormalizedEntry = serde_json::from_str(&entry.entry_json).ok()?;
+                let patch =
+                    ConversationPatch::add_normalized_entry(entry.entry_index as usize, normalized);
+                Some(LogMsg::JsonPatch(patch))
+            })
+            .collect();
+
+        let stream = futures::stream::iter(
+            patches
+                .into_iter()
+                .chain(std::iter::once(LogMsg::Finished))
+                .map(Ok::<_, std::io::Error>),
+        )
+        .boxed();
+
+        Some(stream)
     }
 
     async fn stream_live_normalized_logs(
@@ -1063,12 +925,17 @@ pub trait ContainerService {
         Some(stream)
     }
 
-    fn spawn_stream_raw_logs_to_db(&self, execution_id: &Uuid) -> JoinHandle<()> {
+    fn spawn_stream_raw_logs_to_file(&self, execution_id: &Uuid) -> JoinHandle<()> {
         let execution_id = *execution_id;
         let msg_stores = self.msg_stores().clone();
         let db = self.db().clone();
 
         tokio::spawn(async move {
+            if let Err(e) = raw_log_store::ensure_logs_dir().await {
+                tracing::error!("Failed to create logs directory: {}", e);
+                return;
+            }
+
             // Get the message store for this execution
             let store = {
                 let map = msg_stores.read().await;
@@ -1077,24 +944,16 @@ pub trait ContainerService {
 
             if let Some(store) = store {
                 let mut stream = store.history_plus_stream();
-                // Buffer for accumulating normalized entries before batch insert.
-                // Use a HashMap keyed by entry_index so that streaming replace
-                // patches for the same index overwrite earlier versions instead
-                // of accumulating redundant rows.
                 let mut pending_entries: HashMap<i64, String> = HashMap::new();
                 const FLUSH_THRESHOLD: usize = 10;
 
                 while let Some(Ok(msg)) = stream.next().await {
                     match &msg {
                         LogMsg::Stdout(_) | LogMsg::Stderr(_) => {
-                            // Serialize this individual message as a JSONL line
                             match serde_json::to_string(&msg) {
                                 Ok(jsonl_line) => {
                                     let jsonl_line_with_newline = format!("{jsonl_line}\n");
-
-                                    // Append this line to the database
-                                    if let Err(e) = ExecutionProcessLogs::append_log_line(
-                                        &db.pool,
+                                    if let Err(e) = raw_log_store::append_log_line(
                                         execution_id,
                                         &jsonl_line_with_newline,
                                     )
@@ -1117,15 +976,11 @@ pub trait ContainerService {
                             }
                         }
                         LogMsg::JsonPatch(patch) => {
-                            // Extract normalized entries and accumulate for batch insert.
-                            // Inserting into the map by index deduplicates streaming
-                            // replace patches so only the latest version is persisted.
                             if let Some((index, entry)) = extract_normalized_entry_from_patch(patch)
                                 && let Ok(json) = serde_json::to_string(&entry)
                             {
                                 pending_entries.insert(index as i64, json);
                             }
-                            // Flush when threshold is reached
                             if pending_entries.len() >= FLUSH_THRESHOLD {
                                 let batch: Vec<(i64, String)> = pending_entries.drain().collect();
                                 if let Err(e) =
@@ -1191,6 +1046,15 @@ pub trait ContainerService {
                             e
                         );
                     }
+                }
+
+                // Compress the log file now that execution is finished
+                if let Err(e) = raw_log_store::compress_log_file(execution_id).await {
+                    tracing::error!(
+                        "Failed to compress log file for execution {}: {}",
+                        execution_id,
+                        e
+                    );
                 }
             }
         })
@@ -1452,15 +1316,12 @@ pub trait ContainerService {
             }
             Task::update_status(&self.db().pool, task.id, TaskStatus::InReview).await?;
 
-            // Emit stderr error message
+            // Emit stderr error message to log file
             let log_message = LogMsg::Stderr(format!("Failed to start execution: {start_error}"));
             if let Ok(json_line) = serde_json::to_string(&log_message) {
-                let _ = ExecutionProcessLogs::append_log_line(
-                    &self.db().pool,
-                    execution_process.id,
-                    &format!("{json_line}\n"),
-                )
-                .await;
+                let _ =
+                    raw_log_store::append_log_line(execution_process.id, &format!("{json_line}\n"))
+                        .await;
             }
 
             // Emit NextAction with failure context for coding agent requests
@@ -1478,8 +1339,7 @@ pub trait ContainerService {
                 };
                 let patch = ConversationPatch::add_normalized_entry(2, error_message);
                 if let Ok(json_line) = serde_json::to_string::<LogMsg>(&LogMsg::JsonPatch(patch)) {
-                    let _ = ExecutionProcessLogs::append_log_line(
-                        &self.db().pool,
+                    let _ = raw_log_store::append_log_line(
                         execution_process.id,
                         &format!("{json_line}\n"),
                     )
@@ -1529,7 +1389,7 @@ pub trait ContainerService {
             }
         }
 
-        let db_stream_handle = self.spawn_stream_raw_logs_to_db(&execution_process.id);
+        let db_stream_handle = self.spawn_stream_raw_logs_to_file(&execution_process.id);
         self.store_db_stream_handle(execution_process.id, db_stream_handle)
             .await;
         Ok(execution_process)

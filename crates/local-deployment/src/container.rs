@@ -48,6 +48,7 @@ use services::services::{
     image::ImageService,
     notification::NotificationService,
     queued_message::QueuedMessageService,
+    raw_log_store,
     workspace_manager::{RepoWorkspaceInput, WorkspaceManager},
 };
 use tokio::{sync::RwLock, task::JoinHandle};
@@ -217,6 +218,19 @@ impl LocalContainerService {
                         e
                     );
                 });
+        }
+
+        // Clean up raw log files for all execution processes in this workspace
+        if let Ok(sessions) = Session::find_by_workspace_id(&db.pool, workspace.id).await {
+            let mut execution_ids: Vec<uuid::Uuid> = Vec::new();
+            for session in &sessions {
+                if let Ok(processes) =
+                    ExecutionProcess::find_by_session_id(&db.pool, session.id, true).await
+                {
+                    execution_ids.extend(processes.iter().map(|p| p.id));
+                }
+            }
+            raw_log_store::delete_log_files(&execution_ids).await;
         }
 
         // Clear container_ref so this workspace won't be picked up again
