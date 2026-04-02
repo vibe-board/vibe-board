@@ -1430,23 +1430,28 @@ impl ClaudeLogProcessor {
                 }
                 ClaudeStreamEvent::ContentBlockStop { .. } => {}
                 ClaudeStreamEvent::MessageDelta { usage, .. } => {
-                    // Emit token-only usage (no context window — that comes in Result)
+                    // Streaming: emit per-turn input token count only
                     if parent_tool_use_id.is_none()
                         && let Some(usage) = usage
                     {
-                        let input_tokens = usage.input_tokens.unwrap_or(0)
+                        let total_tokens = (usage.input_tokens.unwrap_or(0)
                             + usage.cache_creation_input_tokens.unwrap_or(0)
-                            + usage.cache_read_input_tokens.unwrap_or(0);
-                        let output_tokens = usage.output_tokens.unwrap_or(0);
-                        let total_tokens = (input_tokens + output_tokens) as u32;
+                            + usage.cache_read_input_tokens.unwrap_or(0))
+                            as u32;
 
                         let entry = NormalizedEntry {
                             timestamp: None,
                             entry_type: NormalizedEntryType::TokenUsageInfo(
                                 crate::logs::TokenUsageInfo {
                                     total_tokens,
-                                    model_context_window: None,
                                     model_name: None,
+                                    input_tokens: None,
+                                    output_tokens: None,
+                                    cache_read_input_tokens: None,
+                                    cache_creation_input_tokens: None,
+                                    cost_usd: None,
+                                    context_window: None,
+                                    max_output_tokens: None,
                                 },
                             ),
                             content: format!("Tokens used: {}", total_tokens),
@@ -1470,33 +1475,30 @@ impl ClaudeLogProcessor {
                 result,
                 ..
             } => {
-                // Emit one usage entry per model with full context window info
+                // Emit one detailed usage entry per model from modelUsage
                 if let Some(model_usage) = model_usage.as_ref() {
                     for (name, usage) in model_usage {
-                        let input_tokens = usage.input_tokens.unwrap_or(0)
+                        let total = (usage.input_tokens.unwrap_or(0)
                             + usage.cache_read_input_tokens.unwrap_or(0)
-                            + usage.cache_creation_input_tokens.unwrap_or(0);
-                        let output_tokens = usage.output_tokens.unwrap_or(0);
-                        let total_tokens = (input_tokens + output_tokens) as u32;
-
+                            + usage.cache_creation_input_tokens.unwrap_or(0)
+                            + usage.output_tokens.unwrap_or(0))
+                            as u32;
                         let entry = NormalizedEntry {
                             timestamp: None,
                             entry_type: NormalizedEntryType::TokenUsageInfo(
                                 crate::logs::TokenUsageInfo {
-                                    total_tokens,
-                                    model_context_window: usage.context_window,
+                                    total_tokens: total,
                                     model_name: Some(name.clone()),
+                                    input_tokens: usage.input_tokens,
+                                    output_tokens: usage.output_tokens,
+                                    cache_read_input_tokens: usage.cache_read_input_tokens,
+                                    cache_creation_input_tokens: usage.cache_creation_input_tokens,
+                                    cost_usd: usage.cost_usd,
+                                    context_window: usage.context_window,
+                                    max_output_tokens: usage.max_output_tokens,
                                 },
                             ),
-                            content: format!(
-                                "Model: {} — Tokens used: {}{}",
-                                name,
-                                total_tokens,
-                                usage
-                                    .context_window
-                                    .map(|cw| format!(" / Context window: {}", cw))
-                                    .unwrap_or_default()
-                            ),
+                            content: format!("Model: {} — Total tokens: {}", name, total),
                             metadata: None,
                         };
                         let idx = entry_index_provider.next();
@@ -2182,6 +2184,8 @@ pub struct ClaudeModelUsage {
     #[serde(default)]
     pub context_window: Option<u32>,
     #[serde(default)]
+    pub max_output_tokens: Option<u32>,
+    #[serde(default)]
     pub input_tokens: Option<u64>,
     #[serde(default)]
     pub output_tokens: Option<u64>,
@@ -2189,6 +2193,8 @@ pub struct ClaudeModelUsage {
     pub cache_read_input_tokens: Option<u64>,
     #[serde(default)]
     pub cache_creation_input_tokens: Option<u64>,
+    #[serde(default, rename = "costUSD")]
+    pub cost_usd: Option<f64>,
 }
 
 /// Structured tool data for Claude tools based on real samples

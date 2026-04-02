@@ -83,8 +83,14 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                             timestamp: None,
                             entry_type: NormalizedEntryType::TokenUsageInfo(TokenUsageInfo {
                                 total_tokens,
-                                model_context_window: Some(model_context_window),
                                 model_name: None,
+                                input_tokens: None,
+                                output_tokens: None,
+                                cache_read_input_tokens: None,
+                                cache_creation_input_tokens: None,
+                                cost_usd: None,
+                                context_window: Some(model_context_window),
+                                max_output_tokens: None,
                             }),
                             content: format!(
                                 "Tokens used: {} / Context window: {}",

@@ -981,7 +981,7 @@ function DisplayConversationEntry({
   }
 
   if (entry.entry_type.type === 'token_usage_info') {
-    const { total_tokens, model_context_window, model_name } = entry.entry_type;
+    const usage = entry.entry_type;
 
     const formatTokens = (n: number) => {
       if (n >= 1_000_000) {
@@ -992,49 +992,63 @@ function DisplayConversationEntry({
       return n.toString();
     };
 
-    // Streaming mode: only token count known, no context window yet
-    if (model_context_window == null) {
+    const formatCost = (n: number) =>
+      n >= 1 ? `$${n.toFixed(2)}` : `$${n.toFixed(4)}`;
+
+    // Streaming mode: only input token count
+    if (usage.model_name == null) {
       return (
         <div className="px-4 py-1.5 text-xs text-muted-foreground flex items-center gap-2">
           <Gauge className="h-3 w-3" />
           <span className="font-medium">
-            {formatTokens(total_tokens)} tokens
+            {formatTokens(usage.total_tokens)} tokens
           </span>
         </div>
       );
     }
 
-    // Final mode: full bar with percentage and model name
-    if (model_context_window === 0) return null;
-
-    const percentage = Math.min(
-      100,
-      (total_tokens / model_context_window) * 100
-    );
-
-    const barColor =
-      percentage >= 90
-        ? 'bg-red-500'
-        : percentage >= 75
-          ? 'bg-amber-500'
-          : percentage >= 50
-            ? 'bg-blue-500'
-            : 'bg-green-500';
-
+    // Final mode: detailed model usage from Result
     return (
-      <div className="px-4 py-1.5 text-xs text-muted-foreground flex items-center gap-2">
-        <Gauge className="h-3 w-3" />
-        {model_name && <span className="opacity-70">{model_name}</span>}
-        <span className="font-medium">
-          {formatTokens(total_tokens)} / {formatTokens(model_context_window)}
-        </span>
-        <div className="flex-1 max-w-24 h-1.5 bg-muted rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all ${barColor}`}
-            style={{ width: `${percentage}%` }}
-          />
+      <div className="px-4 py-1.5 text-xs text-muted-foreground space-y-0.5">
+        <div className="flex items-center gap-2">
+          <Gauge className="h-3 w-3" />
+          <span className="font-medium">{usage.model_name}</span>
+          {usage.cost_usd != null && (
+            <span className="opacity-70">{formatCost(usage.cost_usd)}</span>
+          )}
+          {usage.context_window != null && (
+            <span className="opacity-50">
+              ctx: {formatTokens(usage.context_window)}
+            </span>
+          )}
+          {usage.max_output_tokens != null && (
+            <span className="opacity-50">
+              max out: {formatTokens(usage.max_output_tokens)}
+            </span>
+          )}
         </div>
-        <span className="opacity-70">{Math.round(percentage)}%</span>
+        <div className="pl-5 flex flex-wrap gap-x-3 opacity-70">
+          {usage.input_tokens != null && (
+            <span>in: {formatTokens(Number(usage.input_tokens))}</span>
+          )}
+          {usage.output_tokens != null && (
+            <span>out: {formatTokens(Number(usage.output_tokens))}</span>
+          )}
+          {usage.cache_read_input_tokens != null &&
+            usage.cache_read_input_tokens > 0 && (
+              <span>
+                cache read:{' '}
+                {formatTokens(Number(usage.cache_read_input_tokens))}
+              </span>
+            )}
+          {usage.cache_creation_input_tokens != null &&
+            usage.cache_creation_input_tokens > 0 && (
+              <span>
+                cache write:{' '}
+                {formatTokens(Number(usage.cache_creation_input_tokens))}
+              </span>
+            )}
+        </div>
       </div>
     );
   }
