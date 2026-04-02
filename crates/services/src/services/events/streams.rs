@@ -59,12 +59,6 @@ impl EventService {
                                             if let Ok(task) =
                                                 serde_json::from_value::<Task>(op.value.clone())
                                                 && task.project_id == project_id
-                                                && matches!(
-                                                    task.status,
-                                                    db::models::task::TaskStatus::Todo
-                                                        | db::models::task::TaskStatus::InProgress
-                                                        | db::models::task::TaskStatus::InReview
-                                                )
                                             {
                                                 return Some(Ok(LogMsg::JsonPatch(patch)));
                                             }
@@ -75,27 +69,7 @@ impl EventService {
                                                 serde_json::from_value::<Task>(op.value.clone())
                                                 && task.project_id == project_id
                                             {
-                                                let is_active = matches!(
-                                                    task.status,
-                                                    db::models::task::TaskStatus::Todo
-                                                        | db::models::task::TaskStatus::InProgress
-                                                        | db::models::task::TaskStatus::InReview
-                                                );
-                                                if is_active {
-                                                    return Some(Ok(LogMsg::JsonPatch(patch)));
-                                                } else {
-                                                    // Task moved to done/cancelled — remove from kanban
-                                                    let remove_patch = json_patch::Patch(vec![
-                                                        json_patch::PatchOperation::Remove(
-                                                            json_patch::RemoveOperation {
-                                                                path: op.path.clone(),
-                                                            },
-                                                        ),
-                                                    ]);
-                                                    return Some(Ok(LogMsg::JsonPatch(
-                                                        remove_patch,
-                                                    )));
-                                                }
+                                                return Some(Ok(LogMsg::JsonPatch(patch)));
                                             }
                                         }
                                         json_patch::PatchOperation::Remove(_) => {
