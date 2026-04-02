@@ -995,7 +995,7 @@ function DisplayConversationEntry({
     const formatCost = (n: number) =>
       n >= 1 ? `$${n.toFixed(2)}` : `$${n.toFixed(4)}`;
 
-    // Streaming mode: only input token count
+    // Streaming mode: lightweight update (no model name yet)
     if (usage.model_name == null) {
       return (
         <div className="px-4 py-1.5 text-xs text-muted-foreground flex items-center gap-2">
@@ -1003,6 +1003,16 @@ function DisplayConversationEntry({
           <span className="font-medium">
             {formatTokens(usage.total_tokens)} tokens
           </span>
+          {usage.input_tokens != null && usage.input_tokens > 0 && (
+            <span className="opacity-70">
+              in: {formatTokens(Number(usage.input_tokens))}
+            </span>
+          )}
+          {usage.output_tokens != null && usage.output_tokens > 0 && (
+            <span className="opacity-70">
+              out: {formatTokens(Number(usage.output_tokens))}
+            </span>
+          )}
         </div>
       );
     }
