@@ -154,7 +154,7 @@ async fn export_execution_process_logs(pool: &Pool<Sqlite>) -> Result<(), sqlx::
 async fn export_single_execution(
     pool: &Pool<Sqlite>,
     raw_id: &[u8],
-    id: Uuid,
+    _id: Uuid,
     zst_path: &PathBuf,
 ) -> Result<(usize, u64, i64), Box<dyn std::error::Error + Send + Sync>> {
     // Fetch all log rows for this execution, ordered by insertion time
