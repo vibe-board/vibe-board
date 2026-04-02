@@ -92,6 +92,7 @@ pub struct LocalContainerService {
     /// Tracks background tasks that stream logs to the database.
     /// When stopping execution, we await these to ensure logs are fully persisted.
     db_stream_handles: Arc<RwLock<HashMap<Uuid, JoinHandle<()>>>>,
+    raw_log_handles: Arc<RwLock<HashMap<Uuid, JoinHandle<()>>>>,
     exit_monitor_handles: Arc<RwLock<HashMap<Uuid, JoinHandle<()>>>>,
     config: Arc<RwLock<Config>>,
     git: GitService,
@@ -118,6 +119,7 @@ impl LocalContainerService {
         let child_store = Arc::new(RwLock::new(HashMap::new()));
         let cancellation_tokens = Arc::new(RwLock::new(HashMap::new()));
         let db_stream_handles = Arc::new(RwLock::new(HashMap::new()));
+        let raw_log_handles = Arc::new(RwLock::new(HashMap::new()));
         let exit_monitor_handles = Arc::new(RwLock::new(HashMap::new()));
         let normalized_entry_stores = Arc::new(RwLock::new(HashMap::new()));
         let notification_service = NotificationService::new(config.clone());
@@ -130,6 +132,7 @@ impl LocalContainerService {
             msg_stores,
             normalized_entry_stores,
             db_stream_handles,
+            raw_log_handles,
             exit_monitor_handles,
             config,
             git,
@@ -177,6 +180,16 @@ impl LocalContainerService {
 
     async fn take_db_stream_handle(&self, id: &Uuid) -> Option<JoinHandle<()>> {
         let mut map = self.db_stream_handles.write().await;
+        map.remove(id)
+    }
+
+    async fn add_raw_log_handle(&self, id: Uuid, handle: JoinHandle<()>) {
+        let mut map = self.raw_log_handles.write().await;
+        map.insert(id, handle);
+    }
+
+    async fn take_raw_log_handle(&self, id: &Uuid) -> Option<JoinHandle<()>> {
+        let mut map = self.raw_log_handles.write().await;
         map.remove(id)
     }
 
@@ -720,10 +733,14 @@ impl LocalContainerService {
             // capture the HEAD OID as the definitive "after" state (best-effort).
             container.update_after_head_commits(exec_id).await;
 
-            // Wait for DB persistence to complete before cleaning up MsgStore
+            // Wait for both raw log and DB persistence to complete before cleaning up MsgStore
+            let raw_log_handle = container.take_raw_log_handle(&exec_id).await;
             let db_stream_handle = container.take_db_stream_handle(&exec_id).await;
             if let Some(msg_arc) = msg_stores.write().await.remove(&exec_id) {
                 msg_arc.push_finished();
+            }
+            if let Some(handle) = raw_log_handle {
+                let _ = tokio::time::timeout(Duration::from_secs(5), handle).await;
             }
             if let Some(handle) = db_stream_handle {
                 let _ = tokio::time::timeout(Duration::from_secs(5), handle).await;
@@ -1100,6 +1117,14 @@ impl ContainerService for LocalContainerService {
         LocalContainerService::take_db_stream_handle(self, id).await
     }
 
+    async fn store_raw_log_handle(&self, id: Uuid, handle: JoinHandle<()>) {
+        self.add_raw_log_handle(id, handle).await;
+    }
+
+    async fn take_raw_log_handle(&self, id: &Uuid) -> Option<JoinHandle<()>> {
+        LocalContainerService::take_raw_log_handle(self, id).await
+    }
+
     async fn git_branch_prefix(&self) -> String {
         self.config.read().await.git_branch_prefix.clone()
     }
@@ -1474,10 +1499,14 @@ impl ContainerService for LocalContainerService {
         }
         self.remove_child_from_store(&execution_process.id).await;
 
-        // Mark the process finished in the MsgStore and wait for DB persistence
+        // Mark the process finished in the MsgStore and wait for both log and DB persistence
+        let raw_log_handle = self.take_raw_log_handle(&execution_process.id).await;
         let db_stream_handle = self.take_db_stream_handle(&execution_process.id).await;
         if let Some(msg) = self.msg_stores.write().await.remove(&execution_process.id) {
             msg.push_finished();
+        }
+        if let Some(handle) = raw_log_handle {
+            let _ = tokio::time::timeout(Duration::from_secs(5), handle).await;
         }
         if let Some(handle) = db_stream_handle {
             let _ = tokio::time::timeout(Duration::from_secs(5), handle).await;

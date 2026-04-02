@@ -161,6 +161,10 @@ pub trait ContainerService {
 
     async fn take_db_stream_handle(&self, id: &Uuid) -> Option<JoinHandle<()>>;
 
+    async fn store_raw_log_handle(&self, id: Uuid, handle: JoinHandle<()>);
+
+    async fn take_raw_log_handle(&self, id: &Uuid) -> Option<JoinHandle<()>>;
+
     async fn create(&self, workspace: &Workspace) -> Result<ContainerRef, ContainerError>;
 
     async fn kill_all_running_processes(&self) -> Result<(), ContainerError>;
@@ -954,11 +958,11 @@ pub trait ContainerService {
         Some(stream)
     }
 
+    /// Stream raw stdout/stderr logs to a JSONL file on disk.
+    /// This is independent of DB persistence so it is not blocked by SQLite locks.
     fn spawn_stream_raw_logs_to_file(&self, execution_id: &Uuid) -> JoinHandle<()> {
         let execution_id = *execution_id;
         let msg_stores = self.msg_stores().clone();
-        let normalized_entry_stores = self.normalized_entry_stores().clone();
-        let db = self.db().clone();
 
         tokio::spawn(async move {
             if let Err(e) = raw_log_store::ensure_logs_dir().await {
@@ -966,7 +970,56 @@ pub trait ContainerService {
                 return;
             }
 
-            // Get the message store and normalized entry store for this execution
+            let store = {
+                let map = msg_stores.read().await;
+                map.get(&execution_id).cloned()
+            };
+
+            if let Some(store) = store {
+                let mut stream = store.history_plus_stream();
+
+                while let Some(Ok(msg)) = stream.next().await {
+                    match &msg {
+                        LogMsg::Stdout(_) | LogMsg::Stderr(_) => {
+                            if let Ok(jsonl_line) = serde_json::to_string(&msg) {
+                                let line = format!("{jsonl_line}\n");
+                                if let Err(e) =
+                                    raw_log_store::append_log_line(execution_id, &line).await
+                                {
+                                    tracing::error!(
+                                        "Failed to append log line for execution {}: {}",
+                                        execution_id,
+                                        e
+                                    );
+                                }
+                            }
+                        }
+                        LogMsg::Finished => break,
+                        _ => continue,
+                    }
+                }
+
+                // Compress the log file now that execution is finished
+                if let Err(e) = raw_log_store::compress_log_file(execution_id).await {
+                    tracing::error!(
+                        "Failed to compress log file for execution {}: {}",
+                        execution_id,
+                        e
+                    );
+                }
+            }
+        })
+    }
+
+    /// Stream normalized entries and metadata to the database.
+    /// May be blocked by SQLite locks — does NOT affect JSONL persistence.
+    fn spawn_stream_db_persistence(&self, execution_id: &Uuid) -> JoinHandle<()> {
+        let execution_id = *execution_id;
+        let msg_stores = self.msg_stores().clone();
+        let normalized_entry_stores = self.normalized_entry_stores().clone();
+        let db = self.db().clone();
+
+        tokio::spawn(async move {
             let store = {
                 let map = msg_stores.read().await;
                 map.get(&execution_id).cloned()
@@ -978,7 +1031,7 @@ pub trait ContainerService {
 
             if let Some(store) = store {
                 let ne_store = ne_store.expect(
-                    "NormalizedEntryStore must be created before spawn_stream_raw_logs_to_file",
+                    "NormalizedEntryStore must be created before spawn_stream_db_persistence",
                 );
 
                 let mut stream = store.history_plus_stream();
@@ -987,32 +1040,6 @@ pub trait ContainerService {
 
                 while let Some(Ok(msg)) = stream.next().await {
                     match &msg {
-                        LogMsg::Stdout(_) | LogMsg::Stderr(_) => {
-                            match serde_json::to_string(&msg) {
-                                Ok(jsonl_line) => {
-                                    let jsonl_line_with_newline = format!("{jsonl_line}\n");
-                                    if let Err(e) = raw_log_store::append_log_line(
-                                        execution_id,
-                                        &jsonl_line_with_newline,
-                                    )
-                                    .await
-                                    {
-                                        tracing::error!(
-                                            "Failed to append log line for execution {}: {}",
-                                            execution_id,
-                                            e
-                                        );
-                                    }
-                                }
-                                Err(e) => {
-                                    tracing::error!(
-                                        "Failed to serialize log message for execution {}: {}",
-                                        execution_id,
-                                        e
-                                    );
-                                }
-                            }
-                        }
                         LogMsg::JsonPatch(patch) => {
                             let is_replace = patch
                                 .iter()
@@ -1020,7 +1047,8 @@ pub trait ContainerService {
 
                             if let Some((index, entry)) = extract_normalized_entry_from_patch(patch)
                             {
-                                let json = serde_json::to_string(&entry).unwrap_or_default();
+                                let json =
+                                    serde_json::to_string(&entry).unwrap_or_default();
                                 if is_replace {
                                     ne_store.replace(index, entry);
                                 } else {
@@ -1031,10 +1059,15 @@ pub trait ContainerService {
                                 }
                             }
                             if pending_entries.len() >= FLUSH_THRESHOLD {
-                                let batch: Vec<(i64, String)> = pending_entries.drain().collect();
+                                let batch: Vec<(i64, String)> =
+                                    pending_entries.drain().collect();
                                 if let Err(e) =
-                                    DbNormalizedEntry::insert_batch(&db.pool, execution_id, &batch)
-                                        .await
+                                    DbNormalizedEntry::insert_batch(
+                                        &db.pool,
+                                        execution_id,
+                                        &batch,
+                                    )
+                                    .await
                                 {
                                     tracing::error!(
                                         "Failed to persist normalized entries for execution {}: {}",
@@ -1076,10 +1109,8 @@ pub trait ContainerService {
                                 );
                             }
                         }
-                        LogMsg::Finished => {
-                            break;
-                        }
-                        LogMsg::Ready => continue,
+                        LogMsg::Finished => break,
+                        LogMsg::Stdout(_) | LogMsg::Stderr(_) | LogMsg::Ready => continue,
                     }
                 }
 
@@ -1087,7 +1118,8 @@ pub trait ContainerService {
                 if !pending_entries.is_empty() {
                     let batch: Vec<(i64, String)> = pending_entries.drain().collect();
                     if let Err(e) =
-                        DbNormalizedEntry::insert_batch(&db.pool, execution_id, &batch).await
+                        DbNormalizedEntry::insert_batch(&db.pool, execution_id, &batch)
+                            .await
                     {
                         tracing::error!(
                             "Failed to flush remaining normalized entries for execution {}: {}",
@@ -1095,15 +1127,6 @@ pub trait ContainerService {
                             e
                         );
                     }
-                }
-
-                // Compress the log file now that execution is finished
-                if let Err(e) = raw_log_store::compress_log_file(execution_id).await {
-                    tracing::error!(
-                        "Failed to compress log file for execution {}: {}",
-                        execution_id,
-                        e
-                    );
                 }
 
                 // Remove the NormalizedEntryStore since execution is done
@@ -1461,7 +1484,10 @@ pub trait ContainerService {
             }
         }
 
-        let db_stream_handle = self.spawn_stream_raw_logs_to_file(&execution_process.id);
+        let raw_log_handle = self.spawn_stream_raw_logs_to_file(&execution_process.id);
+        let db_stream_handle = self.spawn_stream_db_persistence(&execution_process.id);
+        self.store_raw_log_handle(execution_process.id, raw_log_handle)
+            .await;
         self.store_db_stream_handle(execution_process.id, db_stream_handle)
             .await;
         Ok(execution_process)
