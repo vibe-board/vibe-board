@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { MoreHorizontal } from 'lucide-react';
-import type { TaskWithAttemptStatus } from 'shared/types';
+import type { Task } from 'shared/types';
 import { useOpenInEditor } from '@/hooks/useOpenInEditor';
 import { DeleteTaskConfirmationDialog } from '@/components/dialogs/tasks/DeleteTaskConfirmationDialog';
 import { ViewProcessesDialog } from '@/components/dialogs/tasks/ViewProcessesDialog';
@@ -24,7 +24,7 @@ import { useNavigate } from 'react-router-dom';
 import { WorkspaceWithSession } from '@/types/attempt';
 
 interface ActionsDropdownProps {
-  task?: TaskWithAttemptStatus | null;
+  task?: Task | null;
   attempt?: WorkspaceWithSession | null;
 }
 

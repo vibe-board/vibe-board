@@ -16,19 +16,19 @@ import {
   GitOperationsProvider,
   useGitOperationsError,
 } from '@/contexts/GitOperationsContext';
-import type { Merge, TaskWithAttemptStatus } from 'shared/types';
+import type { Merge, Task } from 'shared/types';
 import type { WorkspaceWithSession } from '@/types/attempt';
 import NiceModal, { useModal } from '@ebay/nice-modal-react';
 import { defineModal } from '@/lib/modals';
 
 export interface GitActionsDialogProps {
   attemptId: string;
-  task?: TaskWithAttemptStatus;
+  task?: Task;
 }
 
 interface GitActionsDialogContentProps {
   attempt: WorkspaceWithSession;
-  task: TaskWithAttemptStatus;
+  task: Task;
 }
 
 function GitActionsDialogContent({

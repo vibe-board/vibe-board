@@ -1,15 +1,15 @@
 import { useCallback, useMemo } from 'react';
 import { useJsonPatchWsStream } from './useJsonPatchWsStream';
-import type { TaskStatus, TaskWithAttemptStatus } from 'shared/types';
+import type { TaskStatus, Task } from 'shared/types';
 
 type TasksState = {
-  tasks: Record<string, TaskWithAttemptStatus>;
+  tasks: Record<string, Task>;
 };
 
 export interface UseProjectTasksResult {
-  tasks: TaskWithAttemptStatus[];
-  tasksById: Record<string, TaskWithAttemptStatus>;
-  tasksByStatus: Record<TaskStatus, TaskWithAttemptStatus[]>;
+  tasks: Task[];
+  tasksById: Record<string, Task>;
+  tasksByStatus: Record<TaskStatus, Task[]>;
   isLoading: boolean;
   isConnected: boolean;
   error: string | null;
@@ -34,8 +34,8 @@ export const useProjectTasks = (projectId: string): UseProjectTasksResult => {
   const localTasksById = useMemo(() => data?.tasks ?? {}, [data?.tasks]);
 
   const { tasks, tasksById, tasksByStatus } = useMemo(() => {
-    const merged: Record<string, TaskWithAttemptStatus> = { ...localTasksById };
-    const byStatus: Record<TaskStatus, TaskWithAttemptStatus[]> = {
+    const merged: Record<string, Task> = { ...localTasksById };
+    const byStatus: Record<TaskStatus, Task[]> = {
       todo: [],
       inprogress: [],
       inreview: [],
@@ -53,7 +53,7 @@ export const useProjectTasks = (projectId: string): UseProjectTasksResult => {
         new Date(a.created_at as string).getTime()
     );
 
-    (Object.values(byStatus) as TaskWithAttemptStatus[][]).forEach((list) => {
+    (Object.values(byStatus) as Task[][]).forEach((list) => {
       list.sort(
         (a, b) =>
           new Date(b.created_at as string).getTime() -

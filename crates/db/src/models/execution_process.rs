@@ -208,6 +208,29 @@ impl ExecutionProcess {
         Ok(result)
     }
 
+    /// Find execution process by rowid
+    pub async fn find_by_rowid(pool: &SqlitePool, rowid: i64) -> Result<Option<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            ExecutionProcess,
+            r#"SELECT
+                    ep.id as "id!: Uuid",
+                    ep.session_id as "session_id!: Uuid",
+                    ep.run_reason as "run_reason!: ExecutionProcessRunReason",
+                    ep.executor_action as "executor_action!: sqlx::types::Json<ExecutorActionField>",
+                    ep.status as "status!: ExecutionProcessStatus",
+                    ep.exit_code,
+                    ep.dropped as "dropped!: bool",
+                    ep.started_at as "started_at!: DateTime<Utc>",
+                    ep.completed_at as "completed_at?: DateTime<Utc>",
+                    ep.created_at as "created_at!: DateTime<Utc>",
+                    ep.updated_at as "updated_at!: DateTime<Utc>"
+               FROM execution_processes ep WHERE ep.rowid = ?"#,
+            rowid
+        )
+        .fetch_optional(pool)
+        .await
+    }
+
     /// Find all execution processes for a session (optionally include soft-deleted)
     pub async fn find_by_session_id(
         pool: &SqlitePool,
@@ -397,12 +420,18 @@ impl ExecutionProcess {
     }
 
     /// Create a new execution process
+    ///
+    /// Note: We intentionally avoid using a transaction here. SQLite update
+    /// hooks fire during transactions (before commit), and the hook spawns an
+    /// async task that queries `find_by_rowid` on a different connection.
+    /// If we used a transaction, that query would not see the uncommitted row,
+    /// causing the WebSocket event to be lost.
     pub async fn create(
         pool: &SqlitePool,
         data: &CreateExecutionProcess,
         process_id: Uuid,
         repo_states: &[CreateExecutionProcessRepoState],
-    ) -> Result<crate::WriteResult<Self>, sqlx::Error> {
+    ) -> Result<Self, sqlx::Error> {
         let now = Utc::now();
         let executor_action_json = sqlx::types::Json(&data.executor_action);
 
@@ -427,10 +456,9 @@ impl ExecutionProcess {
 
         ExecutionProcessRepoState::create_many(pool, process_id, repo_states).await?;
 
-        let val = Self::find_by_id(pool, process_id)
+        Self::find_by_id(pool, process_id)
             .await?
-            .ok_or(sqlx::Error::RowNotFound)?;
-        Ok(crate::WriteResult::new(val))
+            .ok_or(sqlx::Error::RowNotFound)
     }
 
     pub async fn was_stopped(pool: &SqlitePool, id: Uuid) -> bool {
@@ -451,7 +479,7 @@ impl ExecutionProcess {
         id: Uuid,
         status: ExecutionProcessStatus,
         exit_code: Option<i64>,
-    ) -> Result<crate::WriteResult<()>, sqlx::Error> {
+    ) -> Result<(), sqlx::Error> {
         let completed_at = if matches!(status, ExecutionProcessStatus::Running) {
             None
         } else {
@@ -470,7 +498,7 @@ impl ExecutionProcess {
         .execute(pool)
         .await?;
 
-        Ok(crate::WriteResult::new(()))
+        Ok(())
     }
 
     pub fn executor_action(&self) -> Result<&ExecutorAction, anyhow::Error> {
@@ -487,7 +515,7 @@ impl ExecutionProcess {
         pool: &SqlitePool,
         session_id: Uuid,
         boundary_process_id: Uuid,
-    ) -> Result<crate::WriteResult<i64>, sqlx::Error> {
+    ) -> Result<i64, sqlx::Error> {
         let result = sqlx::query!(
             r#"UPDATE execution_processes
                SET dropped = TRUE
@@ -499,7 +527,7 @@ impl ExecutionProcess {
         )
         .execute(pool)
         .await?;
-        Ok(crate::WriteResult::new(result.rows_affected() as i64))
+        Ok(result.rows_affected() as i64)
     }
 
     /// Find the previous process's after_head_commit before the given boundary process

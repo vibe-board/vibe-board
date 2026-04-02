@@ -115,7 +115,6 @@ pub struct AnsweredQuestion {
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct TokenUsageInfo {
-    /// Streaming: per-turn input tokens. Result: unused (see detailed fields).
     pub total_tokens: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_name: Option<String>,
@@ -131,6 +130,8 @@ pub struct TokenUsageInfo {
     pub cost_usd: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_window: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_context_window: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_output_tokens: Option<u32>,
 }

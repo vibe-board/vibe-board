@@ -4,7 +4,7 @@ use db::models::{
     project::Project,
     repo::Repo,
     tag::Tag,
-    task::{CreateTask, Task, TaskStatus, TaskWithAttemptStatus, UpdateTask},
+    task::{CreateTask, Task, TaskStatus, UpdateTask},
     workspace::{Workspace, WorkspaceContext},
 };
 use executors::{executors::BaseCodingAgent, profile::ExecutorProfileId};
@@ -178,7 +178,7 @@ pub struct TaskSummary {
 }
 
 impl TaskSummary {
-    fn from_task_with_status(task: TaskWithAttemptStatus) -> Self {
+    fn from_task(task: Task) -> Self {
         Self {
             id: task.id.to_string(),
             title: task.title.to_string(),
@@ -802,11 +802,10 @@ impl TaskServer {
         };
 
         let url = self.url(&format!("/api/tasks?project_id={}", project_id));
-        let all_tasks: Vec<TaskWithAttemptStatus> =
-            match self.send_json(self.client.get(&url)).await {
-                Ok(t) => t,
-                Err(e) => return Ok(e),
-            };
+        let all_tasks: Vec<Task> = match self.send_json(self.client.get(&url)).await {
+            Ok(t) => t,
+            Err(e) => return Ok(e),
+        };
 
         let task_limit = limit.unwrap_or(50).max(0) as usize;
         let filtered = all_tasks.into_iter().filter(|t| {
@@ -816,12 +815,10 @@ impl TaskServer {
                 true
             }
         });
-        let limited: Vec<TaskWithAttemptStatus> = filtered.take(task_limit).collect();
+        let limited: Vec<Task> = filtered.take(task_limit).collect();
 
-        let task_summaries: Vec<TaskSummary> = limited
-            .into_iter()
-            .map(TaskSummary::from_task_with_status)
-            .collect();
+        let task_summaries: Vec<TaskSummary> =
+            limited.into_iter().map(TaskSummary::from_task).collect();
 
         let response = ListTasksResponse {
             count: task_summaries.len(),

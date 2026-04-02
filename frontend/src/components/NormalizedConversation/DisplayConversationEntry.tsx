@@ -6,7 +6,7 @@ import {
   NormalizedEntry,
   ToolStatus,
   type NormalizedEntryType,
-  type TaskWithAttemptStatus,
+  type Task,
   type JsonValue,
 } from 'shared/types.ts';
 import type { WorkspaceWithSession } from '@/types/attempt';
@@ -56,7 +56,7 @@ type Props = {
   diffDeletable?: boolean;
   executionProcessId?: string;
   taskAttempt?: WorkspaceWithSession;
-  task?: TaskWithAttemptStatus;
+  task?: Task;
 };
 
 type FileEditAction = Extract<ActionType, { action: 'file_edit' }>;

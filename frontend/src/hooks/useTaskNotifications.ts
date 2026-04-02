@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type {
-  TaskStatus,
-  TaskWithAttemptStatus,
-  ApprovalInfo,
-} from 'shared/types';
+import type { TaskStatus, Task, ApprovalInfo } from 'shared/types';
 import type { Config } from 'shared/types';
 
 const STORAGE_KEY = 'notification-prompt-dismissed';
@@ -25,7 +21,7 @@ export function getNotificationPermission():
  * This replaces backend OS-level notifications which don't work over SSH tunnels.
  */
 export function useTaskNotifications(
-  tasksById: Record<string, TaskWithAttemptStatus>,
+  tasksById: Record<string, Task>,
   pendingApprovals: ApprovalInfo[],
   config: Config | null
 ) {

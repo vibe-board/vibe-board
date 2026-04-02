@@ -1,6 +1,6 @@
 use db::models::{
-    execution_process::ExecutionProcess, project::Project, scratch::Scratch,
-    task::TaskWithAttemptStatus, workspace::WorkspaceWithStatus,
+    execution_process::ExecutionProcess, project::Project, scratch::Scratch, task::Task,
+    workspace::WorkspaceWithStatus,
 };
 use json_patch::{AddOperation, Patch, PatchOperation, RemoveOperation, ReplaceOperation};
 use uuid::Uuid;
@@ -19,7 +19,7 @@ pub mod task_patch {
     }
 
     /// Create patch for adding a new task
-    pub fn add(task: &TaskWithAttemptStatus) -> Patch {
+    pub fn add(task: &Task) -> Patch {
         Patch(vec![PatchOperation::Add(AddOperation {
             path: task_path(task.id)
                 .try_into()
@@ -29,7 +29,7 @@ pub mod task_patch {
     }
 
     /// Create patch for updating an existing task
-    pub fn replace(task: &TaskWithAttemptStatus) -> Patch {
+    pub fn replace(task: &Task) -> Patch {
         Patch(vec![PatchOperation::Replace(ReplaceOperation {
             path: task_path(task.id)
                 .try_into()

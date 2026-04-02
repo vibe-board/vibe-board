@@ -15,7 +15,7 @@ import {
   TooltipTrigger,
 } from '../ui/tooltip';
 import type { LayoutMode } from '../layout/TasksLayout';
-import type { TaskWithAttemptStatus } from 'shared/types';
+import type { Task } from 'shared/types';
 import { ActionsDropdown } from '../ui/actions-dropdown';
 import { usePostHog } from 'posthog-js/react';
 import { WorkspaceWithSession } from '@/types/attempt';
@@ -24,7 +24,7 @@ interface AttemptHeaderActionsProps {
   onClose: () => void;
   mode?: LayoutMode;
   onModeChange?: (mode: LayoutMode) => void;
-  task: TaskWithAttemptStatus;
+  task: Task;
   attempt?: WorkspaceWithSession | null;
 }
 

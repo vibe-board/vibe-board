@@ -8,7 +8,6 @@ import type {
   CreateTask,
   CreateAndStartTaskRequest,
   Task,
-  TaskWithAttemptStatus,
   UpdateTask,
 } from 'shared/types';
 import { taskKeys } from './useTask';
@@ -48,7 +47,7 @@ export function useTaskMutations(projectId?: string) {
   const createAndStart = useMutation({
     mutationFn: (data: CreateAndStartTaskRequest) =>
       tasksApi.createAndStart(data),
-    onSuccess: (createdTask: TaskWithAttemptStatus) => {
+    onSuccess: (createdTask: Task) => {
       invalidateQueries();
       // Invalidate parent's relationships cache if this is a subtask
       if (createdTask.parent_workspace_id) {

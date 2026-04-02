@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COUNT(*) as \"count!: i64\"\n               FROM tasks\n               WHERE project_id = $1\n                 AND status IN ('done', 'cancelled')",
+  "describe": {
+    "columns": [
+      {
+        "name": "count!: i64",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "3a27a32515ac2ea5e18fd0b56d43bcf4d3ac5182f5255cfb7bde6157fc6dcfa8"
+}

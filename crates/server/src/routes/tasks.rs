@@ -18,7 +18,7 @@ use db::models::{
     image::TaskImage,
     repo::{Repo, RepoError},
     session::Session,
-    task::{CreateTask, Task, TaskWithAttemptStatus, UpdateTask},
+    task::{CreateTask, PaginatedTaskHistory, Task, UpdateTask},
     workspace::{CreateWorkspace, Workspace, WorkspaceMode},
     workspace_repo::{CreateWorkspaceRepo, WorkspaceRepo},
 };
@@ -44,15 +44,41 @@ pub struct TaskQuery {
     pub project_id: Uuid,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct TaskHistoryQuery {
+    pub project_id: Uuid,
+    pub cursor: Option<String>,
+    pub limit: Option<i64>,
+}
+
 pub async fn get_tasks(
     State(deployment): State<DeploymentImpl>,
     Query(query): Query<TaskQuery>,
-) -> Result<ResponseJson<ApiResponse<Vec<TaskWithAttemptStatus>>>, ApiError> {
-    let tasks =
-        Task::find_by_project_id_with_attempt_status(&deployment.db().pool, query.project_id)
-            .await?;
+) -> Result<ResponseJson<ApiResponse<Vec<Task>>>, ApiError> {
+    let tasks = Task::find_active_by_project_id(&deployment.db().pool, query.project_id).await?;
 
     Ok(ResponseJson(ApiResponse::success(tasks)))
+}
+
+pub async fn get_task_history(
+    State(deployment): State<DeploymentImpl>,
+    Query(query): Query<TaskHistoryQuery>,
+) -> Result<ResponseJson<ApiResponse<PaginatedTaskHistory>>, ApiError> {
+    let limit = query.limit.unwrap_or(50).clamp(1, 200);
+    let cursor = query
+        .cursor
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())
+        .map(|dt| dt.with_timezone(&chrono::Utc));
+
+    let result = Task::find_history_by_project_id_paginated(
+        &deployment.db().pool,
+        query.project_id,
+        cursor,
+        limit,
+    )
+    .await?;
+
+    Ok(ResponseJson(ApiResponse::success(result)))
 }
 
 pub async fn stream_tasks_ws(
@@ -121,10 +147,7 @@ pub async fn create_task(
         payload.project_id
     );
 
-    let task = Task::create(&deployment.db().pool, &payload, id)
-        .await?
-        .into_inner();
-    deployment.events().notify_task_upsert(task.id).await;
+    let task = Task::create(&deployment.db().pool, &payload, id).await?;
 
     if let Some(image_ids) = &payload.image_ids {
         TaskImage::associate_many_dedup(&deployment.db().pool, task.id, image_ids).await?;
@@ -159,7 +182,7 @@ pub struct CreateAndStartTaskRequest {
 pub async fn create_task_and_start(
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<CreateAndStartTaskRequest>,
-) -> Result<ResponseJson<ApiResponse<TaskWithAttemptStatus>>, ApiError> {
+) -> Result<ResponseJson<ApiResponse<Task>>, ApiError> {
     if payload.repos.is_empty() {
         return Err(ApiError::BadRequest(
             "At least one repository is required".to_string(),
@@ -181,10 +204,7 @@ pub async fn create_task_and_start(
     }
 
     let task_id = Uuid::new_v4();
-    let task = Task::create(pool, &payload.task, task_id)
-        .await?
-        .into_inner();
-    deployment.events().notify_task_upsert(task.id).await;
+    let task = Task::create(pool, &payload.task, task_id).await?;
 
     if let Some(image_ids) = &payload.task.image_ids {
         TaskImage::associate_many_dedup(pool, task.id, image_ids).await?;
@@ -244,12 +264,7 @@ pub async fn create_task_and_start(
         attempt_id,
         task.id,
     )
-    .await?
-    .into_inner();
-    deployment
-        .events()
-        .notify_workspace_upsert(workspace.id)
-        .await;
+    .await?;
 
     let workspace_repos: Vec<CreateWorkspaceRepo> = payload
         .repos
@@ -261,7 +276,7 @@ pub async fn create_task_and_start(
         .collect();
     WorkspaceRepo::create_many(&deployment.db().pool, workspace.id, &workspace_repos).await?;
 
-    let is_attempt_running = deployment
+    let _is_attempt_running = deployment
         .container()
         .start_workspace(
             &workspace,
@@ -288,13 +303,7 @@ pub async fn create_task_and_start(
         .ok_or(ApiError::Database(SqlxError::RowNotFound))?;
 
     tracing::info!("Started attempt for task {}", task.id);
-    Ok(ResponseJson(ApiResponse::success(TaskWithAttemptStatus {
-        task,
-        has_in_progress_attempt: is_attempt_running,
-        last_attempt_failed: false,
-        executor: payload.executor_profile_id.executor.to_string(),
-        variant: payload.executor_profile_id.variant.clone(),
-    })))
+    Ok(ResponseJson(ApiResponse::success(task)))
 }
 
 pub async fn update_task(
@@ -324,9 +333,7 @@ pub async fn update_task(
         status,
         parent_workspace_id,
     )
-    .await?
-    .into_inner();
-    deployment.events().notify_task_upsert(task.id).await;
+    .await?;
 
     if let Some(image_ids) = &payload.image_ids {
         TaskImage::delete_by_task_id(&deployment.db().pool, task.id).await?;
@@ -389,14 +396,13 @@ pub async fn delete_task(
     // This breaks parent-child relationships to avoid foreign key constraint violations
     let mut total_children_affected = 0u64;
     for attempt in &attempts {
-        let children_affected = Task::nullify_children_by_workspace_id(&mut *tx, attempt.id)
-            .await?
-            .into_inner();
+        let children_affected =
+            Task::nullify_children_by_workspace_id(&mut *tx, attempt.id).await?;
         total_children_affected += children_affected;
     }
 
     // Delete task from database (FK CASCADE will handle task_attempts)
-    let rows_affected = Task::delete(&mut *tx, task.id).await?.into_inner();
+    let rows_affected = Task::delete(&mut *tx, task.id).await?;
 
     if rows_affected == 0 {
         return Err(ApiError::Database(SqlxError::RowNotFound));
@@ -506,6 +512,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/", get(get_tasks).post(create_task))
         .route("/stream/ws", get(stream_tasks_ws))
         .route("/create-and-start", post(create_task_and_start))
+        .route("/history", get(get_task_history))
         .nest("/{task_id}", task_id_router);
 
     // mount under /projects/:project_id/tasks

@@ -7,15 +7,15 @@ import {
   KanbanProvider,
 } from '@/components/ui/shadcn-io/kanban';
 import { TaskCard } from './TaskCard';
-import type { TaskStatus, TaskWithAttemptStatus } from 'shared/types';
+import type { TaskStatus, Task } from 'shared/types';
 import { statusBoardColors, statusLabels } from '@/utils/statusLabels';
 
-export type KanbanColumns = Record<TaskStatus, TaskWithAttemptStatus[]>;
+export type KanbanColumns = Record<TaskStatus, Task[]>;
 
 interface TaskKanbanBoardProps {
   columns: KanbanColumns;
   onDragEnd: (event: DragEndEvent) => void;
-  onViewTaskDetails: (task: TaskWithAttemptStatus) => void;
+  onViewTaskDetails: (task: Task) => void;
   selectedTaskId?: string;
   onCreateTask?: () => void;
   projectId: string;

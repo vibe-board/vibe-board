@@ -45,7 +45,7 @@ use services::services::{
     approvals::{Approvals, executor_approvals::ExecutorApprovalBridge},
     config::{Config, DEFAULT_COMMIT_REMINDER_PROMPT, DEFAULT_LINTER_FIX_FOLLOW_UP_PROMPT},
     container::{ContainerError, ContainerRef, ContainerService},
-    events::EventService,
+    events::patches::{execution_process_patch, task_patch},
     image::ImageService,
     normalized_entry_store::NormalizedEntryStore,
     notification::NotificationService,
@@ -84,10 +84,10 @@ fn repo_worktree_path(
 #[derive(Clone)]
 pub struct LocalContainerService {
     db: DBService,
-    events: EventService,
     child_store: Arc<RwLock<HashMap<Uuid, Arc<RwLock<AsyncGroupChild>>>>>,
     cancellation_tokens: Arc<RwLock<HashMap<Uuid, CancellationToken>>>,
     msg_stores: Arc<RwLock<HashMap<Uuid, Arc<MsgStore>>>>,
+    events: Arc<MsgStore>,
     normalized_entry_stores: Arc<RwLock<HashMap<Uuid, Arc<NormalizedEntryStore>>>>,
     /// Tracks background tasks that stream logs to the database.
     /// When stopping execution, we await these to ensure logs are fully persisted.
@@ -107,8 +107,8 @@ impl LocalContainerService {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         db: DBService,
-        events: EventService,
         msg_stores: Arc<RwLock<HashMap<Uuid, Arc<MsgStore>>>>,
+        events: Arc<MsgStore>,
         config: Arc<RwLock<Config>>,
         git: GitService,
         image_service: ImageService,
@@ -126,10 +126,10 @@ impl LocalContainerService {
 
         let container = LocalContainerService {
             db,
-            events,
             child_store,
             cancellation_tokens,
             msg_stores,
+            events,
             normalized_entry_stores,
             db_stream_handles,
             raw_log_handles,
@@ -472,7 +472,6 @@ impl LocalContainerService {
         let config = self.config.clone();
         let container = self.clone();
         let analytics = self.analytics.clone();
-        let events = self.events.clone();
 
         let mut process_exit_rx = self.spawn_os_exit_watcher(exec_id);
 
@@ -523,18 +522,12 @@ impl LocalContainerService {
                 Err(_) => (None, ExecutionProcessStatus::Failed),
             };
 
-            if !ExecutionProcess::was_stopped(&db.pool, exec_id).await {
-                match ExecutionProcess::update_completion(&db.pool, exec_id, status, exit_code)
+            if !ExecutionProcess::was_stopped(&db.pool, exec_id).await
+                && let Err(e) = container
+                    .update_completion_and_push(exec_id, status, exit_code)
                     .await
-                    .map(|wr| wr.into_inner())
-                {
-                    Ok(_) => {
-                        events.notify_ep_upsert(exec_id).await;
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to update execution process completion: {}", e);
-                    }
-                }
+            {
+                tracing::error!("Failed to update execution process completion: {}", e);
             }
 
             if let Ok(ctx) = ExecutionProcess::load_context(&db.pool, exec_id).await {
@@ -615,28 +608,17 @@ impl LocalContainerService {
                             );
 
                             // Delete the scratch since we're consuming the queued message
-                            match Scratch::delete(
+                            if let Err(e) = Scratch::delete(
                                 &db.pool,
                                 ctx.session.id,
                                 &ScratchType::DraftFollowUp,
                             )
                             .await
-                            .map(|wr| wr.into_inner())
                             {
-                                Ok(_) => {
-                                    events
-                                        .notify_scratch_deleted(
-                                            ctx.session.id,
-                                            &ScratchType::DraftFollowUp.to_string(),
-                                        )
-                                        .await;
-                                }
-                                Err(e) => {
-                                    tracing::warn!(
-                                        "Failed to delete scratch after consuming queued message: {}",
-                                        e
-                                    );
-                                }
+                                tracing::warn!(
+                                    "Failed to delete scratch after consuming queued message: {}",
+                                    e
+                                );
                             }
 
                             // Execute the queued follow-up
@@ -708,6 +690,11 @@ impl LocalContainerService {
                             container.finalize_task(&ctx).await;
                         }
                     }
+                }
+
+                // Push task patch so frontend sees the updated status (InReview etc.)
+                if let Ok(Some(task)) = Task::find_by_id(&db.pool, ctx.task.id).await {
+                    container.events.push_patch(task_patch::replace(&task));
                 }
 
                 // Fire analytics event when CodingAgent execution has finished
@@ -1068,6 +1055,36 @@ impl LocalContainerService {
         )
         .await
     }
+
+    /// Update EP completion AND immediately push patch to events stream.
+    /// Always use this instead of raw ExecutionProcess::update_completion
+    /// to ensure the frontend sees status changes without relying on hooks.
+    async fn update_completion_and_push(
+        &self,
+        ep_id: Uuid,
+        status: ExecutionProcessStatus,
+        exit_code: Option<i64>,
+    ) -> Result<(), sqlx::Error> {
+        ExecutionProcess::update_completion(&self.db.pool, ep_id, status, exit_code).await?;
+        if let Ok(Some(ep)) = ExecutionProcess::find_by_id(&self.db.pool, ep_id).await {
+            self.events
+                .push_patch(execution_process_patch::replace(&ep));
+        }
+        Ok(())
+    }
+
+    /// Update task status AND immediately push patch to events stream.
+    async fn update_task_status_and_push(
+        &self,
+        task_id: Uuid,
+        status: TaskStatus,
+    ) -> Result<(), sqlx::Error> {
+        Task::update_status(&self.db.pool, task_id, status).await?;
+        if let Ok(Some(task)) = Task::find_by_id(&self.db.pool, task_id).await {
+            self.events.push_patch(task_patch::replace(&task));
+        }
+        Ok(())
+    }
 }
 
 fn failure_exit_status() -> std::process::ExitStatus {
@@ -1095,10 +1112,6 @@ impl ContainerService for LocalContainerService {
 
     fn db(&self) -> &DBService {
         &self.db
-    }
-
-    fn events(&self) -> &EventService {
-        &self.events
     }
 
     fn git(&self) -> &GitService {
@@ -1160,10 +1173,7 @@ impl ContainerService for LocalContainerService {
 
             Self::create_workspace_config_files(&repo.path, &repositories).await?;
 
-            Workspace::update_container_ref(&self.db.pool, workspace.id, &repo_path_str)
-                .await?
-                .into_inner();
-            self.events().notify_workspace_upsert(workspace.id).await;
+            Workspace::update_container_ref(&self.db.pool, workspace.id, &repo_path_str).await?;
 
             return Ok(repo_path_str);
         }
@@ -1207,9 +1217,7 @@ impl ContainerService for LocalContainerService {
             workspace.id,
             &created_workspace.workspace_dir.to_string_lossy(),
         )
-        .await?
-        .into_inner();
-        self.events().notify_workspace_upsert(workspace.id).await;
+        .await?;
 
         Ok(created_workspace
             .workspace_dir
@@ -1249,9 +1257,7 @@ impl ContainerService for LocalContainerService {
 
             if workspace.container_ref.is_none() {
                 Workspace::update_container_ref(&self.db.pool, workspace.id, &repo_path_str)
-                    .await?
-                    .into_inner();
-                self.events().notify_workspace_upsert(workspace.id).await;
+                    .await?;
             }
 
             return Ok(repo_path_str);
@@ -1279,9 +1285,7 @@ impl ContainerService for LocalContainerService {
                 workspace.id,
                 &workspace_dir.to_string_lossy(),
             )
-            .await?
-            .into_inner();
-            self.events().notify_workspace_upsert(workspace.id).await;
+            .await?;
         }
 
         // Copy project files and images (fast no-op if already exist)
@@ -1460,10 +1464,9 @@ impl ContainerService for LocalContainerService {
             None
         };
 
-        ExecutionProcess::update_completion(&self.db.pool, execution_process.id, status, exit_code)
-            .await?
-            .into_inner();
-        self.events().notify_ep_upsert(execution_process.id).await;
+        // Update EP and immediately push patch so the frontend can update the stop button.
+        self.update_completion_and_push(execution_process.id, status, exit_code)
+            .await?;
 
         // Try graceful cancellation first, then force kill
         if let Some(cancel) = self.take_cancellation_token(&execution_process.id).await {
@@ -1472,7 +1475,7 @@ impl ContainerService for LocalContainerService {
             // Wait for exit monitor to finish gracefully
             if let Some(monitor_handle) = self.take_exit_monitor_handle(&execution_process.id).await
             {
-                match tokio::time::timeout(Duration::from_secs(5), monitor_handle).await {
+                match tokio::time::timeout(Duration::from_secs(2), monitor_handle).await {
                     Ok(_) => {
                         tracing::debug!("Process {} exited gracefully", execution_process.id);
                     }
@@ -1524,18 +1527,11 @@ impl ContainerService for LocalContainerService {
                 ctx.execution_process.run_reason,
                 ExecutionProcessRunReason::DevServer | ExecutionProcessRunReason::CommitMessage
             )
-        {
-            match Task::update_status(&self.db.pool, ctx.task.id, TaskStatus::InReview)
+            && let Err(e) = self
+                .update_task_status_and_push(ctx.task.id, TaskStatus::InReview)
                 .await
-                .map(|wr| wr.into_inner())
-            {
-                Ok(_) => {
-                    self.events().notify_task_upsert(ctx.task.id).await;
-                }
-                Err(e) => {
-                    tracing::error!("Failed to update task status to InReview: {e}");
-                }
-            }
+        {
+            tracing::error!("Failed to update task status to InReview: {e}");
         }
 
         tracing::debug!(

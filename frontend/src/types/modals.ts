@@ -1,4 +1,4 @@
-import type { TaskWithAttemptStatus, Workspace } from 'shared/types';
+import type { Task, Workspace } from 'shared/types';
 import type {
   ConfirmDialogProps,
   DeleteTaskConfirmationDialogProps,
@@ -12,7 +12,7 @@ declare module '@ebay/nice-modal-react' {
     // Existing modals
     'create-pr': {
       attempt: Workspace;
-      task: TaskWithAttemptStatus;
+      task: Task;
       projectId: string;
     };
 

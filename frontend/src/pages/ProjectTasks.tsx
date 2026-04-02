@@ -88,9 +88,7 @@ import {
 } from '@/components/ui/tooltip';
 import { useSelectedOrgId } from '@/stores/useOrganizationStore';
 
-import type { TaskWithAttemptStatus, TaskStatus } from 'shared/types';
-
-type Task = TaskWithAttemptStatus;
+import type { Task, TaskStatus } from 'shared/types';
 
 const TASK_STATUSES = [
   'todo',
@@ -125,7 +123,7 @@ function DiffsPanelContainer({
   repoId,
 }: {
   attempt: Workspace | null;
-  selectedTask: TaskWithAttemptStatus | null;
+  selectedTask: Task | null;
   branchStatus: RepoBranchStatus[] | null;
   branchStatusError?: Error | null;
   selectedCommitSha?: string | null;

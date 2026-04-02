@@ -89,7 +89,8 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                                 cache_read_input_tokens: None,
                                 cache_creation_input_tokens: None,
                                 cost_usd: None,
-                                context_window: Some(model_context_window),
+                                context_window: None,
+                                model_context_window: Some(model_context_window),
                                 max_output_tokens: None,
                             }),
                             content: format!(

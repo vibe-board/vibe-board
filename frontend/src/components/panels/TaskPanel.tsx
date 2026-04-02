@@ -5,7 +5,7 @@ import { useTaskAttemptWithSession } from '@/hooks/useTaskAttempt';
 import { useNavigateWithSearch } from '@/hooks';
 import { useUserSystem } from '@/components/ConfigProvider';
 import { paths } from '@/lib/paths';
-import type { TaskWithAttemptStatus, BaseCodingAgent } from 'shared/types';
+import type { Task, BaseCodingAgent } from 'shared/types';
 import type { WorkspaceWithSession } from '@/types/attempt';
 import { NewCardContent } from '../ui/new-card';
 import { Button } from '../ui/button';
@@ -16,7 +16,7 @@ import { DataTable, type ColumnDef } from '@/components/ui/table';
 import { AgentIcon, getAgentName } from '@/components/agents/AgentIcon';
 
 interface TaskPanelProps {
-  task: TaskWithAttemptStatus | null;
+  task: Task | null;
 }
 
 const TaskPanel = ({ task }: TaskPanelProps) => {

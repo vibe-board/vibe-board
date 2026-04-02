@@ -30,7 +30,6 @@ import {
   TaskRelationships,
   Tag,
   TagSearchParams,
-  TaskWithAttemptStatus,
   UpdateProject,
   UpdateTask,
   UpdateTag,
@@ -82,6 +81,7 @@ import {
   CreateWorkspaceFromPrResponse,
   CreateFromPrError,
   Diff,
+  PaginatedTaskHistory,
 } from 'shared/types';
 import type { WorkspaceWithSession } from '@/types/attempt';
 import { createWorkspaceWithSession } from '@/types/attempt';
@@ -353,14 +353,12 @@ export const tasksApi = {
     return handleApiResponse<Task>(response);
   },
 
-  createAndStart: async (
-    data: CreateAndStartTaskRequest
-  ): Promise<TaskWithAttemptStatus> => {
+  createAndStart: async (data: CreateAndStartTaskRequest): Promise<Task> => {
     const response = await makeRequest(`/api/tasks/create-and-start`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
-    return handleApiResponse<TaskWithAttemptStatus>(response);
+    return handleApiResponse<Task>(response);
   },
 
   update: async (taskId: string, data: UpdateTask): Promise<Task> => {
@@ -376,6 +374,17 @@ export const tasksApi = {
       method: 'DELETE',
     });
     return handleApiResponse<void>(response);
+  },
+
+  getHistory: async (
+    projectId: string,
+    params?: { cursor?: string; limit?: number }
+  ): Promise<PaginatedTaskHistory> => {
+    const search = new URLSearchParams({ project_id: projectId });
+    if (params?.cursor) search.set('cursor', params.cursor);
+    if (params?.limit) search.set('limit', String(params.limit));
+    const response = await makeRequest(`/api/tasks/history?${search}`);
+    return handleApiResponse<PaginatedTaskHistory>(response);
   },
 
   getConversationContext: async (

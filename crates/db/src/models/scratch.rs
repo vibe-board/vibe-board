@@ -236,7 +236,7 @@ impl Scratch {
         pool: &SqlitePool,
         id: Uuid,
         data: &CreateScratch,
-    ) -> Result<crate::WriteResult<Self>, ScratchError> {
+    ) -> Result<Self, ScratchError> {
         let scratch_type_str = data.payload.scratch_type().to_string();
         let payload_str = serde_json::to_string(&data.payload)?;
 
@@ -259,7 +259,7 @@ impl Scratch {
         .fetch_one(pool)
         .await?;
 
-        Scratch::try_from(row).map(crate::WriteResult::new)
+        Scratch::try_from(row)
     }
 
     pub async fn find_by_id(
@@ -321,7 +321,7 @@ impl Scratch {
         id: Uuid,
         scratch_type: &ScratchType,
         data: &UpdateScratch,
-    ) -> Result<crate::WriteResult<Self>, ScratchError> {
+    ) -> Result<Self, ScratchError> {
         let payload_str = serde_json::to_string(&data.payload)?;
         let scratch_type_str = scratch_type.to_string();
 
@@ -348,14 +348,14 @@ impl Scratch {
         .fetch_one(pool)
         .await?;
 
-        Scratch::try_from(row).map(crate::WriteResult::new)
+        Scratch::try_from(row)
     }
 
     pub async fn delete(
         pool: &SqlitePool,
         id: Uuid,
         scratch_type: &ScratchType,
-    ) -> Result<crate::WriteResult<u64>, sqlx::Error> {
+    ) -> Result<u64, sqlx::Error> {
         let scratch_type_str = scratch_type.to_string();
         let result = sqlx::query!(
             "DELETE FROM scratch WHERE id = $1 AND scratch_type = $2",
@@ -364,6 +364,31 @@ impl Scratch {
         )
         .execute(pool)
         .await?;
-        Ok(crate::WriteResult::new(result.rows_affected()))
+        Ok(result.rows_affected())
+    }
+
+    pub async fn find_by_rowid(
+        pool: &SqlitePool,
+        rowid: i64,
+    ) -> Result<Option<Self>, ScratchError> {
+        let row = sqlx::query_as!(
+            ScratchRow,
+            r#"
+            SELECT
+                id              as "id!: Uuid",
+                scratch_type,
+                payload,
+                created_at      as "created_at!: DateTime<Utc>",
+                updated_at      as "updated_at!: DateTime<Utc>"
+            FROM scratch
+            WHERE rowid = $1
+            "#,
+            rowid
+        )
+        .fetch_optional(pool)
+        .await?;
+
+        let scratch = row.map(Scratch::try_from).transpose()?;
+        Ok(scratch)
     }
 }

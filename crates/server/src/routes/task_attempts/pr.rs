@@ -465,10 +465,7 @@ pub async fn attach_existing_pr(
 
         // If PR is merged, mark task as done and archive workspace
         if matches!(pr_info.status, MergeStatus::Merged) {
-            Task::update_status(pool, task.id, TaskStatus::Done)
-                .await?
-                .into_inner();
-            deployment.events().notify_task_upsert(task.id).await;
+            Task::update_status(pool, task.id, TaskStatus::Done).await?;
             if !workspace.pinned
                 && let Err(e) = deployment.container().archive_workspace(workspace.id).await
             {
@@ -644,10 +641,7 @@ pub async fn create_workspace_from_pr(
         parent_workspace_id: None,
         image_ids: None,
     };
-    let task = Task::create(pool, &create_task, task_id)
-        .await?
-        .into_inner();
-    deployment.events().notify_task_upsert(task.id).await;
+    let task = Task::create(pool, &create_task, task_id).await?;
 
     let agent_working_dir = Some(repo.name.clone());
 
@@ -663,12 +657,7 @@ pub async fn create_workspace_from_pr(
         workspace_id,
         task.id,
     )
-    .await?
-    .into_inner();
-    deployment
-        .events()
-        .notify_workspace_upsert(workspace.id)
-        .await;
+    .await?;
 
     WorkspaceRepo::create_many(
         pool,
@@ -707,13 +696,7 @@ pub async fn create_workspace_from_pr(
                 )));
             }
             // Update workspace branch to the actual PR branch
-            Workspace::update_branch_name(pool, workspace.id, &payload.head_branch)
-                .await?
-                .into_inner();
-            deployment
-                .events()
-                .notify_workspace_upsert(workspace.id)
-                .await;
+            Workspace::update_branch_name(pool, workspace.id, &payload.head_branch).await?;
             workspace.branch = payload.head_branch.clone();
         }
         Err(e) => {

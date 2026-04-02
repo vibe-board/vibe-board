@@ -32,30 +32,17 @@ pub struct Task {
     pub parent_workspace_id: Option<Uuid>, // Foreign key to parent Workspace
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-pub struct TaskWithAttemptStatus {
-    #[serde(flatten)]
-    #[ts(flatten)]
-    pub task: Task,
     pub has_in_progress_attempt: bool,
     pub last_attempt_failed: bool,
     pub executor: String,
     pub variant: Option<String>,
 }
 
-impl std::ops::Deref for TaskWithAttemptStatus {
-    type Target = Task;
-    fn deref(&self) -> &Self::Target {
-        &self.task
-    }
-}
-
-impl std::ops::DerefMut for TaskWithAttemptStatus {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.task
-    }
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct PaginatedTaskHistory {
+    pub tasks: Vec<Task>,
+    pub total_count: i64,
+    pub has_more: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -114,99 +101,114 @@ impl Task {
         Project::find_by_id(pool, self.project_id).await
     }
 
-    pub async fn find_by_project_id_with_attempt_status(
+    pub async fn find_active_by_project_id(
         pool: &SqlitePool,
         project_id: Uuid,
-    ) -> Result<Vec<TaskWithAttemptStatus>, sqlx::Error> {
-        let records = sqlx::query!(
-            r#"SELECT
-  t.id                            AS "id!: Uuid",
-  t.project_id                    AS "project_id!: Uuid",
-  t.title,
-  t.description,
-  t.status                        AS "status!: TaskStatus",
-  t.parent_workspace_id           AS "parent_workspace_id: Uuid",
-  t.created_at                    AS "created_at!: DateTime<Utc>",
-  t.updated_at                    AS "updated_at!: DateTime<Utc>",
-
-  CASE WHEN EXISTS (
-    SELECT 1
-      FROM workspaces w
-      JOIN sessions s ON s.workspace_id = w.id
-      JOIN execution_processes ep ON ep.session_id = s.id
-     WHERE w.task_id       = t.id
-       AND ep.status        = 'running'
-       AND ep.run_reason IN ('setupscript','cleanupscript','codingagent','commitmessage')
-     LIMIT 1
-  ) THEN 1 ELSE 0 END            AS "has_in_progress_attempt!: i64",
-
-  CASE WHEN (
-    SELECT ep.status
-      FROM workspaces w
-      JOIN sessions s ON s.workspace_id = w.id
-      JOIN execution_processes ep ON ep.session_id = s.id
-     WHERE w.task_id       = t.id
-     AND ep.run_reason IN ('setupscript','cleanupscript','codingagent')
-     ORDER BY ep.created_at DESC
-     LIMIT 1
-  ) IN ('failed','killed') THEN 1 ELSE 0 END
-                                 AS "last_attempt_failed!: i64",
-
-  ( SELECT s.executor
-      FROM workspaces w
-      JOIN sessions s ON s.workspace_id = w.id
-      WHERE w.task_id = t.id
-     ORDER BY s.created_at DESC
-      LIMIT 1
-    )                               AS "executor!: String",
-
-  ( SELECT
-        JSON_EXTRACT(ep.executor_action, '$.typ.executor_profile_id.variant')
-      FROM workspaces w
-      JOIN sessions s ON s.workspace_id = w.id
-      JOIN execution_processes ep ON ep.session_id = s.id
-      WHERE w.task_id = t.id
-        AND ep.run_reason IN ('setupscript','cleanupscript','codingagent')
-        AND ep.dropped = FALSE
-     ORDER BY ep.created_at DESC
-      LIMIT 1
-    )                               AS "variant: String"
-
-FROM tasks t
-WHERE t.project_id = $1
-ORDER BY t.created_at DESC"#,
+    ) -> Result<Vec<Task>, sqlx::Error> {
+        sqlx::query_as!(
+            Task,
+            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid",
+               title, description, status as "status!: TaskStatus",
+               parent_workspace_id as "parent_workspace_id: Uuid",
+               created_at as "created_at!: DateTime<Utc>",
+               updated_at as "updated_at!: DateTime<Utc>",
+               has_in_progress_attempt as "has_in_progress_attempt!: bool",
+               last_attempt_failed as "last_attempt_failed!: bool",
+               executor as "executor!: String",
+               variant as "variant: String"
+               FROM tasks
+               WHERE project_id = $1
+                 AND status IN ('todo', 'inprogress', 'inreview')
+               ORDER BY created_at DESC"#,
             project_id
         )
         .fetch_all(pool)
+        .await
+    }
+
+    pub async fn find_history_by_project_id_paginated(
+        pool: &SqlitePool,
+        project_id: Uuid,
+        cursor: Option<DateTime<Utc>>,
+        limit: i64,
+    ) -> Result<PaginatedTaskHistory, sqlx::Error> {
+        let fetch_limit = limit + 1;
+        let tasks = if let Some(cursor_ts) = cursor {
+            sqlx::query_as!(
+                Task,
+                r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid",
+                   title, description, status as "status!: TaskStatus",
+                   parent_workspace_id as "parent_workspace_id: Uuid",
+                   created_at as "created_at!: DateTime<Utc>",
+                   updated_at as "updated_at!: DateTime<Utc>",
+                   has_in_progress_attempt as "has_in_progress_attempt!: bool",
+                   last_attempt_failed as "last_attempt_failed!: bool",
+                   executor as "executor!: String",
+                   variant as "variant: String"
+                   FROM tasks
+                   WHERE project_id = $1
+                     AND status IN ('done', 'cancelled')
+                     AND created_at < $2
+                   ORDER BY created_at DESC
+                   LIMIT $3"#,
+                project_id,
+                cursor_ts,
+                fetch_limit
+            )
+            .fetch_all(pool)
+            .await?
+        } else {
+            sqlx::query_as!(
+                Task,
+                r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid",
+                   title, description, status as "status!: TaskStatus",
+                   parent_workspace_id as "parent_workspace_id: Uuid",
+                   created_at as "created_at!: DateTime<Utc>",
+                   updated_at as "updated_at!: DateTime<Utc>",
+                   has_in_progress_attempt as "has_in_progress_attempt!: bool",
+                   last_attempt_failed as "last_attempt_failed!: bool",
+                   executor as "executor!: String",
+                   variant as "variant: String"
+                   FROM tasks
+                   WHERE project_id = $1
+                     AND status IN ('done', 'cancelled')
+                   ORDER BY created_at DESC
+                   LIMIT $2"#,
+                project_id,
+                fetch_limit
+            )
+            .fetch_all(pool)
+            .await?
+        };
+
+        let total_count = sqlx::query_scalar!(
+            r#"SELECT COUNT(*) as "count!: i64"
+               FROM tasks
+               WHERE project_id = $1
+                 AND status IN ('done', 'cancelled')"#,
+            project_id
+        )
+        .fetch_one(pool)
         .await?;
 
-        let tasks = records
-            .into_iter()
-            .map(|rec| TaskWithAttemptStatus {
-                task: Task {
-                    id: rec.id,
-                    project_id: rec.project_id,
-                    title: rec.title,
-                    description: rec.description,
-                    status: rec.status,
-                    parent_workspace_id: rec.parent_workspace_id,
-                    created_at: rec.created_at,
-                    updated_at: rec.updated_at,
-                },
-                has_in_progress_attempt: rec.has_in_progress_attempt != 0,
-                last_attempt_failed: rec.last_attempt_failed != 0,
-                executor: rec.executor,
-                variant: rec.variant,
-            })
-            .collect();
+        let has_more = tasks.len() > (limit as usize);
+        let tasks: Vec<Task> = tasks.into_iter().take(limit as usize).collect();
 
-        Ok(tasks)
+        Ok(PaginatedTaskHistory {
+            tasks,
+            total_count,
+            has_more,
+        })
     }
 
     pub async fn find_all(pool: &SqlitePool) -> Result<Vec<Self>, sqlx::Error> {
         sqlx::query_as!(
             Task,
-            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_workspace_id as "parent_workspace_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
+            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_workspace_id as "parent_workspace_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>",
+               has_in_progress_attempt as "has_in_progress_attempt!: bool",
+               last_attempt_failed as "last_attempt_failed!: bool",
+               executor as "executor!: String",
+               variant as "variant: String"
                FROM tasks
                ORDER BY created_at ASC"#
         )
@@ -217,10 +219,30 @@ ORDER BY t.created_at DESC"#,
     pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             Task,
-            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_workspace_id as "parent_workspace_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
+            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_workspace_id as "parent_workspace_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>",
+               has_in_progress_attempt as "has_in_progress_attempt!: bool",
+               last_attempt_failed as "last_attempt_failed!: bool",
+               executor as "executor!: String",
+               variant as "variant: String"
                FROM tasks
                WHERE id = $1"#,
             id
+        )
+        .fetch_optional(pool)
+        .await
+    }
+
+    pub async fn find_by_rowid(pool: &SqlitePool, rowid: i64) -> Result<Option<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            Task,
+            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_workspace_id as "parent_workspace_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>",
+               has_in_progress_attempt as "has_in_progress_attempt!: bool",
+               last_attempt_failed as "last_attempt_failed!: bool",
+               executor as "executor!: String",
+               variant as "variant: String"
+               FROM tasks
+               WHERE rowid = $1"#,
+            rowid
         )
         .fetch_optional(pool)
         .await
@@ -230,13 +252,17 @@ ORDER BY t.created_at DESC"#,
         pool: &SqlitePool,
         data: &CreateTask,
         task_id: Uuid,
-    ) -> Result<crate::WriteResult<Self>, sqlx::Error> {
+    ) -> Result<Self, sqlx::Error> {
         let status = data.status.clone().unwrap_or_default();
-        let val = sqlx::query_as!(
+        sqlx::query_as!(
             Task,
             r#"INSERT INTO tasks (id, project_id, title, description, status, parent_workspace_id)
                VALUES ($1, $2, $3, $4, $5, $6)
-               RETURNING id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_workspace_id as "parent_workspace_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
+               RETURNING id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_workspace_id as "parent_workspace_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>",
+               has_in_progress_attempt as "has_in_progress_attempt!: bool",
+               last_attempt_failed as "last_attempt_failed!: bool",
+               executor as "executor!: String",
+               variant as "variant: String""#,
             task_id,
             data.project_id,
             data.title,
@@ -245,8 +271,7 @@ ORDER BY t.created_at DESC"#,
             data.parent_workspace_id
         )
         .fetch_one(pool)
-        .await?;
-        Ok(crate::WriteResult::new(val))
+        .await
     }
 
     pub async fn update(
@@ -257,13 +282,17 @@ ORDER BY t.created_at DESC"#,
         description: Option<String>,
         status: TaskStatus,
         parent_workspace_id: Option<Uuid>,
-    ) -> Result<crate::WriteResult<Self>, sqlx::Error> {
-        let val = sqlx::query_as!(
+    ) -> Result<Self, sqlx::Error> {
+        sqlx::query_as!(
             Task,
             r#"UPDATE tasks
                SET title = $3, description = $4, status = $5, parent_workspace_id = $6
                WHERE id = $1 AND project_id = $2
-               RETURNING id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_workspace_id as "parent_workspace_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
+               RETURNING id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_workspace_id as "parent_workspace_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>",
+               has_in_progress_attempt as "has_in_progress_attempt!: bool",
+               last_attempt_failed as "last_attempt_failed!: bool",
+               executor as "executor!: String",
+               variant as "variant: String""#,
             id,
             project_id,
             title,
@@ -272,15 +301,14 @@ ORDER BY t.created_at DESC"#,
             parent_workspace_id
         )
         .fetch_one(pool)
-        .await?;
-        Ok(crate::WriteResult::new(val))
+        .await
     }
 
     pub async fn update_status(
         pool: &SqlitePool,
         id: Uuid,
         status: TaskStatus,
-    ) -> Result<crate::WriteResult<()>, sqlx::Error> {
+    ) -> Result<(), sqlx::Error> {
         sqlx::query!(
             "UPDATE tasks SET status = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
             id,
@@ -288,7 +316,7 @@ ORDER BY t.created_at DESC"#,
         )
         .execute(pool)
         .await?;
-        Ok(crate::WriteResult::new(()))
+        Ok(())
     }
 
     /// Update the parent_workspace_id field for a task
@@ -296,7 +324,7 @@ ORDER BY t.created_at DESC"#,
         pool: &SqlitePool,
         task_id: Uuid,
         parent_workspace_id: Option<Uuid>,
-    ) -> Result<crate::WriteResult<()>, sqlx::Error> {
+    ) -> Result<(), sqlx::Error> {
         sqlx::query!(
             "UPDATE tasks SET parent_workspace_id = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
             task_id,
@@ -304,7 +332,7 @@ ORDER BY t.created_at DESC"#,
         )
         .execute(pool)
         .await?;
-        Ok(crate::WriteResult::new(()))
+        Ok(())
     }
 
     /// Nullify parent_workspace_id for all tasks that reference the given workspace ID
@@ -312,7 +340,7 @@ ORDER BY t.created_at DESC"#,
     pub async fn nullify_children_by_workspace_id<'e, E>(
         executor: E,
         workspace_id: Uuid,
-    ) -> Result<crate::WriteResult<u64>, sqlx::Error>
+    ) -> Result<u64, sqlx::Error>
     where
         E: Executor<'e, Database = Sqlite>,
     {
@@ -322,20 +350,17 @@ ORDER BY t.created_at DESC"#,
         )
         .execute(executor)
         .await?;
-        Ok(crate::WriteResult::new(result.rows_affected()))
+        Ok(result.rows_affected())
     }
 
-    pub async fn delete<'e, E>(
-        executor: E,
-        id: Uuid,
-    ) -> Result<crate::WriteResult<u64>, sqlx::Error>
+    pub async fn delete<'e, E>(executor: E, id: Uuid) -> Result<u64, sqlx::Error>
     where
         E: Executor<'e, Database = Sqlite>,
     {
         let result = sqlx::query!("DELETE FROM tasks WHERE id = $1", id)
             .execute(executor)
             .await?;
-        Ok(crate::WriteResult::new(result.rows_affected()))
+        Ok(result.rows_affected())
     }
 
     pub async fn find_children_by_workspace_id(
@@ -345,7 +370,11 @@ ORDER BY t.created_at DESC"#,
         // Find only child tasks that have this workspace as their parent
         sqlx::query_as!(
             Task,
-            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_workspace_id as "parent_workspace_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
+            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_workspace_id as "parent_workspace_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>",
+               has_in_progress_attempt as "has_in_progress_attempt!: bool",
+               last_attempt_failed as "last_attempt_failed!: bool",
+               executor as "executor!: String",
+               variant as "variant: String"
                FROM tasks
                WHERE parent_workspace_id = $1
                ORDER BY created_at DESC"#,

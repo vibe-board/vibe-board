@@ -29,7 +29,7 @@ import { attemptsApi, sessionsApi } from '@/lib/api';
 import {
   BaseAgentCapability,
   type BaseCodingAgent,
-  type TaskWithAttemptStatus,
+  type Task,
 } from 'shared/types';
 import {
   Tooltip,
@@ -44,7 +44,7 @@ type NextActionCardProps = {
   containerRef?: string | null;
   failed: boolean;
   execution_processes: number;
-  task?: TaskWithAttemptStatus;
+  task?: Task;
   needsSetup?: boolean;
 };
 

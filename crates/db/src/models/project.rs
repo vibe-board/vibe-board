@@ -121,6 +121,23 @@ impl Project {
         .await
     }
 
+    pub async fn find_by_rowid(pool: &SqlitePool, rowid: i64) -> Result<Option<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            Project,
+            r#"SELECT id as "id!: Uuid",
+                      name,
+                      default_agent_working_dir,
+                      remote_project_id as "remote_project_id: Uuid",
+                      created_at as "created_at!: DateTime<Utc>",
+                      updated_at as "updated_at!: DateTime<Utc>"
+               FROM projects
+               WHERE rowid = $1"#,
+            rowid
+        )
+        .fetch_optional(pool)
+        .await
+    }
+
     pub async fn find_by_remote_project_id(
         pool: &SqlitePool,
         remote_project_id: Uuid,
@@ -146,8 +163,8 @@ impl Project {
         executor: impl Executor<'_, Database = Sqlite>,
         data: &CreateProject,
         project_id: Uuid,
-    ) -> Result<crate::WriteResult<Self>, sqlx::Error> {
-        let val = sqlx::query_as!(
+    ) -> Result<Self, sqlx::Error> {
+        sqlx::query_as!(
             Project,
             r#"INSERT INTO projects (
                     id,
@@ -165,22 +182,21 @@ impl Project {
             data.name,
         )
         .fetch_one(executor)
-        .await?;
-        Ok(crate::WriteResult::new(val))
+        .await
     }
 
     pub async fn update(
         pool: &SqlitePool,
         id: Uuid,
         payload: &UpdateProject,
-    ) -> Result<crate::WriteResult<Self>, sqlx::Error> {
+    ) -> Result<Self, sqlx::Error> {
         let existing = Self::find_by_id(pool, id)
             .await?
             .ok_or(sqlx::Error::RowNotFound)?;
 
         let name = payload.name.clone().unwrap_or(existing.name);
 
-        let val = sqlx::query_as!(
+        sqlx::query_as!(
             Project,
             r#"UPDATE projects
                SET name = $2
@@ -195,8 +211,7 @@ impl Project {
             name,
         )
         .fetch_one(pool)
-        .await?;
-        Ok(crate::WriteResult::new(val))
+        .await
     }
 
     pub async fn set_remote_project_id(
@@ -239,13 +254,10 @@ impl Project {
         Ok(())
     }
 
-    pub async fn delete(
-        pool: &SqlitePool,
-        id: Uuid,
-    ) -> Result<crate::WriteResult<u64>, sqlx::Error> {
+    pub async fn delete(pool: &SqlitePool, id: Uuid) -> Result<u64, sqlx::Error> {
         let result = sqlx::query!("DELETE FROM projects WHERE id = $1", id)
             .execute(pool)
             .await?;
-        Ok(crate::WriteResult::new(result.rows_affected()))
+        Ok(result.rows_affected())
     }
 }

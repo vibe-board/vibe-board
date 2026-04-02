@@ -234,24 +234,13 @@ pub async fn follow_up(
 
     // Clear the draft follow-up scratch on successful spawn
     // This ensures the scratch is wiped even if the user navigates away quickly
-    match Scratch::delete(pool, session.id, &ScratchType::DraftFollowUp)
-        .await
-        .map(|wr| wr.into_inner())
-    {
-        Ok(_) => {
-            deployment
-                .events()
-                .notify_scratch_deleted(session.id, &ScratchType::DraftFollowUp.to_string())
-                .await;
-        }
-        Err(e) => {
-            // Log but don't fail the request - scratch deletion is best-effort
-            tracing::debug!(
-                "Failed to delete draft follow-up scratch for session {}: {}",
-                session.id,
-                e
-            );
-        }
+    if let Err(e) = Scratch::delete(pool, session.id, &ScratchType::DraftFollowUp).await {
+        // Log but don't fail the request - scratch deletion is best-effort
+        tracing::debug!(
+            "Failed to delete draft follow-up scratch for session {}: {}",
+            session.id,
+            e
+        );
     }
 
     Ok(ResponseJson(ApiResponse::success(execution_process)))

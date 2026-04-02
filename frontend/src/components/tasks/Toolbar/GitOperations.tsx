@@ -20,7 +20,7 @@ import type {
   BaseCodingAgent,
   RepoBranchStatus,
   Merge,
-  TaskWithAttemptStatus,
+  Task,
   Workspace,
 } from 'shared/types';
 import type { WorkspaceWithSession } from '@/types/attempt';
@@ -41,7 +41,7 @@ import { getLatestProfileFromProcesses } from '@/utils/executor';
 interface GitOperationsProps {
   /** Workspace (attempt); when from old UI may include session so merge uses same session as send */
   selectedAttempt: Workspace | WorkspaceWithSession;
-  task: TaskWithAttemptStatus;
+  task: Task;
   branchStatus: RepoBranchStatus[] | null;
   branchStatusError?: Error | null;
   isAttemptRunning: boolean;

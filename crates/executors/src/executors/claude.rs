@@ -1430,14 +1430,15 @@ impl ClaudeLogProcessor {
                 }
                 ClaudeStreamEvent::ContentBlockStop { .. } => {}
                 ClaudeStreamEvent::MessageDelta { usage, .. } => {
-                    // Streaming: emit per-turn input token count only
+                    // Emit token-only usage (no context window — that comes in Result)
                     if parent_tool_use_id.is_none()
                         && let Some(usage) = usage
                     {
-                        let total_tokens = (usage.input_tokens.unwrap_or(0)
+                        let input_tokens = usage.input_tokens.unwrap_or(0)
                             + usage.cache_creation_input_tokens.unwrap_or(0)
-                            + usage.cache_read_input_tokens.unwrap_or(0))
-                            as u32;
+                            + usage.cache_read_input_tokens.unwrap_or(0);
+                        let output_tokens = usage.output_tokens.unwrap_or(0);
+                        let total_tokens = (input_tokens + output_tokens) as u32;
 
                         let entry = NormalizedEntry {
                             timestamp: None,
@@ -1451,6 +1452,7 @@ impl ClaudeLogProcessor {
                                     cache_creation_input_tokens: None,
                                     cost_usd: None,
                                     context_window: None,
+                                    model_context_window: None,
                                     max_output_tokens: None,
                                 },
                             ),
@@ -1475,19 +1477,20 @@ impl ClaudeLogProcessor {
                 result,
                 ..
             } => {
-                // Emit one detailed usage entry per model from modelUsage
+                // Emit one usage entry per model with full context window info
                 if let Some(model_usage) = model_usage.as_ref() {
                     for (name, usage) in model_usage {
-                        let total = (usage.input_tokens.unwrap_or(0)
+                        let input_tokens = usage.input_tokens.unwrap_or(0)
                             + usage.cache_read_input_tokens.unwrap_or(0)
-                            + usage.cache_creation_input_tokens.unwrap_or(0)
-                            + usage.output_tokens.unwrap_or(0))
-                            as u32;
+                            + usage.cache_creation_input_tokens.unwrap_or(0);
+                        let output_tokens = usage.output_tokens.unwrap_or(0);
+                        let total_tokens = (input_tokens + output_tokens) as u32;
+
                         let entry = NormalizedEntry {
                             timestamp: None,
                             entry_type: NormalizedEntryType::TokenUsageInfo(
                                 crate::logs::TokenUsageInfo {
-                                    total_tokens: total,
+                                    total_tokens,
                                     model_name: Some(name.clone()),
                                     input_tokens: usage.input_tokens,
                                     output_tokens: usage.output_tokens,
@@ -1495,10 +1498,19 @@ impl ClaudeLogProcessor {
                                     cache_creation_input_tokens: usage.cache_creation_input_tokens,
                                     cost_usd: usage.cost_usd,
                                     context_window: usage.context_window,
+                                    model_context_window: usage.context_window,
                                     max_output_tokens: usage.max_output_tokens,
                                 },
                             ),
-                            content: format!("Model: {} — Total tokens: {}", name, total),
+                            content: format!(
+                                "Model: {} — Tokens used: {}{}",
+                                name,
+                                total_tokens,
+                                usage
+                                    .context_window
+                                    .map(|cw| format!(" / Context window: {}", cw))
+                                    .unwrap_or_default()
+                            ),
                             metadata: None,
                         };
                         let idx = entry_index_provider.next();

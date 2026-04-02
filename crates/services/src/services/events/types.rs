@@ -5,6 +5,7 @@ use db::models::{
 };
 use serde::{Deserialize, Serialize};
 use sqlx::Error as SqlxError;
+use strum_macros::{Display, EnumString};
 use thiserror::Error;
 use ts_rs::TS;
 use uuid::Uuid;
@@ -17,6 +18,20 @@ pub enum EventError {
     Parse(#[from] serde_json::Error),
     #[error(transparent)]
     Other(#[from] AnyhowError), // Catches any unclassified errors
+}
+
+#[derive(EnumString, Display)]
+pub enum HookTables {
+    #[strum(to_string = "tasks")]
+    Tasks,
+    #[strum(to_string = "workspaces")]
+    Workspaces,
+    #[strum(to_string = "execution_processes")]
+    ExecutionProcesses,
+    #[strum(to_string = "scratch")]
+    Scratch,
+    #[strum(to_string = "projects")]
+    Projects,
 }
 
 #[derive(Serialize, Deserialize, TS)]

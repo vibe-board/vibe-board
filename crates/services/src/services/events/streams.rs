@@ -1,8 +1,5 @@
 use db::models::{
-    execution_process::ExecutionProcess,
-    project::Project,
-    scratch::Scratch,
-    task::{Task, TaskWithAttemptStatus},
+    execution_process::ExecutionProcess, project::Project, scratch::Scratch, task::Task,
     workspace::Workspace,
 };
 use futures::StreamExt;
@@ -24,7 +21,7 @@ impl EventService {
         project_id: Uuid,
     ) -> Result<futures::stream::BoxStream<'static, Result<LogMsg, std::io::Error>>, EventError>
     {
-        fn build_tasks_snapshot(tasks: Vec<TaskWithAttemptStatus>) -> LogMsg {
+        fn build_tasks_snapshot(tasks: Vec<Task>) -> LogMsg {
             let tasks_map: serde_json::Map<String, serde_json::Value> = tasks
                 .into_iter()
                 .map(|task| (task.id.to_string(), serde_json::to_value(task).unwrap()))
@@ -38,8 +35,8 @@ impl EventService {
             LogMsg::JsonPatch(serde_json::from_value(patch).unwrap())
         }
 
-        // Get initial snapshot of tasks
-        let tasks = Task::find_by_project_id_with_attempt_status(&self.db.pool, project_id).await?;
+        // Get initial snapshot of active tasks only
+        let tasks = Task::find_active_by_project_id(&self.db.pool, project_id).await?;
         let initial_msg = build_tasks_snapshot(tasks);
 
         // Clone necessary data for the async filter
@@ -60,10 +57,14 @@ impl EventService {
                                         json_patch::PatchOperation::Add(op) => {
                                             // Parse task data directly from value
                                             if let Ok(task) =
-                                                serde_json::from_value::<TaskWithAttemptStatus>(
-                                                    op.value.clone(),
-                                                )
+                                                serde_json::from_value::<Task>(op.value.clone())
                                                 && task.project_id == project_id
+                                                && matches!(
+                                                    task.status,
+                                                    db::models::task::TaskStatus::Todo
+                                                        | db::models::task::TaskStatus::InProgress
+                                                        | db::models::task::TaskStatus::InReview
+                                                )
                                             {
                                                 return Some(Ok(LogMsg::JsonPatch(patch)));
                                             }
@@ -71,12 +72,30 @@ impl EventService {
                                         json_patch::PatchOperation::Replace(op) => {
                                             // Parse task data directly from value
                                             if let Ok(task) =
-                                                serde_json::from_value::<TaskWithAttemptStatus>(
-                                                    op.value.clone(),
-                                                )
+                                                serde_json::from_value::<Task>(op.value.clone())
                                                 && task.project_id == project_id
                                             {
-                                                return Some(Ok(LogMsg::JsonPatch(patch)));
+                                                let is_active = matches!(
+                                                    task.status,
+                                                    db::models::task::TaskStatus::Todo
+                                                        | db::models::task::TaskStatus::InProgress
+                                                        | db::models::task::TaskStatus::InReview
+                                                );
+                                                if is_active {
+                                                    return Some(Ok(LogMsg::JsonPatch(patch)));
+                                                } else {
+                                                    // Task moved to done/cancelled — remove from kanban
+                                                    let remove_patch = json_patch::Patch(vec![
+                                                        json_patch::PatchOperation::Remove(
+                                                            json_patch::RemoveOperation {
+                                                                path: op.path.clone(),
+                                                            },
+                                                        ),
+                                                    ]);
+                                                    return Some(Ok(LogMsg::JsonPatch(
+                                                        remove_patch,
+                                                    )));
+                                                }
                                             }
                                         }
                                         json_patch::PatchOperation::Remove(_) => {
@@ -138,9 +157,7 @@ impl EventService {
                                 skipped = skipped,
                                 "tasks stream lagged; resyncing snapshot"
                             );
-                            match Task::find_by_project_id_with_attempt_status(&db_pool, project_id)
-                                .await
-                            {
+                            match Task::find_active_by_project_id(&db_pool, project_id).await {
                                 Ok(tasks) => Some(Ok(build_tasks_snapshot(tasks))),
                                 Err(err) => {
                                     tracing::error!(

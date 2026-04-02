@@ -7,7 +7,7 @@ import {
   SquareTerminal,
   XCircle,
 } from 'lucide-react';
-import type { TaskWithAttemptStatus, BaseCodingAgent } from 'shared/types';
+import type { Task, BaseCodingAgent } from 'shared/types';
 import { ActionsDropdown } from '@/components/ui/actions-dropdown';
 import { Button } from '@/components/ui/button';
 import { useNavigateWithSearch } from '@/hooks';
@@ -17,8 +17,6 @@ import { TaskCardHeader } from './TaskCardHeader';
 import { AgentIcon, getAgentName } from '@/components/agents/AgentIcon';
 import { useTranslation } from 'react-i18next';
 import { useTerminal } from '@/contexts/TerminalContext';
-
-type Task = TaskWithAttemptStatus;
 
 interface TaskCardProps {
   task: Task;

@@ -10,12 +10,12 @@ import {
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
 import { tasksApi } from '@/lib/api';
-import type { TaskWithAttemptStatus } from 'shared/types';
+import type { Task } from 'shared/types';
 import NiceModal, { useModal } from '@ebay/nice-modal-react';
 import { defineModal } from '@/lib/modals';
 
 export interface DeleteTaskConfirmationDialogProps {
-  task: TaskWithAttemptStatus;
+  task: Task;
   projectId: string;
 }
 

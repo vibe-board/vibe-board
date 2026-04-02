@@ -1,9 +1,7 @@
 import { Button } from '../ui/button';
 import { X } from 'lucide-react';
-import type { TaskWithAttemptStatus } from 'shared/types';
+import type { Task } from 'shared/types';
 import { ActionsDropdown } from '../ui/actions-dropdown';
-
-type Task = TaskWithAttemptStatus;
 
 interface TaskPanelHeaderActionsProps {
   task: Task;

@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/tooltip';
 //
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { ScratchType, type TaskWithAttemptStatus } from 'shared/types';
+import { ScratchType, type Task } from 'shared/types';
 import { useBranchStatus, useNavigateWithSearch } from '@/hooks';
 import { useAttemptRepo } from '@/hooks/useAttemptRepo';
 import { useAttemptExecution } from '@/hooks/useAttemptExecution';
@@ -70,7 +70,7 @@ import { useApprovalMutation } from '@/hooks/useApprovalMutation';
 import { paths } from '@/lib/paths';
 
 interface TaskFollowUpSectionProps {
-  task: TaskWithAttemptStatus;
+  task: Task;
   session?: Session;
 }
 

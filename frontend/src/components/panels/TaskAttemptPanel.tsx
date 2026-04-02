@@ -1,4 +1,4 @@
-import type { TaskWithAttemptStatus } from 'shared/types';
+import type { Task } from 'shared/types';
 import type { WorkspaceWithSession } from '@/types/attempt';
 import VirtualizedList from '@/components/logs/VirtualizedList';
 import { TaskFollowUpSection } from '@/components/tasks/TaskFollowUpSection';
@@ -8,7 +8,7 @@ import type { ReactNode } from 'react';
 
 interface TaskAttemptPanelProps {
   attempt: WorkspaceWithSession | undefined;
-  task: TaskWithAttemptStatus | null;
+  task: Task | null;
   children: (sections: { logs: ReactNode; followUp: ReactNode }) => ReactNode;
 }
 

@@ -37,7 +37,7 @@ use executors::{
     },
     executors::{ExecutorError, StandardCodingAgentExecutor},
     logs::{
-        NormalizedEntry, NormalizedEntryError, NormalizedEntryType,
+        NormalizedEntry,
         utils::{ConversationPatch, extract_normalized_entry_from_patch},
     },
     profile::ExecutorProfileId,
@@ -56,8 +56,7 @@ use utils::{
 use uuid::Uuid;
 
 use crate::services::{
-    events::EventService, normalized_entry_store::NormalizedEntryStore,
-    notification::NotificationService, raw_log_store,
+    normalized_entry_store::NormalizedEntryStore, notification::NotificationService, raw_log_store,
     workspace_manager::WorkspaceError as WorkspaceManagerError, worktree_manager::WorktreeError,
 };
 pub type ContainerRef = String;
@@ -95,8 +94,6 @@ pub trait ContainerService {
     fn normalized_entry_stores(&self) -> &Arc<RwLock<HashMap<Uuid, Arc<NormalizedEntryStore>>>>;
 
     fn db(&self) -> &DBService;
-
-    fn events(&self) -> &EventService;
 
     fn git(&self) -> &GitService;
 
@@ -233,13 +230,10 @@ pub trait ContainerService {
 
     /// Finalize task execution by updating status to InReview and sending notifications
     async fn finalize_task(&self, ctx: &ExecutionContext) {
-        if let Err(e) = Task::update_status(&self.db().pool, ctx.task.id, TaskStatus::InReview)
-            .await
-            .map(|wr| wr.into_inner())
+        if let Err(e) =
+            Task::update_status(&self.db().pool, ctx.task.id, TaskStatus::InReview).await
         {
             tracing::error!("Failed to update task status to InReview: {e}");
-        } else {
-            self.events().notify_task_upsert(ctx.task.id).await;
         }
 
         // Skip notification if process was intentionally killed by user
@@ -285,7 +279,6 @@ pub trait ContainerService {
                 None, // No exit code for orphaned processes
             )
             .await
-            .map(|wr| wr.into_inner())
             {
                 tracing::error!(
                     "Failed to update orphaned execution process {} status: {}",
@@ -294,7 +287,6 @@ pub trait ContainerService {
                 );
                 continue;
             }
-            self.events().notify_ep_upsert(process.id).await;
             // Capture after-head commit OID per repository
             if let Ok(ctx) = ExecutionProcess::load_context(&self.db().pool, process.id).await
                 && let Some(ref container_ref) = ctx.workspace.container_ref
@@ -333,21 +325,13 @@ pub trait ContainerService {
                 && let Ok(Some(workspace)) =
                     Workspace::find_by_id(&self.db().pool, session.workspace_id).await
                 && let Ok(Some(task)) = workspace.parent_task(&self.db().pool).await
+                && let Err(e) =
+                    Task::update_status(&self.db().pool, task.id, TaskStatus::InReview).await
             {
-                match Task::update_status(&self.db().pool, task.id, TaskStatus::InReview)
-                    .await
-                    .map(|wr| wr.into_inner())
-                {
-                    Ok(_) => {
-                        self.events().notify_task_upsert(task.id).await;
-                    }
-                    Err(e) => {
-                        tracing::error!(
-                            "Failed to update task status to InReview for orphaned session: {}",
-                            e
-                        );
-                    }
-                }
+                tracing::error!(
+                    "Failed to update task status to InReview for orphaned session: {}",
+                    e
+                );
             }
         }
         Ok(())
@@ -552,10 +536,7 @@ pub trait ContainerService {
     async fn archive_workspace(&self, workspace_id: Uuid) -> Result<(), ContainerError> {
         let pool = &self.db().pool;
 
-        Workspace::set_archived(pool, workspace_id, true)
-            .await?
-            .into_inner();
-        self.events().notify_workspace_upsert(workspace_id).await;
+        Workspace::set_archived(pool, workspace_id, true).await?;
 
         // Stop running dev servers
         if let Ok(dev_servers) =
@@ -727,10 +708,7 @@ pub trait ContainerService {
         }
 
         self.try_stop(&workspace, false).await;
-        ExecutionProcess::drop_at_and_after(pool, session_id, target_process_id)
-            .await?
-            .into_inner();
-        self.events().notify_ep_upsert(target_process_id).await;
+        ExecutionProcess::drop_at_and_after(pool, session_id, target_process_id).await?;
 
         Ok(())
     }
@@ -958,55 +936,58 @@ pub trait ContainerService {
         Some(stream)
     }
 
-    /// Stream raw stdout/stderr logs to a JSONL file on disk.
+    /// Stream raw stdout/stderr logs to a zstd-compressed JSONL file on disk.
     /// This is independent of DB persistence so it is not blocked by SQLite locks.
     fn spawn_stream_raw_logs_to_file(&self, execution_id: &Uuid) -> JoinHandle<()> {
         let execution_id = *execution_id;
         let msg_stores = self.msg_stores().clone();
 
         tokio::spawn(async move {
-            if let Err(e) = raw_log_store::ensure_logs_dir().await {
-                tracing::error!("Failed to create logs directory: {}", e);
-                return;
-            }
-
             let store = {
                 let map = msg_stores.read().await;
                 map.get(&execution_id).cloned()
             };
 
-            if let Some(store) = store {
-                let mut stream = store.history_plus_stream();
+            let Some(store) = store else { return };
 
-                while let Some(Ok(msg)) = stream.next().await {
-                    match &msg {
-                        LogMsg::Stdout(_) | LogMsg::Stderr(_) => {
-                            if let Ok(jsonl_line) = serde_json::to_string(&msg) {
-                                let line = format!("{jsonl_line}\n");
-                                if let Err(e) =
-                                    raw_log_store::append_log_line(execution_id, &line).await
-                                {
-                                    tracing::error!(
-                                        "Failed to append log line for execution {}: {}",
-                                        execution_id,
-                                        e
-                                    );
-                                }
-                            }
-                        }
-                        LogMsg::Finished => break,
-                        _ => continue,
-                    }
-                }
-
-                // Compress the log file now that execution is finished
-                if let Err(e) = raw_log_store::compress_log_file(execution_id).await {
+            let writer = match raw_log_store::ZstLogWriter::new(execution_id).await {
+                Ok(w) => w,
+                Err(e) => {
                     tracing::error!(
-                        "Failed to compress log file for execution {}: {}",
+                        "Failed to create zst log writer for execution {}: {}",
                         execution_id,
                         e
                     );
+                    return;
                 }
+            };
+
+            let mut stream = store.history_plus_stream();
+            while let Some(Ok(msg)) = stream.next().await {
+                match &msg {
+                    LogMsg::Stdout(_) | LogMsg::Stderr(_) => {
+                        if let Ok(jsonl_line) = serde_json::to_string(&msg) {
+                            let line = format!("{jsonl_line}\n");
+                            if let Err(e) = writer.append_line(&line).await {
+                                tracing::error!(
+                                    "Failed to write log line for execution {}: {}",
+                                    execution_id,
+                                    e
+                                );
+                            }
+                        }
+                    }
+                    LogMsg::Finished => break,
+                    _ => continue,
+                }
+            }
+
+            if let Err(e) = writer.finish().await {
+                tracing::error!(
+                    "Failed to finalize zst log for execution {}: {}",
+                    execution_id,
+                    e
+                );
             }
         })
     }
@@ -1047,8 +1028,7 @@ pub trait ContainerService {
 
                             if let Some((index, entry)) = extract_normalized_entry_from_patch(patch)
                             {
-                                let json =
-                                    serde_json::to_string(&entry).unwrap_or_default();
+                                let json = serde_json::to_string(&entry).unwrap_or_default();
                                 if is_replace {
                                     ne_store.replace(index, entry);
                                 } else {
@@ -1059,15 +1039,10 @@ pub trait ContainerService {
                                 }
                             }
                             if pending_entries.len() >= FLUSH_THRESHOLD {
-                                let batch: Vec<(i64, String)> =
-                                    pending_entries.drain().collect();
+                                let batch: Vec<(i64, String)> = pending_entries.drain().collect();
                                 if let Err(e) =
-                                    DbNormalizedEntry::insert_batch(
-                                        &db.pool,
-                                        execution_id,
-                                        &batch,
-                                    )
-                                    .await
+                                    DbNormalizedEntry::insert_batch(&db.pool, execution_id, &batch)
+                                        .await
                                 {
                                     tracing::error!(
                                         "Failed to persist normalized entries for execution {}: {}",
@@ -1118,8 +1093,7 @@ pub trait ContainerService {
                 if !pending_entries.is_empty() {
                     let batch: Vec<(i64, String)> = pending_entries.drain().collect();
                     if let Err(e) =
-                        DbNormalizedEntry::insert_batch(&db.pool, execution_id, &batch)
-                            .await
+                        DbNormalizedEntry::insert_batch(&db.pool, execution_id, &batch).await
                     {
                         tracing::error!(
                             "Failed to flush remaining normalized entries for execution {}: {}",
@@ -1298,10 +1272,7 @@ pub trait ContainerService {
             && run_reason != &ExecutionProcessRunReason::DevServer
             && run_reason != &ExecutionProcessRunReason::CommitMessage
         {
-            Task::update_status(&self.db().pool, task.id, TaskStatus::InProgress)
-                .await?
-                .into_inner();
-            self.events().notify_task_upsert(task.id).await;
+            Task::update_status(&self.db().pool, task.id, TaskStatus::InProgress).await?;
         }
         // Create new execution process record
         // Capture current HEAD per repository as the "before" commit for this execution
@@ -1342,16 +1313,11 @@ pub trait ContainerService {
             Uuid::new_v4(),
             &repo_states,
         )
-        .await?
-        .into_inner();
-        self.events().notify_ep_upsert(execution_process.id).await;
+        .await?;
         if *run_reason != ExecutionProcessRunReason::ArchiveScript
             && *run_reason != ExecutionProcessRunReason::CommitMessage
         {
-            Workspace::set_archived(&self.db().pool, workspace.id, false)
-                .await?
-                .into_inner();
-            self.events().notify_workspace_upsert(workspace.id).await;
+            Workspace::set_archived(&self.db().pool, workspace.id, false).await?;
         }
 
         if let Some(prompt) = match executor_action.typ() {
@@ -1386,61 +1352,25 @@ pub trait ContainerService {
             .await
         {
             // Mark process as failed
-            match ExecutionProcess::update_completion(
+            if let Err(update_error) = ExecutionProcess::update_completion(
                 &self.db().pool,
                 execution_process.id,
                 ExecutionProcessStatus::Failed,
                 None,
             )
             .await
-            .map(|wr| wr.into_inner())
             {
-                Ok(_) => {
-                    self.events().notify_ep_upsert(execution_process.id).await;
-                }
-                Err(update_error) => {
-                    tracing::error!(
-                        "Failed to mark execution process {} as failed after start error: {}",
-                        execution_process.id,
-                        update_error
-                    );
-                }
+                tracing::error!(
+                    "Failed to mark execution process {} as failed after start error: {}",
+                    execution_process.id,
+                    update_error
+                );
             }
-            Task::update_status(&self.db().pool, task.id, TaskStatus::InReview)
-                .await?
-                .into_inner();
-            self.events().notify_task_upsert(task.id).await;
+            Task::update_status(&self.db().pool, task.id, TaskStatus::InReview).await?;
 
-            // Emit stderr error message to log file
-            let log_message = LogMsg::Stderr(format!("Failed to start execution: {start_error}"));
-            if let Ok(json_line) = serde_json::to_string(&log_message) {
-                let _ =
-                    raw_log_store::append_log_line(execution_process.id, &format!("{json_line}\n"))
-                        .await;
-            }
+            // Error is already captured via conversation stream and DB;
+            // no need to write to raw log file for start failures.
 
-            // Emit NextAction with failure context for coding agent requests
-            if let ContainerError::ExecutorError(ExecutorError::ExecutableNotFound { program }) =
-                &start_error
-            {
-                let help_text = format!("The required executable `{program}` is not installed.");
-                let error_message = NormalizedEntry {
-                    timestamp: None,
-                    entry_type: NormalizedEntryType::ErrorMessage {
-                        error_type: NormalizedEntryError::SetupRequired,
-                    },
-                    content: help_text,
-                    metadata: None,
-                };
-                let patch = ConversationPatch::add_normalized_entry(2, error_message);
-                if let Ok(json_line) = serde_json::to_string::<LogMsg>(&LogMsg::JsonPatch(patch)) {
-                    let _ = raw_log_store::append_log_line(
-                        execution_process.id,
-                        &format!("{json_line}\n"),
-                    )
-                    .await;
-                }
-            };
             return Err(start_error);
         }
 

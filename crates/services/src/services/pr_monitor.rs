@@ -123,13 +123,7 @@ impl<C: ContainerService + Send + Sync + 'static> PrMonitorService<C> {
                     "PR #{} was merged, updating task {} to done and archiving workspace",
                     pr_merge.pr_info.number, workspace.task_id
                 );
-                Task::update_status(&self.db.pool, workspace.task_id, TaskStatus::Done)
-                    .await?
-                    .into_inner();
-                self.container
-                    .events()
-                    .notify_task_upsert(workspace.task_id)
-                    .await;
+                Task::update_status(&self.db.pool, workspace.task_id, TaskStatus::Done).await?;
                 if !workspace.pinned
                     && let Err(e) = self.container.archive_workspace(workspace.id).await
                 {

@@ -14,13 +14,13 @@ import {
   useConversationHistory,
 } from '@/hooks/useConversationHistory';
 import { Loader2 } from 'lucide-react';
-import { TaskWithAttemptStatus } from 'shared/types';
+import { Task } from 'shared/types';
 import type { WorkspaceWithSession } from '@/types/attempt';
 import { ApprovalFormProvider } from '@/contexts/ApprovalFormContext';
 
 interface VirtualizedListProps {
   attempt: WorkspaceWithSession;
-  task?: TaskWithAttemptStatus;
+  task?: Task;
 }
 
 const AT_BOTTOM_THRESHOLD = 50;
@@ -140,7 +140,7 @@ const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
   const renderItem = useCallback(
     (
       data: PatchTypeWithKey,
-      ctx: { attempt: WorkspaceWithSession; task?: TaskWithAttemptStatus }
+      ctx: { attempt: WorkspaceWithSession; task?: Task }
     ) => {
       if (!data) return null;
       if (data.type === 'STDOUT') return <p>{data.content}</p>;
