@@ -138,10 +138,8 @@ impl EventService {
                                 skipped = skipped,
                                 "tasks stream lagged; resyncing snapshot"
                             );
-                            match Task::find_by_project_id_with_attempt_status(
-                                &db_pool, project_id,
-                            )
-                            .await
+                            match Task::find_by_project_id_with_attempt_status(&db_pool, project_id)
+                                .await
                             {
                                 Ok(tasks) => Some(Ok(build_tasks_snapshot(tasks))),
                                 Err(err) => {
@@ -252,9 +250,7 @@ impl EventService {
         show_soft_deleted: bool,
     ) -> Result<futures::stream::BoxStream<'static, Result<LogMsg, std::io::Error>>, EventError>
     {
-        fn build_execution_processes_snapshot(
-            processes: Vec<ExecutionProcess>,
-        ) -> LogMsg {
+        fn build_execution_processes_snapshot(processes: Vec<ExecutionProcess>) -> LogMsg {
             let processes_map: serde_json::Map<String, serde_json::Value> = processes
                 .into_iter()
                 .map(|process| {

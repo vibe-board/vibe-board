@@ -56,7 +56,7 @@ use utils::{
 use uuid::Uuid;
 
 use crate::services::{
-    normalized_entry_store::NormalizedEntryStore,
+    events::EventService, normalized_entry_store::NormalizedEntryStore,
     notification::NotificationService, raw_log_store,
     workspace_manager::WorkspaceError as WorkspaceManagerError, worktree_manager::WorktreeError,
 };
@@ -95,6 +95,8 @@ pub trait ContainerService {
     fn normalized_entry_stores(&self) -> &Arc<RwLock<HashMap<Uuid, Arc<NormalizedEntryStore>>>>;
 
     fn db(&self) -> &DBService;
+
+    fn events(&self) -> &EventService;
 
     fn git(&self) -> &GitService;
 
@@ -227,10 +229,13 @@ pub trait ContainerService {
 
     /// Finalize task execution by updating status to InReview and sending notifications
     async fn finalize_task(&self, ctx: &ExecutionContext) {
-        if let Err(e) =
-            Task::update_status(&self.db().pool, ctx.task.id, TaskStatus::InReview).await
+        if let Err(e) = Task::update_status(&self.db().pool, ctx.task.id, TaskStatus::InReview)
+            .await
+            .map(|wr| wr.into_inner())
         {
             tracing::error!("Failed to update task status to InReview: {e}");
+        } else {
+            self.events().notify_task_upsert(ctx.task.id).await;
         }
 
         // Skip notification if process was intentionally killed by user
@@ -276,6 +281,7 @@ pub trait ContainerService {
                 None, // No exit code for orphaned processes
             )
             .await
+            .map(|wr| wr.into_inner())
             {
                 tracing::error!(
                     "Failed to update orphaned execution process {} status: {}",
@@ -284,6 +290,7 @@ pub trait ContainerService {
                 );
                 continue;
             }
+            self.events().notify_ep_upsert(process.id).await;
             // Capture after-head commit OID per repository
             if let Ok(ctx) = ExecutionProcess::load_context(&self.db().pool, process.id).await
                 && let Some(ref container_ref) = ctx.workspace.container_ref
@@ -322,13 +329,21 @@ pub trait ContainerService {
                 && let Ok(Some(workspace)) =
                     Workspace::find_by_id(&self.db().pool, session.workspace_id).await
                 && let Ok(Some(task)) = workspace.parent_task(&self.db().pool).await
-                && let Err(e) =
-                    Task::update_status(&self.db().pool, task.id, TaskStatus::InReview).await
             {
-                tracing::error!(
-                    "Failed to update task status to InReview for orphaned session: {}",
-                    e
-                );
+                match Task::update_status(&self.db().pool, task.id, TaskStatus::InReview)
+                    .await
+                    .map(|wr| wr.into_inner())
+                {
+                    Ok(_) => {
+                        self.events().notify_task_upsert(task.id).await;
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            "Failed to update task status to InReview for orphaned session: {}",
+                            e
+                        );
+                    }
+                }
             }
         }
         Ok(())
@@ -533,7 +548,10 @@ pub trait ContainerService {
     async fn archive_workspace(&self, workspace_id: Uuid) -> Result<(), ContainerError> {
         let pool = &self.db().pool;
 
-        Workspace::set_archived(pool, workspace_id, true).await?;
+        Workspace::set_archived(pool, workspace_id, true)
+            .await?
+            .into_inner();
+        self.events().notify_workspace_upsert(workspace_id).await;
 
         // Stop running dev servers
         if let Ok(dev_servers) =
@@ -705,7 +723,10 @@ pub trait ContainerService {
         }
 
         self.try_stop(&workspace, false).await;
-        ExecutionProcess::drop_at_and_after(pool, session_id, target_process_id).await?;
+        ExecutionProcess::drop_at_and_after(pool, session_id, target_process_id)
+            .await?
+            .into_inner();
+        self.events().notify_ep_upsert(target_process_id).await;
 
         Ok(())
     }
@@ -956,7 +977,9 @@ pub trait ContainerService {
             };
 
             if let Some(store) = store {
-                let ne_store = ne_store.expect("NormalizedEntryStore must be created before spawn_stream_raw_logs_to_file");
+                let ne_store = ne_store.expect(
+                    "NormalizedEntryStore must be created before spawn_stream_raw_logs_to_file",
+                );
 
                 let mut stream = store.history_plus_stream();
                 let mut pending_entries: HashMap<i64, String> = HashMap::new();
@@ -995,11 +1018,9 @@ pub trait ContainerService {
                                 .iter()
                                 .any(|op| matches!(op, PatchOperation::Replace(_)));
 
-                            if let Some((index, entry)) =
-                                extract_normalized_entry_from_patch(patch)
+                            if let Some((index, entry)) = extract_normalized_entry_from_patch(patch)
                             {
-                                let json = serde_json::to_string(&entry)
-                                    .unwrap_or_default();
+                                let json = serde_json::to_string(&entry).unwrap_or_default();
                                 if is_replace {
                                     ne_store.replace(index, entry);
                                 } else {
@@ -1254,7 +1275,10 @@ pub trait ContainerService {
             && run_reason != &ExecutionProcessRunReason::DevServer
             && run_reason != &ExecutionProcessRunReason::CommitMessage
         {
-            Task::update_status(&self.db().pool, task.id, TaskStatus::InProgress).await?;
+            Task::update_status(&self.db().pool, task.id, TaskStatus::InProgress)
+                .await?
+                .into_inner();
+            self.events().notify_task_upsert(task.id).await;
         }
         // Create new execution process record
         // Capture current HEAD per repository as the "before" commit for this execution
@@ -1295,11 +1319,16 @@ pub trait ContainerService {
             Uuid::new_v4(),
             &repo_states,
         )
-        .await?;
+        .await?
+        .into_inner();
+        self.events().notify_ep_upsert(execution_process.id).await;
         if *run_reason != ExecutionProcessRunReason::ArchiveScript
             && *run_reason != ExecutionProcessRunReason::CommitMessage
         {
-            Workspace::set_archived(&self.db().pool, workspace.id, false).await?;
+            Workspace::set_archived(&self.db().pool, workspace.id, false)
+                .await?
+                .into_inner();
+            self.events().notify_workspace_upsert(workspace.id).await;
         }
 
         if let Some(prompt) = match executor_action.typ() {
@@ -1334,21 +1363,30 @@ pub trait ContainerService {
             .await
         {
             // Mark process as failed
-            if let Err(update_error) = ExecutionProcess::update_completion(
+            match ExecutionProcess::update_completion(
                 &self.db().pool,
                 execution_process.id,
                 ExecutionProcessStatus::Failed,
                 None,
             )
             .await
+            .map(|wr| wr.into_inner())
             {
-                tracing::error!(
-                    "Failed to mark execution process {} as failed after start error: {}",
-                    execution_process.id,
-                    update_error
-                );
+                Ok(_) => {
+                    self.events().notify_ep_upsert(execution_process.id).await;
+                }
+                Err(update_error) => {
+                    tracing::error!(
+                        "Failed to mark execution process {} as failed after start error: {}",
+                        execution_process.id,
+                        update_error
+                    );
+                }
             }
-            Task::update_status(&self.db().pool, task.id, TaskStatus::InReview).await?;
+            Task::update_status(&self.db().pool, task.id, TaskStatus::InReview)
+                .await?
+                .into_inner();
+            self.events().notify_task_upsert(task.id).await;
 
             // Emit stderr error message to log file
             let log_message = LogMsg::Stderr(format!("Failed to start execution: {start_error}"));

@@ -283,7 +283,7 @@ impl Workspace {
         pool: &SqlitePool,
         workspace_id: Uuid,
         container_ref: &str,
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<crate::WriteResult<()>, sqlx::Error> {
         let now = Utc::now();
         sqlx::query!(
             "UPDATE workspaces SET container_ref = $1, updated_at = $2 WHERE id = $3",
@@ -293,7 +293,7 @@ impl Workspace {
         )
         .execute(pool)
         .await?;
-        Ok(())
+        Ok(crate::WriteResult::new(()))
     }
 
     pub async fn clear_container_ref(
@@ -339,29 +339,6 @@ impl Workspace {
                FROM    workspaces
                WHERE   id = $1"#,
             id
-        )
-        .fetch_optional(pool)
-        .await
-    }
-
-    pub async fn find_by_rowid(pool: &SqlitePool, rowid: i64) -> Result<Option<Self>, sqlx::Error> {
-        sqlx::query_as!(
-            Workspace,
-            r#"SELECT  id                AS "id!: Uuid",
-                       task_id           AS "task_id!: Uuid",
-                       container_ref,
-                       branch,
-                       agent_working_dir,
-                       setup_completed_at AS "setup_completed_at: DateTime<Utc>",
-                       created_at        AS "created_at!: DateTime<Utc>",
-                       updated_at        AS "updated_at!: DateTime<Utc>",
-                       archived          AS "archived!: bool",
-                       pinned            AS "pinned!: bool",
-                       name,
-                       mode              AS "mode!: WorkspaceMode"
-               FROM    workspaces
-               WHERE   rowid = $1"#,
-            rowid
         )
         .fetch_optional(pool)
         .await
@@ -446,9 +423,9 @@ impl Workspace {
         data: &CreateWorkspace,
         id: Uuid,
         task_id: Uuid,
-    ) -> Result<Self, WorkspaceError> {
+    ) -> Result<crate::WriteResult<Self>, WorkspaceError> {
         let mode = data.mode.unwrap_or(WorkspaceMode::Worktree);
-        Ok(sqlx::query_as!(
+        let val = sqlx::query_as!(
             Workspace,
             r#"INSERT INTO workspaces (id, task_id, container_ref, branch, agent_working_dir, setup_completed_at, mode)
                VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -462,14 +439,15 @@ impl Workspace {
             mode
         )
         .fetch_one(pool)
-        .await?)
+        .await?;
+        Ok(crate::WriteResult::new(val))
     }
 
     pub async fn update_branch_name(
         pool: &SqlitePool,
         workspace_id: Uuid,
         new_branch_name: &str,
-    ) -> Result<(), WorkspaceError> {
+    ) -> Result<crate::WriteResult<()>, WorkspaceError> {
         sqlx::query!(
             "UPDATE workspaces SET branch = $1, updated_at = datetime('now') WHERE id = $2",
             new_branch_name,
@@ -478,7 +456,7 @@ impl Workspace {
         .execute(pool)
         .await?;
 
-        Ok(())
+        Ok(crate::WriteResult::new(()))
     }
 
     pub async fn resolve_container_ref(
@@ -531,7 +509,7 @@ impl Workspace {
         pool: &SqlitePool,
         workspace_id: Uuid,
         archived: bool,
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<crate::WriteResult<()>, sqlx::Error> {
         sqlx::query!(
             "UPDATE workspaces SET archived = $1, updated_at = datetime('now', 'subsec') WHERE id = $2",
             archived,
@@ -539,7 +517,7 @@ impl Workspace {
         )
         .execute(pool)
         .await?;
-        Ok(())
+        Ok(crate::WriteResult::new(()))
     }
 
     /// Update workspace fields. Only non-None values will be updated.
@@ -550,7 +528,7 @@ impl Workspace {
         archived: Option<bool>,
         pinned: Option<bool>,
         name: Option<&str>,
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<crate::WriteResult<()>, sqlx::Error> {
         // Convert empty string to None for name field (to store as NULL)
         let name_value = name.filter(|s| !s.is_empty());
         let name_provided = name.is_some();
@@ -570,7 +548,7 @@ impl Workspace {
         )
         .execute(pool)
         .await?;
-        Ok(())
+        Ok(crate::WriteResult::new(()))
     }
 
     pub async fn get_first_user_message(
@@ -689,7 +667,9 @@ impl Workspace {
                 && let Some(prompt) = Self::get_first_user_message(pool, ws.workspace.id).await?
             {
                 let name = Self::truncate_to_name(&prompt, WORKSPACE_NAME_MAX_LEN);
-                Self::update(pool, ws.workspace.id, None, None, Some(&name)).await?;
+                Self::update(pool, ws.workspace.id, None, None, Some(&name))
+                    .await?
+                    .into_inner();
                 ws.workspace.name = Some(name);
             }
         }
@@ -698,11 +678,14 @@ impl Workspace {
     }
 
     /// Delete a workspace by ID
-    pub async fn delete(pool: &SqlitePool, id: Uuid) -> Result<u64, sqlx::Error> {
+    pub async fn delete(
+        pool: &SqlitePool,
+        id: Uuid,
+    ) -> Result<crate::WriteResult<u64>, sqlx::Error> {
         let result = sqlx::query!("DELETE FROM workspaces WHERE id = $1", id)
             .execute(pool)
             .await?;
-        Ok(result.rows_affected())
+        Ok(crate::WriteResult::new(result.rows_affected()))
     }
 
     /// Count total workspaces across all projects
@@ -786,7 +769,9 @@ impl Workspace {
             && let Some(prompt) = Self::get_first_user_message(pool, ws.workspace.id).await?
         {
             let name = Self::truncate_to_name(&prompt, WORKSPACE_NAME_MAX_LEN);
-            Self::update(pool, ws.workspace.id, None, None, Some(&name)).await?;
+            Self::update(pool, ws.workspace.id, None, None, Some(&name))
+                .await?
+                .into_inner();
             ws.workspace.name = Some(name);
         }
 

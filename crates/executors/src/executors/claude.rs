@@ -3059,7 +3059,10 @@ mod tests {
         assert_eq!(thinking_patches.len(), 1);
         let thinking_entries = patches_to_entries(&thinking_patches);
         assert_eq!(thinking_entries.len(), 1);
-        assert!(matches!(thinking_entries[0].entry_type, NormalizedEntryType::Thinking));
+        assert!(matches!(
+            thinking_entries[0].entry_type,
+            NormalizedEntryType::Thinking
+        ));
 
         // 4. content_block_start index=1 (text)
         let text_block_start = ClaudeJson::StreamEvent {
@@ -3091,7 +3094,10 @@ mod tests {
         assert_eq!(text_patches.len(), 1);
         let text_entries = patches_to_entries(&text_patches);
         assert_eq!(text_entries.len(), 1);
-        assert!(matches!(text_entries[0].entry_type, NormalizedEntryType::AssistantMessage));
+        assert!(matches!(
+            text_entries[0].entry_type,
+            NormalizedEntryType::AssistantMessage
+        ));
 
         // 6. First partial assistant message: only text
         let assistant_text_only = ClaudeJson::Assistant {
@@ -3221,7 +3227,10 @@ mod tests {
 
         assert!(has_thinking, "Should have a thinking entry");
         assert!(has_text, "Should have a text entry");
-        assert_eq!(entry_count, 2, "Should have exactly 2 content entries (no duplicates)");
+        assert_eq!(
+            entry_count, 2,
+            "Should have exactly 2 content entries (no duplicates)"
+        );
         assert!(
             thinking_idx < text_idx,
             "Thinking (index {thinking_idx}) should come before text (index {text_idx})"

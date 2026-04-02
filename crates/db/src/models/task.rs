@@ -226,25 +226,13 @@ ORDER BY t.created_at DESC"#,
         .await
     }
 
-    pub async fn find_by_rowid(pool: &SqlitePool, rowid: i64) -> Result<Option<Self>, sqlx::Error> {
-        sqlx::query_as!(
-            Task,
-            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_workspace_id as "parent_workspace_id: Uuid", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
-               FROM tasks
-               WHERE rowid = $1"#,
-            rowid
-        )
-        .fetch_optional(pool)
-        .await
-    }
-
     pub async fn create(
         pool: &SqlitePool,
         data: &CreateTask,
         task_id: Uuid,
-    ) -> Result<Self, sqlx::Error> {
+    ) -> Result<crate::WriteResult<Self>, sqlx::Error> {
         let status = data.status.clone().unwrap_or_default();
-        sqlx::query_as!(
+        let val = sqlx::query_as!(
             Task,
             r#"INSERT INTO tasks (id, project_id, title, description, status, parent_workspace_id)
                VALUES ($1, $2, $3, $4, $5, $6)
@@ -257,7 +245,8 @@ ORDER BY t.created_at DESC"#,
             data.parent_workspace_id
         )
         .fetch_one(pool)
-        .await
+        .await?;
+        Ok(crate::WriteResult::new(val))
     }
 
     pub async fn update(
@@ -268,8 +257,8 @@ ORDER BY t.created_at DESC"#,
         description: Option<String>,
         status: TaskStatus,
         parent_workspace_id: Option<Uuid>,
-    ) -> Result<Self, sqlx::Error> {
-        sqlx::query_as!(
+    ) -> Result<crate::WriteResult<Self>, sqlx::Error> {
+        let val = sqlx::query_as!(
             Task,
             r#"UPDATE tasks
                SET title = $3, description = $4, status = $5, parent_workspace_id = $6
@@ -283,14 +272,15 @@ ORDER BY t.created_at DESC"#,
             parent_workspace_id
         )
         .fetch_one(pool)
-        .await
+        .await?;
+        Ok(crate::WriteResult::new(val))
     }
 
     pub async fn update_status(
         pool: &SqlitePool,
         id: Uuid,
         status: TaskStatus,
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<crate::WriteResult<()>, sqlx::Error> {
         sqlx::query!(
             "UPDATE tasks SET status = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
             id,
@@ -298,7 +288,7 @@ ORDER BY t.created_at DESC"#,
         )
         .execute(pool)
         .await?;
-        Ok(())
+        Ok(crate::WriteResult::new(()))
     }
 
     /// Update the parent_workspace_id field for a task
@@ -306,7 +296,7 @@ ORDER BY t.created_at DESC"#,
         pool: &SqlitePool,
         task_id: Uuid,
         parent_workspace_id: Option<Uuid>,
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<crate::WriteResult<()>, sqlx::Error> {
         sqlx::query!(
             "UPDATE tasks SET parent_workspace_id = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
             task_id,
@@ -314,7 +304,7 @@ ORDER BY t.created_at DESC"#,
         )
         .execute(pool)
         .await?;
-        Ok(())
+        Ok(crate::WriteResult::new(()))
     }
 
     /// Nullify parent_workspace_id for all tasks that reference the given workspace ID
@@ -322,7 +312,7 @@ ORDER BY t.created_at DESC"#,
     pub async fn nullify_children_by_workspace_id<'e, E>(
         executor: E,
         workspace_id: Uuid,
-    ) -> Result<u64, sqlx::Error>
+    ) -> Result<crate::WriteResult<u64>, sqlx::Error>
     where
         E: Executor<'e, Database = Sqlite>,
     {
@@ -332,17 +322,20 @@ ORDER BY t.created_at DESC"#,
         )
         .execute(executor)
         .await?;
-        Ok(result.rows_affected())
+        Ok(crate::WriteResult::new(result.rows_affected()))
     }
 
-    pub async fn delete<'e, E>(executor: E, id: Uuid) -> Result<u64, sqlx::Error>
+    pub async fn delete<'e, E>(
+        executor: E,
+        id: Uuid,
+    ) -> Result<crate::WriteResult<u64>, sqlx::Error>
     where
         E: Executor<'e, Database = Sqlite>,
     {
         let result = sqlx::query!("DELETE FROM tasks WHERE id = $1", id)
             .execute(executor)
             .await?;
-        Ok(result.rows_affected())
+        Ok(crate::WriteResult::new(result.rows_affected()))
     }
 
     pub async fn find_children_by_workspace_id(

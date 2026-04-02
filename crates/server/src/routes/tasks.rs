@@ -121,7 +121,10 @@ pub async fn create_task(
         payload.project_id
     );
 
-    let task = Task::create(&deployment.db().pool, &payload, id).await?;
+    let task = Task::create(&deployment.db().pool, &payload, id)
+        .await?
+        .into_inner();
+    deployment.events().notify_task_upsert(task.id).await;
 
     if let Some(image_ids) = &payload.image_ids {
         TaskImage::associate_many_dedup(&deployment.db().pool, task.id, image_ids).await?;
@@ -178,7 +181,10 @@ pub async fn create_task_and_start(
     }
 
     let task_id = Uuid::new_v4();
-    let task = Task::create(pool, &payload.task, task_id).await?;
+    let task = Task::create(pool, &payload.task, task_id)
+        .await?
+        .into_inner();
+    deployment.events().notify_task_upsert(task.id).await;
 
     if let Some(image_ids) = &payload.task.image_ids {
         TaskImage::associate_many_dedup(pool, task.id, image_ids).await?;
@@ -238,7 +244,12 @@ pub async fn create_task_and_start(
         attempt_id,
         task.id,
     )
-    .await?;
+    .await?
+    .into_inner();
+    deployment
+        .events()
+        .notify_workspace_upsert(workspace.id)
+        .await;
 
     let workspace_repos: Vec<CreateWorkspaceRepo> = payload
         .repos
@@ -313,7 +324,9 @@ pub async fn update_task(
         status,
         parent_workspace_id,
     )
-    .await?;
+    .await?
+    .into_inner();
+    deployment.events().notify_task_upsert(task.id).await;
 
     if let Some(image_ids) = &payload.image_ids {
         TaskImage::delete_by_task_id(&deployment.db().pool, task.id).await?;
@@ -376,13 +389,14 @@ pub async fn delete_task(
     // This breaks parent-child relationships to avoid foreign key constraint violations
     let mut total_children_affected = 0u64;
     for attempt in &attempts {
-        let children_affected =
-            Task::nullify_children_by_workspace_id(&mut *tx, attempt.id).await?;
+        let children_affected = Task::nullify_children_by_workspace_id(&mut *tx, attempt.id)
+            .await?
+            .into_inner();
         total_children_affected += children_affected;
     }
 
     // Delete task from database (FK CASCADE will handle task_attempts)
-    let rows_affected = Task::delete(&mut *tx, task.id).await?;
+    let rows_affected = Task::delete(&mut *tx, task.id).await?.into_inner();
 
     if rows_affected == 0 {
         return Err(ApiError::Database(SqlxError::RowNotFound));

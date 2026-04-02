@@ -199,8 +199,13 @@ export const useConversationHistoryOld = ({
         }
       }
 
-      // Write to IndexedDB cache (fire-and-forget), only for completed processes
-      if (executionProcess.status !== ExecutionProcessStatus.running) {
+      // Write to IndexedDB cache (fire-and-forget), only for completed/failed processes.
+      // Skip killed processes: the backend log flush may still be in progress,
+      // so caching now could persist incomplete data.
+      if (
+        executionProcess.status !== ExecutionProcessStatus.running &&
+        executionProcess.status !== ExecutionProcessStatus.killed
+      ) {
         setCachedProcessEntries(
           attemptId,
           processId,
@@ -1198,6 +1203,15 @@ export const useConversationHistoryOld = ({
   useEffect(() => {
     let cancelled = false;
 
+    // Snapshot current in-memory entries before reset. When a new EP is
+    // created (e.g. follow-up after stop), idListKey changes and we
+    // reload everything from the DB. But the backend log flush for a
+    // just-killed process may not have completed yet, so the DB may
+    // return fewer entries than we already had in memory from the live
+    // WebSocket stream. Keeping the snapshot lets us fall back to the
+    // richer in-memory version for those processes.
+    const previousEntries = { ...displayedExecutionProcesses.current };
+
     // --- Reset ---
     displayedExecutionProcesses.current = {};
     loadedInitialEntries.current = false;
@@ -1228,6 +1242,21 @@ export const useConversationHistoryOld = ({
       // Initial entries
       const allInitialEntries = await loadInitialEntries();
       if (cancelled) return;
+
+      // For each historic process, if the DB returned fewer entries than
+      // we had in memory (backend flush not yet complete), keep the
+      // in-memory version so the user doesn't see entries disappear.
+      for (const [epId, prev] of Object.entries(previousEntries)) {
+        const loaded = allInitialEntries[epId];
+        if (
+          prev &&
+          prev.entries.length > 0 &&
+          (!loaded || loaded.entries.length < prev.entries.length)
+        ) {
+          allInitialEntries[epId] = prev;
+        }
+      }
+
       mergeIntoDisplayed((state) => {
         Object.assign(state, allInitialEntries);
       });

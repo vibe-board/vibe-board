@@ -1,10 +1,9 @@
 use std::sync::RwLock;
 
+use executors::logs::{NormalizedEntry, utils::patch::ConversationPatch};
 use futures::StreamExt;
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
-
-use executors::logs::{NormalizedEntry, utils::patch::ConversationPatch};
 use utils::log_msg::LogMsg;
 
 #[derive(Debug, Clone)]

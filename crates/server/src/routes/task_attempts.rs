@@ -165,7 +165,12 @@ pub async fn update_workspace(
         request.pinned,
         request.name.as_deref(),
     )
-    .await?;
+    .await?
+    .into_inner();
+    deployment
+        .events()
+        .notify_workspace_upsert(workspace.id)
+        .await;
     let updated = Workspace::find_by_id(pool, workspace.id)
         .await?
         .ok_or(WorkspaceError::TaskNotFound)?;
@@ -273,7 +278,12 @@ pub async fn create_task_attempt(
         attempt_id,
         payload.task_id,
     )
-    .await?;
+    .await?
+    .into_inner();
+    deployment
+        .events()
+        .notify_workspace_upsert(workspace.id)
+        .await;
 
     let workspace_repos: Vec<CreateWorkspaceRepo> = payload
         .repos
@@ -883,7 +893,10 @@ pub async fn merge_task_attempt(
         &merge_commit_id,
     )
     .await?;
-    Task::update_status(pool, task.id, TaskStatus::Done).await?;
+    Task::update_status(pool, task.id, TaskStatus::Done)
+        .await?
+        .into_inner();
+    deployment.events().notify_task_upsert(task.id).await;
     if !workspace.pinned
         && let Err(e) = deployment.container().archive_workspace(workspace.id).await
     {
@@ -1542,7 +1555,13 @@ pub async fn rename_branch(
         }
     }
 
-    Workspace::update_branch_name(pool, workspace.id, new_branch_name).await?;
+    Workspace::update_branch_name(pool, workspace.id, new_branch_name)
+        .await?
+        .into_inner();
+    deployment
+        .events()
+        .notify_workspace_upsert(workspace.id)
+        .await;
     // What will become of me?
     let updated_children_count = WorkspaceRepo::update_target_branch_for_children_of_workspace(
         pool,
@@ -2233,7 +2252,9 @@ pub async fn delete_workspace(
     let repositories = WorkspaceRepo::find_repos_for_workspace(pool, workspace.id).await?;
 
     // Nullify parent_workspace_id for any child tasks before deletion
-    let children_affected = Task::nullify_children_by_workspace_id(pool, workspace.id).await?;
+    let children_affected = Task::nullify_children_by_workspace_id(pool, workspace.id)
+        .await?
+        .into_inner();
     if children_affected > 0 {
         tracing::info!(
             "Nullified {} child task references before deleting workspace {}",
@@ -2243,7 +2264,7 @@ pub async fn delete_workspace(
     }
 
     // Delete workspace from database (FK CASCADE will handle sessions, execution_processes, etc.)
-    let rows_affected = Workspace::delete(pool, workspace.id).await?;
+    let rows_affected = Workspace::delete(pool, workspace.id).await?.into_inner();
 
     if rows_affected == 0 {
         return Err(ApiError::Database(SqlxError::RowNotFound));

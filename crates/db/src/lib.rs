@@ -10,6 +10,28 @@ use utils::assets::asset_dir;
 mod data_migrations;
 pub mod models;
 
+/// Wrapper for database write results that enforces event notification.
+///
+/// Write methods for event-monitored tables (tasks, execution_processes,
+/// workspaces, scratch, projects) return this type. The caller MUST call
+/// `.into_inner()` to extract the value, serving as a deliberate
+/// acknowledgement that event notification has been (or will be) handled.
+#[must_use = "database write completed but event not emitted — call .into_inner() after sending notification"]
+pub struct WriteResult<T> {
+    value: T,
+}
+
+impl<T> WriteResult<T> {
+    pub fn new(value: T) -> Self {
+        Self { value }
+    }
+
+    /// Extract the inner value. Call this AFTER emitting the event notification.
+    pub fn into_inner(self) -> T {
+        self.value
+    }
+}
+
 async fn run_migrations(pool: &Pool<Sqlite>) -> Result<(), Error> {
     use std::collections::HashSet;
 

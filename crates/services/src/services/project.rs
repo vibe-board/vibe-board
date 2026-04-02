@@ -99,7 +99,8 @@ impl ProjectService {
 
         let project = Project::create(pool, &payload, id)
             .await
-            .map_err(|e| ProjectServiceError::Project(ProjectError::CreateFailed(e.to_string())))?;
+            .map_err(|e| ProjectServiceError::Project(ProjectError::CreateFailed(e.to_string())))?
+            .into_inner();
 
         for repo in &normalized_repos {
             let repo_entity =
@@ -117,7 +118,9 @@ impl ProjectService {
         existing: &Project,
         payload: UpdateProject,
     ) -> Result<Project> {
-        let project = Project::update(pool, existing.id, &payload).await?;
+        let project = Project::update(pool, existing.id, &payload)
+            .await?
+            .into_inner();
 
         Ok(project)
     }
@@ -200,7 +203,7 @@ impl ProjectService {
     }
 
     pub async fn delete_project(&self, pool: &SqlitePool, project_id: Uuid) -> Result<u64> {
-        let rows_affected = Project::delete(pool, project_id).await?;
+        let rows_affected = Project::delete(pool, project_id).await?.into_inner();
 
         if let Err(e) = Repo::delete_orphaned(pool).await {
             tracing::error!("Failed to delete orphaned repos: {}", e);

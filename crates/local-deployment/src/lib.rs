@@ -111,17 +111,15 @@ impl Deployment for LocalDeployment {
 
         // Create shared components for EventService
         let events_msg_store = Arc::new(MsgStore::new());
-        let events_entry_count = Arc::new(RwLock::new(0));
 
-        // Create DB with event hooks
+        // Create DB with preupdate hook only
         let db = {
-            let hook = EventService::create_hook(
-                events_msg_store.clone(),
-                events_entry_count.clone(),
-                DBService::new().await?, // Temporary DB service for the hook
-            );
+            let hook = EventService::create_hook(events_msg_store.clone());
             DBService::new_with_after_connect(hook).await?
         };
+
+        // Create EventService BEFORE container
+        let events = EventService::new(db.clone(), events_msg_store);
 
         let image = ImageService::new(db.clone().pool)?;
         {
@@ -155,6 +153,7 @@ impl Deployment for LocalDeployment {
         });
         let container = LocalContainerService::new(
             db.clone(),
+            events.clone(),
             msg_stores.clone(),
             config.clone(),
             git.clone(),
@@ -164,8 +163,6 @@ impl Deployment for LocalDeployment {
             queued_message_service.clone(),
         )
         .await;
-
-        let events = EventService::new(db.clone(), events_msg_store, events_entry_count);
 
         let file_search_cache = Arc::new(FileSearchCache::new());
 

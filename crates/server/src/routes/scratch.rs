@@ -60,7 +60,13 @@ pub async fn create_scratch(
         .validate_type(scratch_type)
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
-    let scratch = Scratch::create(&deployment.db().pool, id, &payload).await?;
+    let scratch = Scratch::create(&deployment.db().pool, id, &payload)
+        .await?
+        .into_inner();
+    deployment
+        .events()
+        .notify_scratch_upsert(scratch.id, &scratch.payload.scratch_type())
+        .await;
     Ok(ResponseJson(ApiResponse::success(scratch)))
 }
 
@@ -85,7 +91,13 @@ pub async fn update_scratch(
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
     // Upsert: creates if not exists, updates if exists
-    let scratch = Scratch::update(&deployment.db().pool, id, &scratch_type, &payload).await?;
+    let scratch = Scratch::update(&deployment.db().pool, id, &scratch_type, &payload)
+        .await?
+        .into_inner();
+    deployment
+        .events()
+        .notify_scratch_upsert(scratch.id, &scratch_type)
+        .await;
     Ok(ResponseJson(ApiResponse::success(scratch)))
 }
 
@@ -93,10 +105,16 @@ pub async fn delete_scratch(
     State(deployment): State<DeploymentImpl>,
     Path(ScratchPath { scratch_type, id }): Path<ScratchPath>,
 ) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
-    let rows = Scratch::delete(&deployment.db().pool, id, &scratch_type).await?;
+    let rows = Scratch::delete(&deployment.db().pool, id, &scratch_type)
+        .await?
+        .into_inner();
     if rows == 0 {
         return Err(ApiError::BadRequest("Scratch not found".to_string()));
     }
+    deployment
+        .events()
+        .notify_scratch_deleted(id, &scratch_type.to_string())
+        .await;
     Ok(ResponseJson(ApiResponse::success(())))
 }
 
