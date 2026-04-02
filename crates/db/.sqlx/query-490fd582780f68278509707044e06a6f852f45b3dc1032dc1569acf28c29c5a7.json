@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id as \"id!: Uuid\", project_id as \"project_id!: Uuid\",\n               title, description, status as \"status!: TaskStatus\",\n               parent_workspace_id as \"parent_workspace_id: Uuid\",\n               created_at as \"created_at!: DateTime<Utc>\",\n               updated_at as \"updated_at!: DateTime<Utc>\",\n               has_in_progress_attempt as \"has_in_progress_attempt!: bool\",\n               last_attempt_failed as \"last_attempt_failed!: bool\",\n               executor as \"executor!: String\",\n               variant as \"variant: String\"\n               FROM tasks\n               WHERE project_id = $1\n                 AND status IN ('todo', 'inprogress', 'inreview')\n               ORDER BY created_at DESC",
+  "query": "SELECT id as \"id!: Uuid\", project_id as \"project_id!: Uuid\",\n               title, description, status as \"status!: TaskStatus\",\n               parent_workspace_id as \"parent_workspace_id: Uuid\",\n               created_at as \"created_at!: DateTime<Utc>\",\n               updated_at as \"updated_at!: DateTime<Utc>\",\n               has_in_progress_attempt as \"has_in_progress_attempt!: bool\",\n               last_attempt_failed as \"last_attempt_failed!: bool\",\n               executor as \"executor!: String\",\n               variant as \"variant: String\"\n               FROM tasks\n               WHERE project_id = $1\n               ORDER BY created_at DESC",
   "describe": {
     "columns": [
       {
@@ -82,5 +82,5 @@
       true
     ]
   },
-  "hash": "be5db704ef223371ae0deb5110c208990b159dd2055767fc39f76d38341afdc8"
+  "hash": "490fd582780f68278509707044e06a6f852f45b3dc1032dc1569acf28c29c5a7"
 }

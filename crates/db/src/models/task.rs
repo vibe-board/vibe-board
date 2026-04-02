@@ -118,7 +118,6 @@ impl Task {
                variant as "variant: String"
                FROM tasks
                WHERE project_id = $1
-                 AND status IN ('todo', 'inprogress', 'inreview')
                ORDER BY created_at DESC"#,
             project_id
         )
