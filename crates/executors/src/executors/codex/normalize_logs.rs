@@ -1063,6 +1063,7 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                                         model_name: None,
                                         input_tokens: None,
                                         output_tokens: None,
+                                        reasoning_tokens: None,
                                         cache_read_input_tokens: None,
                                         cache_creation_input_tokens: None,
                                         cost_usd: None,

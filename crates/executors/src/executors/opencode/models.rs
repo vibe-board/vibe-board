@@ -113,12 +113,20 @@ pub(super) async fn maybe_emit_token_usage(context: &EventStreamContext<'_>, eve
         return;
     }
 
+    // Only emit on the final message.updated (the one with time.completed set).
+    // The SDK sends multiple updates for the same message; without this guard
+    // the frontend would show duplicate token usage entries.
+    if message.time.as_ref().and_then(|t| t.completed).is_none() {
+        return;
+    }
+
     let Some(ref tokens) = message.tokens else {
         return;
     };
 
-    let total_tokens =
-        tokens.input + tokens.output + tokens.cache.as_ref().map(|c| c.read).unwrap_or(0);
+    let cache_read = tokens.cache.as_ref().map(|c| c.read).unwrap_or(0);
+    let cache_write = tokens.cache.as_ref().map(|c| c.write).unwrap_or(0);
+    let total_tokens = tokens.input + tokens.output + tokens.reasoning + cache_read;
 
     if total_tokens == 0 {
         return;
@@ -142,15 +150,31 @@ pub(super) async fn maybe_emit_token_usage(context: &EventStreamContext<'_>, eve
         _ => 0,
     };
 
-    if model_context_window == 0 {
-        return;
-    }
+    let model_name = model_id.map(|s| s.to_string());
 
     let _ = context
         .log_writer
         .log_event(&OpencodeExecutorEvent::TokenUsage {
             total_tokens,
             model_context_window,
+            model_name,
+            input_tokens: Some(tokens.input as u64),
+            output_tokens: Some(tokens.output as u64),
+            reasoning_tokens: if tokens.reasoning > 0 {
+                Some(tokens.reasoning as u64)
+            } else {
+                None
+            },
+            cache_read_input_tokens: if cache_read > 0 {
+                Some(cache_read as u64)
+            } else {
+                None
+            },
+            cache_creation_input_tokens: if cache_write > 0 {
+                Some(cache_write as u64)
+            } else {
+                None
+            },
         })
         .await;
 }

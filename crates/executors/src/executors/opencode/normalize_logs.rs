@@ -75,6 +75,12 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                 OpencodeExecutorEvent::TokenUsage {
                     total_tokens,
                     model_context_window,
+                    model_name,
+                    input_tokens,
+                    output_tokens,
+                    reasoning_tokens,
+                    cache_read_input_tokens,
+                    cache_creation_input_tokens,
                 } => {
                     add_normalized_entry(
                         &msg_store,
@@ -83,20 +89,29 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                             timestamp: None,
                             entry_type: NormalizedEntryType::TokenUsageInfo(TokenUsageInfo {
                                 total_tokens,
-                                model_name: None,
-                                input_tokens: None,
-                                output_tokens: None,
-                                cache_read_input_tokens: None,
-                                cache_creation_input_tokens: None,
+                                model_name,
+                                input_tokens,
+                                output_tokens,
+                                reasoning_tokens,
+                                cache_read_input_tokens,
+                                cache_creation_input_tokens,
                                 cost_usd: None,
                                 context_window: None,
-                                model_context_window: Some(model_context_window),
+                                model_context_window: if model_context_window > 0 {
+                                    Some(model_context_window)
+                                } else {
+                                    None
+                                },
                                 max_output_tokens: None,
                             }),
-                            content: format!(
-                                "Tokens used: {} / Context window: {}",
-                                total_tokens, model_context_window
-                            ),
+                            content: if model_context_window > 0 {
+                                format!(
+                                    "Tokens used: {} / Context window: {}",
+                                    total_tokens, model_context_window
+                                )
+                            } else {
+                                format!("Tokens used: {}", total_tokens)
+                            },
                             metadata: None,
                         },
                     );

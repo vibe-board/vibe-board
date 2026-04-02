@@ -1034,6 +1034,11 @@ function DisplayConversationEntry({
           {usage.output_tokens != null && (
             <span>out: {formatTokens(Number(usage.output_tokens))}</span>
           )}
+          {usage.reasoning_tokens != null && usage.reasoning_tokens > 0 && (
+            <span>
+              reasoning: {formatTokens(Number(usage.reasoning_tokens))}
+            </span>
+          )}
           {usage.cache_read_input_tokens != null &&
             usage.cache_read_input_tokens > 0 && (
               <span>

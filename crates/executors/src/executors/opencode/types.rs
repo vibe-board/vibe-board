@@ -21,6 +21,12 @@ pub enum OpencodeExecutorEvent {
     TokenUsage {
         total_tokens: u32,
         model_context_window: u32,
+        model_name: Option<String>,
+        input_tokens: Option<u64>,
+        output_tokens: Option<u64>,
+        reasoning_tokens: Option<u64>,
+        cache_read_input_tokens: Option<u64>,
+        cache_creation_input_tokens: Option<u64>,
     },
     ApprovalRequested {
         tool_call_id: String,
@@ -150,6 +156,8 @@ pub(super) struct MessageInfo {
     pub(super) id: String,
     pub(super) role: MessageRole,
     #[serde(default)]
+    pub(super) time: Option<MessageTime>,
+    #[serde(default)]
     pub(super) model: Option<MessageModelInfo>,
     #[serde(rename = "providerID", default)]
     pub(super) provider_id: Option<String>,
@@ -160,11 +168,19 @@ pub(super) struct MessageInfo {
 }
 
 #[derive(Debug, Deserialize)]
+pub(super) struct MessageTime {
+    #[serde(default)]
+    pub(super) completed: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
 pub(super) struct MessageTokens {
     #[serde(default, deserialize_with = "deserialize_f64_as_u32")]
     pub(super) input: u32,
     #[serde(default, deserialize_with = "deserialize_f64_as_u32")]
     pub(super) output: u32,
+    #[serde(default, deserialize_with = "deserialize_f64_as_u32")]
+    pub(super) reasoning: u32,
     pub(super) cache: Option<MessageTokensCache>,
 }
 
@@ -172,6 +188,8 @@ pub(super) struct MessageTokens {
 pub(super) struct MessageTokensCache {
     #[serde(default, deserialize_with = "deserialize_f64_as_u32")]
     pub(super) read: u32,
+    #[serde(default, deserialize_with = "deserialize_f64_as_u32")]
+    pub(super) write: u32,
 }
 
 fn deserialize_f64_as_u32<'de, D>(deserializer: D) -> Result<u32, D::Error>
