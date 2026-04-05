@@ -115,7 +115,7 @@ impl ClaudeCode {
             scan(home.join(".claude"), None);
         }
 
-        // Plugins
+        // Plugins from CLI
         for plugin in plugins {
             scan(plugin.path.clone(), Some(&plugin.name));
             scan(plugin.path.join(".claude"), Some(&plugin.name));
@@ -127,7 +127,8 @@ impl ClaudeCode {
             let installed_path = home.join(".claude/plugins/installed_plugins.json");
             if let Ok(content) = std::fs::read_to_string(&installed_path) {
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                    if let Some(installed_plugins) = json.get("plugins").and_then(|p| p.as_object())
+                    if let Some(installed_plugins) =
+                        json.get("plugins").and_then(|p| p.as_object())
                     {
                         let cli_plugin_paths: std::collections::HashSet<PathBuf> =
                             plugins.iter().map(|p| p.path.clone()).collect();
@@ -140,8 +141,10 @@ impl ClaudeCode {
                                     {
                                         let path = PathBuf::from(install_path);
                                         if !cli_plugin_paths.contains(&path) {
-                                            let plugin_name =
-                                                plugin_key.split('@').next().unwrap_or(plugin_key);
+                                            let plugin_name = plugin_key
+                                                .split('@')
+                                                .next()
+                                                .unwrap_or(plugin_key);
                                             scan(path.clone(), Some(plugin_name));
                                             scan(path.join(".claude"), Some(plugin_name));
                                         }
@@ -326,10 +329,19 @@ impl ClaudeCode {
             .collect();
 
         let mut seen = HashSet::new();
-        let names = names
+        let mut names: Vec<String> = names
             .into_iter()
             .filter(|name| !name.is_empty() && !builtin.contains(name) && seen.insert(name.clone()))
-            .collect::<Vec<_>>();
+            .collect();
+
+        // Supplement names from descriptions that weren't in CLI output.
+        // This handles the case where claude -p doesn't report all plugins.
+        for desc_key in descriptions.keys() {
+            if !seen.contains(desc_key) && !builtin.contains(desc_key) && !desc_key.is_empty() {
+                names.push(desc_key.clone());
+                seen.insert(desc_key.clone());
+            }
+        }
 
         let commands: Vec<SlashCommandDescription> = names
             .into_iter()
