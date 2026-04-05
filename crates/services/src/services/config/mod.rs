@@ -433,9 +433,11 @@ mod tests {
         let path = dir.path().join("config.json");
 
         // Build a valid v9 config by serializing the v9 default and tweaking fields
-        let mut v9_config = versions::v9::Config::default();
-        v9_config.workspace_dir = Some("/my/workspace".to_string());
-        v9_config.git_branch_prefix = "vk".to_string();
+        let v9_config = versions::v9::Config {
+            workspace_dir: Some("/my/workspace".to_string()),
+            git_branch_prefix: "vk".to_string(),
+            ..Default::default()
+        };
         let v9_json = serde_json::to_string_pretty(&v9_config).unwrap();
         std::fs::write(&path, &v9_json).unwrap();
 

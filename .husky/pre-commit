@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
 
-# Auto-format Rust and frontend code before commit
+# Auto-format and lint Rust and frontend code before commit
 pnpm run format
+cargo clippy --all --all-targets -- -D warnings

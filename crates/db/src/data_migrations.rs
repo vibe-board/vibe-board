@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 
 use sqlx::{Pool, Row, Sqlite};
 use utils::assets::asset_dir;
@@ -155,7 +155,7 @@ async fn export_single_execution(
     pool: &Pool<Sqlite>,
     raw_id: &[u8],
     _id: Uuid,
-    zst_path: &PathBuf,
+    zst_path: &Path,
 ) -> Result<(usize, u64, i64), Box<dyn std::error::Error + Send + Sync>> {
     // Fetch all log rows for this execution, ordered by insertion time
     let log_rows = sqlx::query(
@@ -180,7 +180,7 @@ async fn export_single_execution(
 
     // Compress and write to file on a blocking thread
     let content_bytes = content.into_bytes();
-    let zst = zst_path.clone();
+    let zst = zst_path.to_path_buf();
     let compressed_size = tokio::task::spawn_blocking(move || -> Result<u64, std::io::Error> {
         let output = std::fs::File::create(&zst)?;
         let mut encoder = zstd::Encoder::new(output, 3)?;
@@ -200,5 +200,5 @@ fn should_log_progress(current: usize, total: usize) -> bool {
     if total <= 50 {
         return true;
     }
-    current % 50 == 0 || current == total || current == 1
+    current.is_multiple_of(50) || current == total || current == 1
 }

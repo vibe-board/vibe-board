@@ -1163,16 +1163,16 @@ impl LocalContainerService {
         let mut last_assistant_message: Option<String> = None;
 
         for msg in &history {
-            if let LogMsg::JsonPatch(patch) = msg {
-                if let Some((_index, entry)) = extract_normalized_entry_from_patch(patch) {
-                    if matches!(entry.entry_type, NormalizedEntryType::AssistantMessage) {
-                        let content = entry.content.trim();
-                        if !content.is_empty() {
-                            last_assistant_message = Some(content.to_string());
-                        }
+            if let LogMsg::JsonPatch(patch) = msg
+                && let Some((_index, entry)) = extract_normalized_entry_from_patch(patch)
+            {
+                if matches!(entry.entry_type, NormalizedEntryType::AssistantMessage) {
+                    let content = entry.content.trim();
+                    if !content.is_empty() {
+                        last_assistant_message = Some(content.to_string());
                     }
-                    entries.push(entry);
                 }
+                entries.push(entry);
             }
         }
 

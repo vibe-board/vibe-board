@@ -125,27 +125,25 @@ impl ClaudeCode {
         // because claude -p may not report all plugins
         if let Some(home) = dirs::home_dir() {
             let installed_path = home.join(".claude/plugins/installed_plugins.json");
-            if let Ok(content) = std::fs::read_to_string(&installed_path) {
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                    if let Some(installed_plugins) = json.get("plugins").and_then(|p| p.as_object())
-                    {
-                        let cli_plugin_paths: std::collections::HashSet<PathBuf> =
-                            plugins.iter().map(|p| p.path.clone()).collect();
+            if let Ok(content) = std::fs::read_to_string(&installed_path)
+                && let Ok(json) = serde_json::from_str::<serde_json::Value>(&content)
+                && let Some(installed_plugins) = json.get("plugins").and_then(|p| p.as_object())
+            {
+                let cli_plugin_paths: std::collections::HashSet<PathBuf> =
+                    plugins.iter().map(|p| p.path.clone()).collect();
 
-                        for (plugin_key, versions) in installed_plugins {
-                            if let Some(versions_arr) = versions.as_array() {
-                                for version in versions_arr {
-                                    if let Some(install_path) =
-                                        version.get("installPath").and_then(|p| p.as_str())
-                                    {
-                                        let path = PathBuf::from(install_path);
-                                        if !cli_plugin_paths.contains(&path) {
-                                            let plugin_name =
-                                                plugin_key.split('@').next().unwrap_or(plugin_key);
-                                            scan(path.clone(), Some(plugin_name));
-                                            scan(path.join(".claude"), Some(plugin_name));
-                                        }
-                                    }
+                for (plugin_key, versions) in installed_plugins {
+                    if let Some(versions_arr) = versions.as_array() {
+                        for version in versions_arr {
+                            if let Some(install_path) =
+                                version.get("installPath").and_then(|p| p.as_str())
+                            {
+                                let path = PathBuf::from(install_path);
+                                if !cli_plugin_paths.contains(&path) {
+                                    let plugin_name =
+                                        plugin_key.split('@').next().unwrap_or(plugin_key);
+                                    scan(path.clone(), Some(plugin_name));
+                                    scan(path.join(".claude"), Some(plugin_name));
                                 }
                             }
                         }

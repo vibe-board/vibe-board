@@ -3286,7 +3286,7 @@ mod tests {
         let patches_1 = processor.normalize_entries(&assistant_text_only, worktree, &provider);
         let entries_1: Vec<_> = patches_1
             .iter()
-            .filter_map(|p| extract_normalized_entry_from_patch(p))
+            .filter_map(extract_normalized_entry_from_patch)
             .collect();
 
         // Should produce a Replace for the existing text entry, NOT a new Add
@@ -3325,7 +3325,7 @@ mod tests {
         let patches_2 = processor.normalize_entries(&assistant_thinking_only, worktree, &provider);
         let entries_2: Vec<_> = patches_2
             .iter()
-            .filter_map(|p| extract_normalized_entry_from_patch(p))
+            .filter_map(extract_normalized_entry_from_patch)
             .collect();
 
         // Should produce a Replace for the existing thinking entry, NOT a new Add

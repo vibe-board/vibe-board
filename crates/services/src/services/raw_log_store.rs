@@ -47,7 +47,7 @@ impl ZstLogWriter {
             Ok(encoder)
         })
         .await
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))??;
+        .map_err(std::io::Error::other)??;
 
         Ok(Self {
             execution_id,
@@ -69,7 +69,7 @@ impl ZstLogWriter {
             Ok(())
         })
         .await
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+        .map_err(std::io::Error::other)?
     }
 
     /// Finalize the zstd frame and close the file.
@@ -84,7 +84,7 @@ impl ZstLogWriter {
             Ok(())
         })
         .await
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+        .map_err(std::io::Error::other)?
     }
 
     pub fn execution_id(&self) -> Uuid {
@@ -116,13 +116,14 @@ async fn read_compressed_lines(path: &std::path::Path) -> std::io::Result<Vec<St
         let reader = std::io::BufReader::new(decoder);
         let lines: Vec<String> = reader
             .lines()
-            .filter_map(|l| l.ok())
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
             .filter(|l| !l.is_empty())
             .collect();
         Ok(lines)
     })
     .await
-    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+    .map_err(std::io::Error::other)?
 }
 
 async fn read_plain_lines(path: &std::path::Path) -> std::io::Result<Vec<String>> {
