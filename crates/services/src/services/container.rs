@@ -162,6 +162,13 @@ pub trait ContainerService {
 
     async fn take_raw_log_handle(&self, id: &Uuid) -> Option<JoinHandle<()>>;
 
+    async fn run_commit_message_agent(
+        &self,
+        executor_profile_id: &ExecutorProfileId,
+        prompt: &str,
+        working_dir: &Path,
+    ) -> Option<(String, String)>;
+
     async fn create(&self, workspace: &Workspace) -> Result<ContainerRef, ContainerError>;
 
     async fn kill_all_running_processes(&self) -> Result<(), ContainerError>;

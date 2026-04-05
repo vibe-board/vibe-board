@@ -70,7 +70,8 @@ impl Session {
                    GROUP BY ep.session_id
                ) latest_ep ON s.id = latest_ep.session_id
                WHERE s.workspace_id = $1
-               ORDER BY COALESCE(latest_ep.last_used, s.created_at) DESC"#,
+               ORDER BY latest_ep.last_used IS NULL ASC,
+                        COALESCE(latest_ep.last_used, s.created_at) DESC"#,
             workspace_id
         )
         .fetch_all(pool)
@@ -99,7 +100,8 @@ impl Session {
                    GROUP BY ep.session_id
                ) latest_ep ON s.id = latest_ep.session_id
                WHERE s.workspace_id = $1
-               ORDER BY COALESCE(latest_ep.last_used, s.created_at) DESC
+               ORDER BY latest_ep.last_used IS NULL ASC,
+                        COALESCE(latest_ep.last_used, s.created_at) DESC
                LIMIT 1"#,
             workspace_id
         )

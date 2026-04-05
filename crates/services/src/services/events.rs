@@ -90,7 +90,7 @@ impl EventService {
              JOIN sessions s ON s.workspace_id = w.id
              JOIN execution_processes ep ON ep.session_id = s.id
              WHERE w.task_id = $1 AND ep.status = 'running'
-               AND ep.run_reason IN ('setupscript','cleanupscript','codingagent','commitmessage')
+               AND ep.run_reason IN ('setupscript','cleanupscript','codingagent')
              LIMIT 1",
         )
         .bind(task_id)

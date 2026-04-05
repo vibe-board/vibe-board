@@ -35,7 +35,6 @@ use deployment::Deployment;
 use executors::{
     actions::{
         ExecutorAction, ExecutorActionType,
-        coding_agent_initial::CodingAgentInitialRequest,
         script::{ScriptContext, ScriptRequest, ScriptRequestLanguage},
     },
     executors::{CodingAgent, ExecutorError},
@@ -493,9 +492,9 @@ fn legacy_commit_message(task: &Task) -> String {
     msg
 }
 
-/// Run the workspace's coding agent to generate a conventional commit message.
-/// Always uses an isolated session to avoid polluting the task session's context.
-/// Tells the agent current and target branch; the agent can run git diff etc. itself.
+/// Run the workspace's coding agent inline to generate a conventional commit message.
+/// Spawns the agent subprocess directly, collects output via an ephemeral MsgStore,
+/// normalizes in-memory, and returns (commit_message, conversation_json).
 /// Returns None if agent fails or timeout.
 async fn generate_commit_message_via_agent(
     deployment: &DeploymentImpl,
@@ -504,111 +503,35 @@ async fn generate_commit_message_via_agent(
     current_branch: &str,
     target_branch: &str,
     prompt: &str,
-) -> Option<String> {
-    use std::time::Duration;
-
-    let pool = &deployment.db().pool;
-
+) -> Option<(String, String)> {
     let working_dir = workspace
         .agent_working_dir
         .as_ref()
         .filter(|d| !d.is_empty())
-        .map(|d| PathBuf::from(workspace.container_ref.as_deref().unwrap_or_default()).join(d))
-        .or_else(|| workspace.container_ref.as_ref().map(PathBuf::from))?;
+        .map(|d| {
+            PathBuf::from(
+                workspace.container_ref.as_deref().unwrap_or_default(),
+            )
+            .join(d)
+        })
+        .or_else(|| {
+            workspace
+                .container_ref
+                .as_ref()
+                .map(PathBuf::from)
+        })?;
 
     let prompt = prompt
         .replace("{current_branch}", current_branch)
         .replace("{target_branch}", target_branch);
 
-    // Always create a new DB Session so the commit message agent's
-    // ExecutionProcess and CodingAgentTurn records don't pollute the
-    // task session's conversation history.
-    let commit_session = {
-        let create = CreateSession {
-            executor: Some(executor_profile_id.executor.to_string()),
-        };
-        match Session::create(pool, &create, Uuid::new_v4(), workspace.id).await {
-            Ok(s) => s,
-            Err(e) => {
-                tracing::error!("Failed to create session for commit message agent: {}", e);
-                return None;
-            }
-        }
-    };
-
-    let action_type = ExecutorActionType::CodingAgentInitialRequest(CodingAgentInitialRequest {
-        prompt,
-        executor_profile_id: (*executor_profile_id).clone(),
-        working_dir,
-    });
-
-    let action = ExecutorAction::new(action_type, None);
-
-    let execution_process = deployment
+    let (assistant_msg, entries_json) = deployment
         .container()
-        .start_execution(
-            workspace,
-            &commit_session,
-            &action,
-            &ExecutionProcessRunReason::CommitMessage,
-        )
-        .await
-        .ok()?;
+        .run_commit_message_agent(executor_profile_id, &prompt, &working_dir)
+        .await?;
 
-    // Poll until the agent run completes (or timeout).
-    const POLL_INTERVAL: Duration = Duration::from_millis(500);
-    const TIMEOUT: Duration = Duration::from_secs(90);
-    let deadline = std::time::Instant::now() + TIMEOUT;
-    let mut timed_out = false;
-    while std::time::Instant::now() < deadline {
-        tokio::time::sleep(POLL_INTERVAL).await;
-        let Some(ep) = ExecutionProcess::find_by_id(pool, execution_process.id)
-            .await
-            .ok()
-            .flatten()
-        else {
-            continue;
-        };
-        if ep.status != ExecutionProcessStatus::Running {
-            break;
-        }
-    }
-    // Check if the process is still running after the timeout
-    if let Some(ep) = ExecutionProcess::find_by_id(pool, execution_process.id)
-        .await
-        .ok()
-        .flatten()
-        && ep.status == ExecutionProcessStatus::Running
-    {
-        timed_out = true;
-        tracing::debug!(
-            "Commit message agent timed out after {}s, stopping execution process {}",
-            TIMEOUT.as_secs(),
-            execution_process.id
-        );
-        if let Err(e) = deployment
-            .container()
-            .stop_execution(&ep, ExecutionProcessStatus::Killed)
-            .await
-        {
-            tracing::error!(
-                "Failed to stop timed-out commit message agent {}: {}",
-                execution_process.id,
-                e
-            );
-        }
-    }
-
-    // If we timed out, don't wait for the summary - return None immediately
-    if timed_out {
-        return None;
-    }
-
-    let turn = CodingAgentTurn::find_by_execution_process_id(pool, execution_process.id)
-        .await
-        .ok()??;
-    let summary = turn.summary.as_deref().unwrap_or("").trim();
-    let raw = extract_commit_message_from_agent_response(summary);
+    // Extract commit message from agent response (same logic as before)
+    let raw = extract_commit_message_from_agent_response(&assistant_msg);
     let raw = raw.trim();
     let lines: Vec<&str> = raw
         .lines()
@@ -619,14 +542,13 @@ async fn generate_commit_message_via_agent(
     if subject.is_empty() {
         return None;
     }
-    // Simple commit: one line only. Complex: subject + body (remaining lines).
     let message = if lines.len() <= 1 {
         subject
     } else {
         let body = lines[1..].join("\n");
         format!("{}\n\n{}", subject, body)
     };
-    Some(message)
+    Some((message, entries_json))
 }
 
 /// Extracts the commit message from an agent response that may include reasoning and explanation.
@@ -808,7 +730,7 @@ pub async fn merge_task_attempt(
         .as_ref()
         .unwrap_or(&request.executor_profile_id);
 
-    let commit_message = if request.commit_message_enabled {
+    let (commit_message, commit_message_conversation) = if request.commit_message_enabled {
         // Check if the branch has a single commit — if so, skip AI generation
         // and use the existing commit message directly.
         let single_commit_message = if !request.commit_message_single_commit {
@@ -835,7 +757,7 @@ pub async fn merge_task_attempt(
                 "Single commit on branch, using existing commit message: {}",
                 msg
             );
-            msg
+            (msg, None)
         } else {
             let commit_message_prompt = {
                 let config = deployment.config().read().await;
@@ -845,7 +767,7 @@ pub async fn merge_task_attempt(
                     .unwrap_or(DEFAULT_COMMIT_MESSAGE_PROMPT)
                     .to_string()
             };
-            generate_commit_message_via_agent(
+            match generate_commit_message_via_agent(
                 &deployment,
                 &workspace,
                 commit_message_profile,
@@ -854,18 +776,21 @@ pub async fn merge_task_attempt(
                 &commit_message_prompt,
             )
             .await
-            .unwrap_or_else(|| {
-                tracing::debug!(
-                    "Agent did not return commit message, using legacy (task title + description)"
-                );
-                legacy_commit_message(&task)
-            })
+            {
+                Some((msg, entries_json)) => (msg, Some(entries_json)),
+                None => {
+                    tracing::debug!(
+                        "Agent did not return commit message, using legacy (task title + description)"
+                    );
+                    (legacy_commit_message(&task), None)
+                }
+            }
         }
     } else {
         tracing::debug!(
             "Commit message generation disabled, using legacy (task title + description)"
         );
-        legacy_commit_message(&task)
+        (legacy_commit_message(&task), None)
     };
 
     let merge_commit_id = deployment.git().merge_changes(
@@ -882,6 +807,8 @@ pub async fn merge_task_attempt(
         workspace_repo.repo_id,
         &workspace_repo.target_branch,
         &merge_commit_id,
+        task.id,
+        commit_message_conversation.as_deref(),
     )
     .await?;
     Task::update_status(pool, task.id, TaskStatus::Done).await?;

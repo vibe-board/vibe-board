@@ -117,7 +117,11 @@ export class ApiError<E = unknown> extends Error {
   }
 }
 
-const makeRequest = async (url: string, options: RequestInit = {}) => {
+const makeRequest = async (
+  url: string,
+  options: RequestInit = {},
+  extra?: { timeoutMs?: number }
+) => {
   const headers = new Headers(options.headers ?? {});
   if (!headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
@@ -127,7 +131,7 @@ const makeRequest = async (url: string, options: RequestInit = {}) => {
   const { getGatewayConnection } = await import('@/lib/gatewayMode');
   const conn = getGatewayConnection();
   if (conn) {
-    return conn.remoteFetch(url, { ...options, headers });
+    return conn.remoteFetch(url, { ...options, headers }, extra);
   }
 
   return fetch(url, {
@@ -617,7 +621,8 @@ export const attemptsApi = {
       {
         method: 'POST',
         body: JSON.stringify(data),
-      }
+      },
+      { timeoutMs: 120_000 }
     );
     return handleApiResponse<void>(response);
   },

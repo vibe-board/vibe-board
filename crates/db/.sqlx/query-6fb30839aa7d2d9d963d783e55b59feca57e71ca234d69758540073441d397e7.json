@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT\n                id as \"id!: Uuid\",\n                workspace_id as \"workspace_id!: Uuid\",\n                repo_id as \"repo_id!: Uuid\",\n                merge_type as \"merge_type!: MergeType\",\n                merge_commit,\n                pr_number,\n                pr_url,\n                pr_status as \"pr_status?: MergeStatus\",\n                pr_merged_at as \"pr_merged_at?: DateTime<Utc>\",\n                pr_merge_commit_sha,\n                created_at as \"created_at!: DateTime<Utc>\",\n                target_branch_name as \"target_branch_name!: String\"\n               FROM merges\n               WHERE merge_type = 'pr'\n               ORDER BY created_at ASC",
+  "query": "INSERT INTO merges (\n                id, workspace_id, repo_id, merge_type, merge_commit, created_at, target_branch_name,\n                task_id, commit_message_conversation\n            ) VALUES ($1, $2, $3, 'direct', $4, $5, $6, $7, $8)\n            RETURNING\n                id as \"id!: Uuid\",\n                workspace_id as \"workspace_id!: Uuid\",\n                repo_id as \"repo_id!: Uuid\",\n                merge_type as \"merge_type!: MergeType\",\n                merge_commit,\n                pr_number,\n                pr_url,\n                pr_status as \"pr_status?: MergeStatus\",\n                pr_merged_at as \"pr_merged_at?: DateTime<Utc>\",\n                pr_merge_commit_sha,\n                created_at as \"created_at!: DateTime<Utc>\",\n                target_branch_name as \"target_branch_name!: String\",\n                task_id as \"task_id?: Uuid\",\n                commit_message_conversation\n            ",
   "describe": {
     "columns": [
       {
@@ -62,10 +62,20 @@
         "name": "target_branch_name!: String",
         "ordinal": 11,
         "type_info": "Text"
+      },
+      {
+        "name": "task_id?: Uuid",
+        "ordinal": 12,
+        "type_info": "Blob"
+      },
+      {
+        "name": "commit_message_conversation",
+        "ordinal": 13,
+        "type_info": "Text"
       }
     ],
     "parameters": {
-      "Right": 0
+      "Right": 8
     },
     "nullable": [
       true,
@@ -79,8 +89,10 @@
       true,
       true,
       false,
-      false
+      false,
+      true,
+      true
     ]
   },
-  "hash": "570f62a32921c4a9a7e4e1006e9b31c4c58e69ab8681d76dfe9b184ff1e0bc65"
+  "hash": "6fb30839aa7d2d9d963d783e55b59feca57e71ca234d69758540073441d397e7"
 }

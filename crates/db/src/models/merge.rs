@@ -31,6 +31,8 @@ pub struct DirectMerge {
     pub merge_commit: String,
     pub target_branch_name: String,
     pub created_at: DateTime<Utc>,
+    pub task_id: Option<Uuid>,
+    pub commit_message_conversation: Option<String>,
 }
 
 /// PR merge - represents a pull request merge
@@ -42,6 +44,8 @@ pub struct PrMerge {
     pub created_at: DateTime<Utc>,
     pub target_branch_name: String,
     pub pr_info: PullRequestInfo,
+    pub task_id: Option<Uuid>,
+    pub commit_message_conversation: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -74,6 +78,8 @@ struct MergeRow {
     pr_merged_at: Option<DateTime<Utc>>,
     pr_merge_commit_sha: Option<String>,
     created_at: DateTime<Utc>,
+    task_id: Option<Uuid>,
+    commit_message_conversation: Option<String>,
 }
 
 impl Merge {
@@ -91,6 +97,8 @@ impl Merge {
         repo_id: Uuid,
         target_branch_name: &str,
         merge_commit: &str,
+        task_id: Uuid,
+        commit_message_conversation: Option<&str>,
     ) -> Result<DirectMerge, sqlx::Error> {
         let id = Uuid::new_v4();
         let now = Utc::now();
@@ -98,8 +106,9 @@ impl Merge {
         sqlx::query_as!(
             MergeRow,
             r#"INSERT INTO merges (
-                id, workspace_id, repo_id, merge_type, merge_commit, created_at, target_branch_name
-            ) VALUES ($1, $2, $3, 'direct', $4, $5, $6)
+                id, workspace_id, repo_id, merge_type, merge_commit, created_at, target_branch_name,
+                task_id, commit_message_conversation
+            ) VALUES ($1, $2, $3, 'direct', $4, $5, $6, $7, $8)
             RETURNING
                 id as "id!: Uuid",
                 workspace_id as "workspace_id!: Uuid",
@@ -112,14 +121,18 @@ impl Merge {
                 pr_merged_at as "pr_merged_at?: DateTime<Utc>",
                 pr_merge_commit_sha,
                 created_at as "created_at!: DateTime<Utc>",
-                target_branch_name as "target_branch_name!: String"
+                target_branch_name as "target_branch_name!: String",
+                task_id as "task_id?: Uuid",
+                commit_message_conversation
             "#,
             id,
             workspace_id,
             repo_id,
             merge_commit,
             now,
-            target_branch_name
+            target_branch_name,
+            task_id,
+            commit_message_conversation
         )
         .fetch_one(pool)
         .await
@@ -154,7 +167,9 @@ impl Merge {
                 pr_merged_at as "pr_merged_at?: DateTime<Utc>",
                 pr_merge_commit_sha,
                 created_at as "created_at!: DateTime<Utc>",
-                target_branch_name as "target_branch_name!: String"
+                target_branch_name as "target_branch_name!: String",
+                task_id as "task_id?: Uuid",
+                commit_message_conversation
             "#,
             id,
             workspace_id,
@@ -184,7 +199,9 @@ impl Merge {
                 pr_merged_at as "pr_merged_at?: DateTime<Utc>",
                 pr_merge_commit_sha,
                 created_at as "created_at!: DateTime<Utc>",
-                target_branch_name as "target_branch_name!: String"
+                target_branch_name as "target_branch_name!: String",
+                task_id as "task_id?: Uuid",
+                commit_message_conversation
                FROM merges
                WHERE merge_type = 'pr'
                ORDER BY created_at ASC"#,
@@ -210,7 +227,9 @@ impl Merge {
                 pr_merged_at as "pr_merged_at?: DateTime<Utc>",
                 pr_merge_commit_sha,
                 created_at as "created_at!: DateTime<Utc>",
-                target_branch_name as "target_branch_name!: String"
+                target_branch_name as "target_branch_name!: String",
+                task_id as "task_id?: Uuid",
+                commit_message_conversation
                FROM merges
                WHERE merge_type = 'pr' AND pr_status = 'open'
                ORDER BY created_at DESC"#,
@@ -270,7 +289,9 @@ impl Merge {
                 pr_merged_at as "pr_merged_at?: DateTime<Utc>",
                 pr_merge_commit_sha,
                 target_branch_name as "target_branch_name!: String",
-                created_at as "created_at!: DateTime<Utc>"
+                created_at as "created_at!: DateTime<Utc>",
+                task_id as "task_id?: Uuid",
+                commit_message_conversation
             FROM merges
             WHERE workspace_id = $1
             ORDER BY created_at DESC"#,
@@ -303,7 +324,9 @@ impl Merge {
                 pr_merged_at as "pr_merged_at?: DateTime<Utc>",
                 pr_merge_commit_sha,
                 target_branch_name as "target_branch_name!: String",
-                created_at as "created_at!: DateTime<Utc>"
+                created_at as "created_at!: DateTime<Utc>",
+                task_id as "task_id?: Uuid",
+                commit_message_conversation
             FROM merges
             WHERE workspace_id = $1 AND repo_id = $2
             ORDER BY created_at DESC"#,
@@ -368,6 +391,8 @@ impl From<MergeRow> for DirectMerge {
                 .expect("direct merge must have merge_commit"),
             target_branch_name: row.target_branch_name,
             created_at: row.created_at,
+            task_id: row.task_id,
+            commit_message_conversation: row.commit_message_conversation,
         }
     }
 }
@@ -387,6 +412,8 @@ impl From<MergeRow> for PrMerge {
                 merge_commit_sha: row.pr_merge_commit_sha,
             },
             created_at: row.created_at,
+            task_id: row.task_id,
+            commit_message_conversation: row.commit_message_conversation,
         }
     }
 }

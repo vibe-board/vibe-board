@@ -158,9 +158,9 @@ export type ExecutionProcessRepoState = { id: string, execution_process_id: stri
 
 export type Merge = { "type": "direct" } & DirectMerge | { "type": "pr" } & PrMerge;
 
-export type DirectMerge = { id: string, workspace_id: string, repo_id: string, merge_commit: string, target_branch_name: string, created_at: string, };
+export type DirectMerge = { id: string, workspace_id: string, repo_id: string, merge_commit: string, target_branch_name: string, created_at: string, task_id: string | null, commit_message_conversation: string | null, };
 
-export type PrMerge = { id: string, workspace_id: string, repo_id: string, created_at: string, target_branch_name: string, pr_info: PullRequestInfo, };
+export type PrMerge = { id: string, workspace_id: string, repo_id: string, created_at: string, target_branch_name: string, pr_info: PullRequestInfo, task_id: string | null, commit_message_conversation: string | null, };
 
 export type MergeStatus = "open" | "merged" | "closed" | "unknown";
 

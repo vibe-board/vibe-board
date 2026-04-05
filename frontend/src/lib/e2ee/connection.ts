@@ -232,7 +232,11 @@ export class E2EEConnection {
    * Send an HTTP request to the remote machine.
    * This replaces `fetch()` when connected to a remote machine.
    */
-  async remoteFetch(url: string, init?: RequestInit): Promise<Response> {
+  async remoteFetch(
+    url: string,
+    init?: RequestInit,
+    options?: { timeoutMs?: number }
+  ): Promise<Response> {
     if (!this._connected || !this.options) {
       throw new Error('Not connected');
     }
@@ -299,8 +303,9 @@ export class E2EEConnection {
       payload,
     });
 
-    // Wait for response (longer timeout for uploads)
-    const timeoutMs = body && body.length > 10000 ? 120000 : 30000;
+    // Wait for response (longer timeout for uploads or caller-specified)
+    const timeoutMs =
+      options?.timeoutMs ?? (body && body.length > 10000 ? 120000 : 30000);
     const response = await new Promise<RemoteHttpResponse>(
       (resolve, reject) => {
         this.pendingRequests.set(id, { resolve, reject });
