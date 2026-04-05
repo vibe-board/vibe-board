@@ -7,6 +7,7 @@ interface UseApprovalsResult {
   getPendingForProcess: (executionProcessId: string) => ApprovalInfo | null;
   getPendingById: (approvalId: string) => ApprovalInfo | null;
   isConnected: boolean;
+  isInitialized: boolean;
 }
 
 type ApprovalState = {
@@ -16,11 +17,12 @@ type ApprovalState = {
 const initialApprovalData = (): ApprovalState => ({ pending: {} });
 
 export function useApprovals(): UseApprovalsResult {
-  const { data, isConnected } = useJsonPatchWsStream<ApprovalState>(
-    '/api/approvals/stream/ws',
-    true,
-    initialApprovalData
-  );
+  const { data, isConnected, isInitialized } =
+    useJsonPatchWsStream<ApprovalState>(
+      '/api/approvals/stream/ws',
+      true,
+      initialApprovalData
+    );
 
   const pendingById = useMemo(() => data?.pending ?? {}, [data?.pending]);
   const pendingApprovals = useMemo(
@@ -52,5 +54,6 @@ export function useApprovals(): UseApprovalsResult {
     getPendingForProcess,
     getPendingById,
     isConnected,
+    isInitialized,
   };
 }

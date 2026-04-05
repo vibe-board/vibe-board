@@ -550,6 +550,10 @@ async fn handle_agent_slash_commands_ws(
     {
         Ok(Some(mut stream)) => {
             if let Some(patch) = stream.next().await {
+                tracing::info!(
+                    "slash_commands WS: sending initial patch: {}",
+                    serde_json::to_string(&patch).unwrap_or_default()
+                );
                 let _ = sender
                     .send(LogMsg::JsonPatch(patch).to_ws_message_unchecked())
                     .await;
@@ -558,6 +562,10 @@ async fn handle_agent_slash_commands_ws(
             let _ = sender.send(LogMsg::Ready.to_ws_message_unchecked()).await;
 
             while let Some(patch) = stream.next().await {
+                tracing::info!(
+                    "slash_commands WS: sending discovery patch: {}",
+                    serde_json::to_string(&patch).unwrap_or_default()
+                );
                 if sender
                     .send(LogMsg::JsonPatch(patch).to_ws_message_unchecked())
                     .await

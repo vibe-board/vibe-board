@@ -1,4 +1,5 @@
 import {
+  CheckSquare,
   Loader2,
   Send,
   StopCircle,
@@ -359,7 +360,12 @@ export function TaskFollowUpSection({
 
   // Check if there's a pending approval - users shouldn't be able to type during approvals
   // but should be able to type during question approvals (ask_user_question)
-  const { entries } = useEntries();
+  const { entries, setFollowUpEditorMessage, multiSelectState } = useEntries();
+
+  // Sync localMessage to context so AskUserQuestionBanner can access it
+  useEffect(() => {
+    setFollowUpEditorMessage(localMessage);
+  }, [localMessage, setFollowUpEditorMessage]);
   const { hasPendingApproval, hasPendingQuestion, pendingQuestionInfo } =
     useMemo(() => {
       let hasPendingApproval = false;
@@ -1097,6 +1103,28 @@ export function TaskFollowUpSection({
                       {t('followUp.queue', 'Queue')}
                     </>
                   )}
+                </Button>
+              )}
+              {multiSelectState && multiSelectState.selections.size > 0 && (
+                <Button
+                  onClick={() => {
+                    submitQuestionAnswer({
+                      approvalId: multiSelectState.approvalId,
+                      executionProcessId: multiSelectState.executionProcessId,
+                      answers: [
+                        {
+                          question:
+                            multiSelectState.questions[0]?.question ?? '',
+                          answer: Array.from(multiSelectState.selections),
+                        },
+                      ],
+                    });
+                  }}
+                  size="sm"
+                >
+                  <CheckSquare className="h-4 w-4 mr-2" />
+                  {t('askQuestion.confirmSelection', 'Confirm selection')} (
+                  {multiSelectState.selections.size})
                 </Button>
               )}
               <Button

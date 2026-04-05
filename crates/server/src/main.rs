@@ -326,9 +326,17 @@ fn cmd_status() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn cmd_logout() -> anyhow::Result<()> {
-    e2ee_config::delete_credentials()?;
-    println!("Logged out. Credentials deleted.");
+fn cmd_logout(gateway_url: Option<&str>) -> anyhow::Result<()> {
+    match gateway_url {
+        Some(url) => match e2ee_config::remove_gateway(url)? {
+            true => println!("Removed gateway: {url}"),
+            false => println!("Gateway not found: {url}"),
+        },
+        None => {
+            e2ee_config::delete_credentials()?;
+            println!("Logged out. All gateway credentials deleted.");
+        }
+    }
     Ok(())
 }
 

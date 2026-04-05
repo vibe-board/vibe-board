@@ -9,12 +9,23 @@ import {
 import type { PatchTypeWithKey } from '@/hooks/useConversationHistory';
 import { TokenUsageInfo } from 'shared/types';
 
+interface MultiSelectState {
+  selections: Set<string>;
+  approvalId: string;
+  executionProcessId: string;
+  questions: { question: string; answer: string[] }[];
+}
+
 interface EntriesContextType {
   entries: PatchTypeWithKey[];
   setEntries: (entries: PatchTypeWithKey[]) => void;
   setTokenUsageInfo: (info: TokenUsageInfo | null) => void;
   reset: () => void;
   tokenUsageInfo: TokenUsageInfo | null;
+  followUpMessage: string;
+  setFollowUpEditorMessage: (message: string) => void;
+  multiSelectState: MultiSelectState | null;
+  setMultiSelectState: (state: MultiSelectState | null) => void;
 }
 
 const EntriesContext = createContext<EntriesContextType | null>(null);
@@ -28,6 +39,9 @@ export const EntriesProvider = ({ children }: EntriesProviderProps) => {
   const [tokenUsageInfo, setTokenUsageInfo] = useState<TokenUsageInfo | null>(
     null
   );
+  const [followUpMessage, setFollowUpMessage] = useState('');
+  const [multiSelectState, setMultiSelectState] =
+    useState<MultiSelectState | null>(null);
 
   const setEntries = useCallback((newEntries: PatchTypeWithKey[]) => {
     setEntriesState(newEntries);
@@ -43,6 +57,8 @@ export const EntriesProvider = ({ children }: EntriesProviderProps) => {
   const reset = useCallback(() => {
     setEntriesState([]);
     setTokenUsageInfo(null);
+    setFollowUpMessage('');
+    setMultiSelectState(null);
   }, []);
 
   const value = useMemo(
@@ -52,8 +68,20 @@ export const EntriesProvider = ({ children }: EntriesProviderProps) => {
       setTokenUsageInfo: setTokenUsageInfoCallback,
       reset,
       tokenUsageInfo,
+      followUpMessage,
+      setFollowUpEditorMessage: setFollowUpMessage,
+      multiSelectState,
+      setMultiSelectState,
     }),
-    [entries, setEntries, setTokenUsageInfoCallback, reset, tokenUsageInfo]
+    [
+      entries,
+      setEntries,
+      setTokenUsageInfoCallback,
+      reset,
+      tokenUsageInfo,
+      followUpMessage,
+      multiSelectState,
+    ]
   );
 
   return (

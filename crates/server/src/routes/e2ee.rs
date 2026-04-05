@@ -65,7 +65,35 @@ async fn put_credentials(
     )))
 }
 
-async fn delete_credentials(
+/// Delete a specific gateway by URL query param.
+async fn delete_gateway(
+    Extension(bridge_manager): Extension<Arc<BridgeManager>>,
+    Query(query): Query<DeleteGatewayQuery>,
+) -> Result<ResponseJson<ApiResponse<String>>, (StatusCode, ResponseJson<ApiResponse<String>>)> {
+    let url = query.url.ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            ResponseJson(ApiResponse::error("Missing 'url' query parameter")),
+        )
+    })?;
+
+    bridge_manager.stop_gateway(&url).await;
+
+    e2ee_config::remove_gateway(&url).map_err(|e| {
+        let msg = format!("Failed to remove gateway: {e}");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            ResponseJson(ApiResponse::error(&msg)),
+        )
+    })?;
+
+    Ok(ResponseJson(ApiResponse::success(format!(
+        "Gateway removed: {url}"
+    ))))
+}
+
+/// Backward-compat: DELETE /e2ee/credentials removes all gateways.
+async fn delete_all_credentials(
     Extension(bridge_manager): Extension<Arc<BridgeManager>>,
 ) -> Result<ResponseJson<ApiResponse<String>>, (StatusCode, ResponseJson<ApiResponse<String>>)> {
     bridge_manager.stop().await;

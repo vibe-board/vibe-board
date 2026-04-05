@@ -34,8 +34,14 @@ use executors::{
     },
     approvals::{ExecutorApprovalService, NoopExecutorApprovalService},
     env::{ExecutionEnv, RepoContext},
-    executors::{BaseCodingAgent, CancellationToken, ExecutorExitResult, ExecutorExitSignal},
-    logs::{NormalizedEntryType, utils::patch::extract_normalized_entry_from_patch},
+    executors::{
+        BaseCodingAgent, CancellationToken, ExecutorExitResult, ExecutorExitSignal,
+        StandardCodingAgentExecutor,
+    },
+    logs::{
+        NormalizedEntry, NormalizedEntryType, utils::patch::extract_normalized_entry_from_patch,
+    },
+    profile::{ExecutorConfigs, ExecutorProfileId},
 };
 use futures::{FutureExt, TryStreamExt, stream::select};
 use git::GitService;
@@ -1085,6 +1091,96 @@ impl LocalContainerService {
         }
         Ok(())
     }
+
+    /// Run a coding agent inline for commit message generation.
+    /// Returns (last_assistant_message, normalized_entries_json) without creating
+    /// any DB records (no Session, no ExecutionProcess, no CodingAgentTurn).
+    pub async fn run_commit_message_agent(
+        &self,
+        executor_profile_id: &ExecutorProfileId,
+        prompt: &str,
+        working_dir: &Path,
+    ) -> Option<(String, String)> {
+        use std::time::Duration;
+
+        // 1. Resolve executor
+        let executor = ExecutorConfigs::get_cached().get_coding_agent(executor_profile_id)?;
+
+        // 2. Build minimal ExecutionEnv (no VB_* env vars needed for commit messages)
+        let repo_context = RepoContext::new(working_dir.to_path_buf(), vec![]);
+        let env = ExecutionEnv::new(repo_context, false, String::new());
+
+        // 3. Spawn subprocess with 30s start timeout
+        let mut spawned = tokio::time::timeout(
+            Duration::from_secs(30),
+            executor.spawn(working_dir, prompt, &env),
+        )
+        .await
+        .ok()?
+        .ok()?;
+
+        // 4. Create ephemeral MsgStore, wire stdout/stderr
+        let msg_store = Arc::new(MsgStore::new());
+        {
+            let out = spawned.child.inner().stdout.take().expect("no stdout");
+            let err = spawned.child.inner().stderr.take().expect("no stderr");
+
+            let out = ReaderStream::new(out)
+                .map_ok(|chunk| LogMsg::Stdout(String::from_utf8_lossy(&chunk).into_owned()));
+
+            let err = ReaderStream::new(err)
+                .map_ok(|chunk| LogMsg::Stderr(String::from_utf8_lossy(&chunk).into_owned()));
+
+            let merged = select(out, err);
+            msg_store.clone().spawn_forwarder(merged);
+        }
+
+        // 5. Start normalizer (background tasks that push JsonPatch into msg_store)
+        executor.normalize_logs(msg_store.clone(), working_dir);
+
+        // 6. Wait for process completion with 90s timeout
+        const TIMEOUT: Duration = Duration::from_secs(90);
+        let exit_status = tokio::time::timeout(TIMEOUT, spawned.child.wait()).await;
+
+        let timed_out = exit_status.is_err();
+        if timed_out {
+            let _ = command::kill_process_group(&mut spawned.child).await;
+        }
+
+        // 7. Signal finished so normalizer tasks complete
+        msg_store.push_finished();
+
+        // Brief delay to let normalizer process remaining entries
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        if timed_out {
+            return None;
+        }
+
+        // 8. Collect normalized entries and last assistant message from MsgStore
+        let history = msg_store.get_history();
+        let mut entries: Vec<NormalizedEntry> = Vec::new();
+        let mut last_assistant_message: Option<String> = None;
+
+        for msg in &history {
+            if let LogMsg::JsonPatch(patch) = msg {
+                if let Some((_index, entry)) = extract_normalized_entry_from_patch(patch) {
+                    if matches!(entry.entry_type, NormalizedEntryType::AssistantMessage) {
+                        let content = entry.content.trim();
+                        if !content.is_empty() {
+                            last_assistant_message = Some(content.to_string());
+                        }
+                    }
+                    entries.push(entry);
+                }
+            }
+        }
+
+        let assistant_msg = last_assistant_message?;
+        let entries_json = serde_json::to_string(&entries).unwrap_or_default();
+
+        Some((assistant_msg, entries_json))
+    }
 }
 
 fn failure_exit_status() -> std::process::ExitStatus {
@@ -1136,6 +1232,21 @@ impl ContainerService for LocalContainerService {
 
     async fn take_raw_log_handle(&self, id: &Uuid) -> Option<JoinHandle<()>> {
         LocalContainerService::take_raw_log_handle(self, id).await
+    }
+
+    async fn run_commit_message_agent(
+        &self,
+        executor_profile_id: &ExecutorProfileId,
+        prompt: &str,
+        working_dir: &Path,
+    ) -> Option<(String, String)> {
+        LocalContainerService::run_commit_message_agent(
+            self,
+            executor_profile_id,
+            prompt,
+            working_dir,
+        )
+        .await
     }
 
     async fn git_branch_prefix(&self) -> String {

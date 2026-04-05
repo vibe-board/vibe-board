@@ -40,8 +40,8 @@ import { NextActionCard } from './NextActionCard';
 import { AskUserQuestionBanner } from '@/components/AskUserQuestionBanner';
 import { cn } from '@/lib/utils';
 import { useRetryUi } from '@/contexts/RetryUiContext';
+import { useEntries } from '@/contexts/EntriesContext';
 import { useApprovalMutation } from '@/hooks/useApprovalMutation';
-import { useApprovals } from '@/hooks/useApprovals';
 import { Button } from '@/components/ui/button';
 import {
   ScriptFixerDialog,
@@ -863,14 +863,55 @@ function DisplayConversationEntry({
         );
       }
 
-      // AskUserQuestion - render interactive question banner
+      // AskUserQuestion - render interactive banner when pending, read-only otherwise
       if (toolEntry.action_type.action === 'ask_user_question') {
+        if (isPendingApproval) {
+          return (
+            <AskUserQuestionContent
+              questions={toolEntry.action_type.questions}
+              approvalId={status.approval_id}
+              executionProcessId={executionProcessId}
+            />
+          );
+        }
+        // Read-only display of questions/options after task stop or completion
+        const questions = toolEntry.action_type.questions;
         return (
-          <AskUserQuestionContent
-            questions={toolEntry.action_type.questions}
-            approvalId={isPendingApproval ? status.approval_id : null}
-            executionProcessId={executionProcessId}
-          />
+          <div className="border-b">
+            <div className="flex items-center gap-1.5 px-4 py-2">
+              <span className="text-sm text-secondary-foreground">
+                {t('askQuestion.title')}
+              </span>
+            </div>
+            {questions.map((q, qi) => (
+              <div key={qi} className="px-4 pb-2">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-sm font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                    {q.header}
+                  </span>
+                  {q.multiSelect && (
+                    <span className="text-xs text-muted-foreground">
+                      {t('askQuestion.selectMultiple')}
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm font-medium mb-1">{q.question}</p>
+                {q.options.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {q.options.map((opt) => (
+                      <span
+                        key={opt.label}
+                        className="rounded-md border border-border px-3 py-1 text-xs text-muted-foreground"
+                        title={opt.description}
+                      >
+                        {opt.label}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         );
       }
 
@@ -1149,28 +1190,51 @@ const AskUserQuestionContent: React.FC<{
   executionProcessId?: string;
 }> = ({ questions, approvalId, executionProcessId }) => {
   const { answer, isAnswering, answerError } = useApprovalMutation();
-  const { getPendingById } = useApprovals();
-  const approvalInfo = approvalId ? getPendingById(approvalId) : null;
 
   const handleSubmitAnswers = useCallback(
     (answers: { question: string; answer: string[] }[]) => {
       if (!approvalId || !executionProcessId) return;
+      setMultiSelectState(null);
       answer({
         approvalId,
         executionProcessId,
         answers,
       });
     },
-    [answer, approvalId, executionProcessId]
+    [answer, approvalId, executionProcessId, setMultiSelectState]
   );
 
+  const handleMultiSelectChange = useCallback(
+    (selections: Set<string>) => {
+      if (!approvalId || !executionProcessId) return;
+      if (selections.size === 0) {
+        setMultiSelectState(null);
+      } else {
+        setMultiSelectState({
+          selections,
+          approvalId,
+          executionProcessId,
+          questions: questions.map((q) => ({
+            question: q.question,
+            answer: [],
+          })),
+        });
+      }
+    },
+    [approvalId, executionProcessId, questions, setMultiSelectState]
+  );
+
+  // This component is only rendered when the entry status is pending_approval,
+  // so it should always be interactive. The entry status is the source of truth;
+  // the live approval stream may lag behind or already have cleared the approval.
   return (
     <AskUserQuestionBanner
       questions={questions}
       onSubmitAnswers={handleSubmitAnswers}
       isSubmitting={isAnswering}
-      isTimedOut={!approvalInfo && approvalId !== null}
+      isTimedOut={false}
       error={answerError?.message ?? null}
+      onMultiSelectChange={handleMultiSelectChange}
     />
   );
 };

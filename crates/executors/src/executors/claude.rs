@@ -1060,10 +1060,18 @@ impl ClaudeLogProcessor {
 
                     match item {
                         ClaudeContentItem::ToolUse { id, tool_data } => {
+                            // Use the last buffered status if one arrived before this ToolUse,
+                            // otherwise default to Created. This avoids the bug where a subsequent
+                            // add/replace with Created would overwrite the PendingApproval status.
+                            let initial_status = self
+                                .pending_tool_statuses
+                                .remove(id)
+                                .and_then(|statuses| statuses.into_iter().last().map(|(s, _)| s))
+                                .unwrap_or(ToolStatus::Created);
                             let (entry, tool_name, content_text) = Self::build_tool_use_entry(
                                 tool_data,
                                 worktree_path,
-                                ToolStatus::Created,
+                                initial_status,
                             );
                             let is_new = entry_index.is_none();
                             let id_num = entry_index.unwrap_or_else(|| entry_index_provider.next());
@@ -1076,17 +1084,6 @@ impl ClaudeLogProcessor {
                                     content: content_text,
                                 },
                             );
-                            // Apply any buffered statuses that arrived before this ToolUse
-                            if let Some(buffered) = self.pending_tool_statuses.remove(id) {
-                                for (status, buffered_worktree) in buffered {
-                                    self.replace_tool_entry_status(
-                                        id,
-                                        status,
-                                        &buffered_worktree,
-                                        &mut patches,
-                                    );
-                                }
-                            }
                             let patch = if is_new {
                                 ConversationPatch::add_normalized_entry(id_num, entry)
                             } else {
@@ -1339,6 +1336,18 @@ impl ClaudeLogProcessor {
                                 info.content.clone(),
                             );
                             patches.push(ConversationPatch::replace(info.entry_index, entry));
+                        } else if matches!(info.tool_data, ClaudeToolData::AskUserQuestion { .. }) {
+                            let status = if is_error.unwrap_or(false) {
+                                ToolStatus::Failed
+                            } else {
+                                ToolStatus::Success
+                            };
+                            self.replace_tool_entry_status(
+                                tool_use_id,
+                                status,
+                                worktree_path,
+                                &mut patches,
+                            );
                         }
                         // Note: With control protocol, denials are handled via protocol messages
                         // rather than error content parsing
@@ -1346,8 +1355,15 @@ impl ClaudeLogProcessor {
                 }
             }
             ClaudeJson::ToolUse { tool_data, id, .. } => {
+                // Use the last buffered status if one arrived before this ToolUse,
+                // otherwise default to Created.
+                let initial_status = self
+                    .pending_tool_statuses
+                    .remove(id)
+                    .and_then(|statuses| statuses.into_iter().last().map(|(s, _)| s))
+                    .unwrap_or(ToolStatus::Created);
                 let (entry, tool_name_value, content_text) =
-                    Self::build_tool_use_entry(tool_data, worktree_path, ToolStatus::Created);
+                    Self::build_tool_use_entry(tool_data, worktree_path, initial_status);
                 let idx = entry_index_provider.next();
                 patches.push(ConversationPatch::add_normalized_entry(idx, entry));
 
@@ -1360,17 +1376,6 @@ impl ClaudeLogProcessor {
                         content: content_text,
                     },
                 );
-                // Apply any buffered statuses that arrived before this ToolUse
-                if let Some(buffered) = self.pending_tool_statuses.remove(id) {
-                    for (status, buffered_worktree) in buffered {
-                        self.replace_tool_entry_status(
-                            id,
-                            status,
-                            &buffered_worktree,
-                            &mut patches,
-                        );
-                    }
-                }
             }
             ClaudeJson::ToolResult { .. } => {
                 // Add proper ToolResult support to NormalizedEntry when the type system supports it
@@ -3006,17 +3011,97 @@ mod tests {
         .unwrap();
         let patches = processor.normalize_entries(&assistant_json, "/tmp/work", &provider);
 
-        // Step 3: The ToolUse entry should have PendingApproval status (buffered status was applied)
+        // Step 3: The ToolUse entry should have PendingApproval status baked in
+        // (not as a separate replace patch that would get overwritten by an add with Created)
         let entries = patches_to_entries(&patches);
-        let tool_entry = entries
+        let tool_entries: Vec<_> = entries
             .iter()
-            .find(|e| matches!(e.entry_type, NormalizedEntryType::ToolUse { .. }));
-        assert!(tool_entry.is_some(), "Expected a ToolUse entry");
-        match &tool_entry.unwrap().entry_type {
+            .filter(|e| matches!(e.entry_type, NormalizedEntryType::ToolUse { .. }))
+            .collect();
+        assert_eq!(
+            tool_entries.len(),
+            1,
+            "Expected exactly one ToolUse entry, got {}",
+            tool_entries.len()
+        );
+        match &tool_entries[0].entry_type {
             NormalizedEntryType::ToolUse { status, .. } => {
                 assert!(
                     matches!(status, ToolStatus::PendingApproval { .. }),
                     "Expected PendingApproval, got {:?}",
+                    status
+                );
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn test_ask_user_question_validation_error_sets_failed_status() {
+        let mut processor = ClaudeLogProcessor::new();
+        let provider = EntryIndexProvider::test_new();
+
+        // Step 1: Assistant message with AskUserQuestion tool_use
+        let assistant_json: ClaudeJson = serde_json::from_str(
+            r#"{
+                "type":"assistant",
+                "message":{
+                    "role":"assistant",
+                    "content":[
+                        {
+                            "type":"tool_use",
+                            "id":"call_abc123",
+                            "name":"AskUserQuestion",
+                            "input":{
+                                "questions":[{
+                                    "question":"Which option?",
+                                    "header":"Pick",
+                                    "options":[
+                                        {"label":"A","description":"Option A"},
+                                        {"label":"B","description":"Option B"}
+                                    ],
+                                    "multiSelect":false
+                                }]
+                            }
+                        }
+                    ]
+                }
+            }"#,
+        )
+        .unwrap();
+        processor.normalize_entries(&assistant_json, "/tmp/work", &provider);
+
+        // Step 2: User message with tool_result error (validation failure)
+        let user_json: ClaudeJson = serde_json::from_str(
+            r#"{
+                "type":"user",
+                "message":{
+                    "role":"user",
+                    "content":[
+                        {
+                            "type":"tool_result",
+                            "tool_use_id":"call_abc123",
+                            "content":"InputValidationError: Too big: expected array to have <=4 items",
+                            "is_error":true
+                        }
+                    ]
+                }
+            }"#,
+        )
+        .unwrap();
+        let patches = processor.normalize_entries(&user_json, "/tmp/work", &provider);
+
+        // Step 3: Verify the entry status was updated to Failed
+        let entries = patches_to_entries(&patches);
+        let tool_entry = entries
+            .iter()
+            .find(|e| matches!(e.entry_type, NormalizedEntryType::ToolUse { .. }));
+        assert!(tool_entry.is_some(), "Expected a ToolUse entry in patches");
+        match &tool_entry.unwrap().entry_type {
+            NormalizedEntryType::ToolUse { status, .. } => {
+                assert!(
+                    matches!(status, ToolStatus::Failed),
+                    "Expected Failed status, got {:?}",
                     status
                 );
             }

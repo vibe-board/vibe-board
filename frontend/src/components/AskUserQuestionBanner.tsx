@@ -1,16 +1,19 @@
 import {
   forwardRef,
   useCallback,
+  useEffect,
   useImperativeHandle,
   useMemo,
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { AskUserQuestionItem, QuestionAnswer } from 'shared/types';
+import { CheckSquare, Square } from 'lucide-react';
 import { QuestionIcon } from '@phosphor-icons/react';
 
 export interface AskUserQuestionBannerHandle {
   submitCustomAnswer: (text: string) => void;
+  confirmMultiSelect: () => void;
 }
 
 interface AskUserQuestionBannerProps {
@@ -19,13 +22,21 @@ interface AskUserQuestionBannerProps {
   isSubmitting: boolean;
   isTimedOut: boolean;
   error: string | null;
+  onMultiSelectChange?: (selections: Set<string>) => void;
 }
 
 export const AskUserQuestionBanner = forwardRef<
   AskUserQuestionBannerHandle,
   AskUserQuestionBannerProps
 >(function AskUserQuestionBanner(
-  { questions, onSubmitAnswers, isSubmitting, isTimedOut, error },
+  {
+    questions,
+    onSubmitAnswers,
+    isSubmitting,
+    isTimedOut,
+    error,
+    onMultiSelectChange,
+  },
   ref
 ) {
   const { t } = useTranslation('common');
@@ -49,6 +60,10 @@ export const AskUserQuestionBanner = forwardRef<
   const [multiSelectLabels, setMultiSelectLabels] = useState<Set<string>>(
     new Set()
   );
+
+  useEffect(() => {
+    onMultiSelectChange?.(multiSelectLabels);
+  }, [multiSelectLabels, onMultiSelectChange]);
 
   const currentQuestion =
     currentIndex < questions.length ? questions[currentIndex] : null;
@@ -157,6 +172,9 @@ export const AskUserQuestionBanner = forwardRef<
           onSubmitAnswers(toQuestionAnswers(newAnswers));
         }
       },
+      confirmMultiSelect: () => {
+        handleConfirmMultiSelect();
+      },
     }),
     [
       disabled,
@@ -166,6 +184,7 @@ export const AskUserQuestionBanner = forwardRef<
       questions.length,
       onSubmitAnswers,
       toQuestionAnswers,
+      handleConfirmMultiSelect,
     ]
   );
 
@@ -215,7 +234,7 @@ export const AskUserQuestionBanner = forwardRef<
                       disabled={disabled}
                       onClick={() => handleSelectOption(opt.label)}
                       className={`
-                        group relative rounded-md border px-4 py-2 text-sm transition-all
+                        group relative rounded-md border px-4 py-2 text-sm transition-all flex items-center gap-2
                         ${
                           isSelected
                             ? 'border-brand bg-brand/10 text-normal'
@@ -225,19 +244,27 @@ export const AskUserQuestionBanner = forwardRef<
                       `}
                       title={opt.description}
                     >
+                      {currentQuestion.multiSelect &&
+                        (isSelected ? (
+                          <CheckSquare className="h-4 w-4 text-brand flex-shrink-0" />
+                        ) : (
+                          <Square className="h-4 w-4 flex-shrink-0" />
+                        ))}
                       <span className="font-medium">{opt.label}</span>
                     </button>
                   );
                 })}
               </div>
-              {currentQuestion.multiSelect && multiSelectLabels.size > 0 && (
+              {currentQuestion.multiSelect && (
                 <button
                   type="button"
-                  disabled={disabled}
+                  disabled={disabled || multiSelectLabels.size === 0}
                   onClick={handleConfirmMultiSelect}
                   className="mt-4 rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand/90 transition-colors disabled:opacity-50"
                 >
-                  {t('askQuestion.confirmSelection')}
+                  {multiSelectLabels.size > 0
+                    ? `${t('askQuestion.confirmSelection')} (${multiSelectLabels.size})`
+                    : t('askQuestion.confirmSelection')}
                 </button>
               )}
             </>
