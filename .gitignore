@@ -96,3 +96,5 @@ vibe-board-cloud/
 
 .claude/worktrees/
 .worktrees/
+signed.apk
+signed.apk.idsig
