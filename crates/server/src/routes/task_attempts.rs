@@ -508,18 +508,8 @@ async fn generate_commit_message_via_agent(
         .agent_working_dir
         .as_ref()
         .filter(|d| !d.is_empty())
-        .map(|d| {
-            PathBuf::from(
-                workspace.container_ref.as_deref().unwrap_or_default(),
-            )
-            .join(d)
-        })
-        .or_else(|| {
-            workspace
-                .container_ref
-                .as_ref()
-                .map(PathBuf::from)
-        })?;
+        .map(|d| PathBuf::from(workspace.container_ref.as_deref().unwrap_or_default()).join(d))
+        .or_else(|| workspace.container_ref.as_ref().map(PathBuf::from))?;
 
     let prompt = prompt
         .replace("{current_branch}", current_branch)

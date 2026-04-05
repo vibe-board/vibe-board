@@ -1229,6 +1229,7 @@ const AskUserQuestionContent: React.FC<{
   executionProcessId?: string;
 }> = ({ questions, approvalId, executionProcessId }) => {
   const { answer, isAnswering, answerError } = useApprovalMutation();
+  const { setMultiSelectState } = useEntries();
 
   const handleSubmitAnswers = useCallback(
     (answers: { question: string; answer: string[] }[]) => {

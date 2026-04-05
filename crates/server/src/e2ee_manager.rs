@@ -14,48 +14,69 @@ use crate::{
     e2ee_config::{self, CredentialsFile, GatewayCredential},
 };
 
-/// Manages the lifecycle of the E2EE bridge connection.
+/// A single running bridge instance.
+struct BridgeInstance {
+    cancel_tx: oneshot::Sender<()>,
+    handle: JoinHandle<()>,
+}
+
+/// Manages the lifecycle of multiple E2EE bridge connections.
 pub struct BridgeManager {
-    cancel_tx: Mutex<Option<oneshot::Sender<()>>>,
-    handle: Mutex<Option<JoinHandle<()>>>,
+    bridges: Mutex<HashMap<String, BridgeInstance>>,
+    /// Snapshot of credential content hashes for diff-based watcher reload.
+    last_hashes: Mutex<HashMap<String, u64>>,
+    /// Hash of the raw credentials file content, used to skip redundant watcher reloads.
+    last_file_hash: Mutex<u64>,
     local_port: u16,
 }
 
 impl BridgeManager {
     pub fn new(local_port: u16) -> Self {
         Self {
-            cancel_tx: Mutex::new(None),
-            handle: Mutex::new(None),
+            bridges: Mutex::new(HashMap::new()),
+            last_hashes: Mutex::new(HashMap::new()),
+            last_file_hash: Mutex::new(0),
             local_port,
         }
     }
 
-    /// Start the bridge with the given credentials.
-    /// Stops any existing bridge first.
-    pub async fn start(self: &Arc<Self>, creds: &Credentials) {
-        self.stop().await;
+    /// Start or restart the bridge for a specific gateway.
+    /// If one is already running for this URL, stops it first.
+    pub async fn start_gateway(self: &Arc<Self>, cred: &GatewayCredential) {
+        self.stop_gateway(&cred.gateway_url).await;
 
         let (cancel_tx, cancel_rx) = oneshot::channel();
-        *self.cancel_tx.lock().await = Some(cancel_tx);
 
-        let creds = creds.clone();
+        let cred = cred.clone();
         let port = self.local_port;
+        let gateway_url = cred.gateway_url.clone();
+        let content_hash = cred.content_hash();
         let handle = tokio::spawn(async move {
-            info!("Starting E2EE bridge to gateway: {}", creds.gateway_url);
-            match e2ee_bridge::run_bridge(&creds, port, cancel_rx).await {
-                Ok(()) => info!("E2EE bridge shut down"),
-                Err(e) => error!("E2EE bridge error: {e}"),
+            info!("Starting E2EE bridge to gateway: {}", cred.gateway_url);
+            match e2ee_bridge::run_bridge(&cred, port, cancel_rx).await {
+                Ok(()) => info!("E2EE bridge shut down for {}", cred.gateway_url),
+                Err(e) => error!("E2EE bridge error for {}: {e}", cred.gateway_url),
             }
         });
 
-        *self.handle.lock().await = Some(handle);
+        self.bridges
+            .lock()
+            .await
+            .insert(gateway_url.clone(), BridgeInstance { cancel_tx, handle });
+        self.last_hashes
+            .lock()
+            .await
+            .insert(gateway_url, content_hash);
     }
 
-    /// Stop the running bridge (if any).
-    pub async fn stop(&self) {
-        // Send cancellation signal
-        if let Some(tx) = self.cancel_tx.lock().await.take() {
-            let _ = tx.send(());
+    /// Stop the bridge for a specific gateway URL.
+    pub async fn stop_gateway(&self, gateway_url: &str) {
+        if let Some(instance) = self.bridges.lock().await.remove(gateway_url) {
+            let _ = instance.cancel_tx.send(());
+            match tokio::time::timeout(Duration::from_secs(5), instance.handle).await {
+                Ok(_) => {}
+                Err(_) => warn!("Bridge for {gateway_url} did not stop within 5s, aborting"),
+            }
         }
         self.last_hashes.lock().await.remove(gateway_url);
     }
@@ -69,15 +90,15 @@ impl BridgeManager {
             let _ = instance.cancel_tx.send(());
             match tokio::time::timeout(Duration::from_secs(5), instance.handle).await {
                 Ok(_) => {}
-                Err(_) => warn!("Bridge did not stop within 5s, aborting"),
+                Err(_) => warn!("Bridge for {url} did not stop within 5s, aborting"),
             }
         }
     }
 
-    /// Check if a bridge is currently running.
-    pub async fn is_running(&self) -> bool {
-        if let Some(handle) = self.handle.lock().await.as_ref() {
-            !handle.is_finished()
+    /// Check if a specific gateway's bridge is running.
+    pub async fn is_gateway_running(&self, gateway_url: &str) -> bool {
+        if let Some(instance) = self.bridges.lock().await.get(gateway_url) {
+            !instance.handle.is_finished()
         } else {
             false
         }
@@ -153,7 +174,6 @@ impl BridgeManager {
         let creds_path = e2ee_config::credentials_path();
         let watch_dir = e2ee_config::credentials_dir();
 
-        // Ensure directory exists so watcher can be set up
         if !watch_dir.exists() {
             std::fs::create_dir_all(&watch_dir)?;
         }
@@ -166,23 +186,38 @@ impl BridgeManager {
             move |result: DebounceEventResult| {
                 match result {
                     Ok(events) => {
-                        // Check if our credentials file changed
                         let creds_changed = events
                             .iter()
                             .any(|event| event.paths.iter().any(|p| p == &creds_path));
                         if creds_changed {
                             let mgr = manager.clone();
+                            let path = e2ee_config::credentials_path();
                             rt_handle.spawn(async move {
-                                info!("Credentials file changed, reloading bridge");
+                                // Read raw content to check if it actually changed
+                                let content = match std::fs::read_to_string(&path) {
+                                    Ok(c) => c,
+                                    Err(_) => {
+                                        // File deleted — stop all bridges
+                                        mgr.stop_all().await;
+                                        *mgr.last_file_hash.lock().await = 0;
+                                        return;
+                                    }
+                                };
+
+                                if !mgr.update_file_hash_if_changed(&content).await {
+                                    return; // Content unchanged, skip
+                                }
+
+                                info!("Credentials file changed, syncing bridges");
                                 match e2ee_config::load_credentials() {
-                                    Ok(creds) => {
-                                        mgr.start(&creds).await;
+                                    Ok(file) => {
+                                        mgr.sync_with_credentials(&file).await;
                                     }
                                     Err(e) => {
                                         warn!(
                                             "Failed to reload credentials after file change: {e}"
                                         );
-                                        mgr.stop().await;
+                                        mgr.stop_all().await;
                                     }
                                 }
                             });
@@ -195,8 +230,6 @@ impl BridgeManager {
             },
         )?;
 
-        // We need to store the debouncer/watcher so it doesn't get dropped.
-        // Spawn a task that holds it alive.
         let _watcher_holder = tokio::spawn(async move {
             let mut debouncer = debouncer;
             if let Err(e) = debouncer.watch(&watch_dir, RecursiveMode::NonRecursive) {
@@ -206,7 +239,6 @@ impl BridgeManager {
 
             info!("Watching credentials directory: {}", watch_dir.display());
 
-            // Keep alive forever — debouncer is moved into this task
             std::future::pending::<()>().await;
         });
 

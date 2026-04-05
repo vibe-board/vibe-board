@@ -34,8 +34,13 @@ use executors::{
     },
     approvals::{ExecutorApprovalService, NoopExecutorApprovalService},
     env::{ExecutionEnv, RepoContext},
-    executors::{BaseCodingAgent, CancellationToken, ExecutorExitResult, ExecutorExitSignal, StandardCodingAgentExecutor},
-    logs::{NormalizedEntry, NormalizedEntryType, utils::patch::extract_normalized_entry_from_patch},
+    executors::{
+        BaseCodingAgent, CancellationToken, ExecutorExitResult, ExecutorExitSignal,
+        StandardCodingAgentExecutor,
+    },
+    logs::{
+        NormalizedEntry, NormalizedEntryType, utils::patch::extract_normalized_entry_from_patch,
+    },
     profile::{ExecutorConfigs, ExecutorProfileId},
 };
 use futures::{FutureExt, TryStreamExt, stream::select};
@@ -1099,8 +1104,7 @@ impl LocalContainerService {
         use std::time::Duration;
 
         // 1. Resolve executor
-        let executor = ExecutorConfigs::get_cached()
-            .get_coding_agent(executor_profile_id)?;
+        let executor = ExecutorConfigs::get_cached().get_coding_agent(executor_profile_id)?;
 
         // 2. Build minimal ExecutionEnv (no VB_* env vars needed for commit messages)
         let repo_context = RepoContext::new(working_dir.to_path_buf(), vec![]);
@@ -1236,7 +1240,13 @@ impl ContainerService for LocalContainerService {
         prompt: &str,
         working_dir: &Path,
     ) -> Option<(String, String)> {
-        LocalContainerService::run_commit_message_agent(self, executor_profile_id, prompt, working_dir).await
+        LocalContainerService::run_commit_message_agent(
+            self,
+            executor_profile_id,
+            prompt,
+            working_dir,
+        )
+        .await
     }
 
     async fn git_branch_prefix(&self) -> String {

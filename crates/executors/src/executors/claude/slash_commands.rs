@@ -127,8 +127,7 @@ impl ClaudeCode {
             let installed_path = home.join(".claude/plugins/installed_plugins.json");
             if let Ok(content) = std::fs::read_to_string(&installed_path) {
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                    if let Some(installed_plugins) =
-                        json.get("plugins").and_then(|p| p.as_object())
+                    if let Some(installed_plugins) = json.get("plugins").and_then(|p| p.as_object())
                     {
                         let cli_plugin_paths: std::collections::HashSet<PathBuf> =
                             plugins.iter().map(|p| p.path.clone()).collect();
@@ -141,10 +140,8 @@ impl ClaudeCode {
                                     {
                                         let path = PathBuf::from(install_path);
                                         if !cli_plugin_paths.contains(&path) {
-                                            let plugin_name = plugin_key
-                                                .split('@')
-                                                .next()
-                                                .unwrap_or(plugin_key);
+                                            let plugin_name =
+                                                plugin_key.split('@').next().unwrap_or(plugin_key);
                                             scan(path.clone(), Some(plugin_name));
                                             scan(path.join(".claude"), Some(plugin_name));
                                         }

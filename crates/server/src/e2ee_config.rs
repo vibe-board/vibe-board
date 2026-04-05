@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -34,15 +34,8 @@ pub type Credentials = GatewayCredential;
 
 /// Top-level credentials file structure.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Credentials {
-    /// Base64-encoded 32-byte master secret
-    pub master_secret: String,
-    /// Gateway URL
-    pub gateway_url: String,
-    /// Session token from login
-    pub session_token: String,
-    /// User ID
-    pub user_id: String,
+pub struct CredentialsFile {
+    pub gateways: Vec<GatewayCredential>,
 }
 
 /// Get the credentials directory path (uses asset_dir which is environment-aware)
@@ -55,37 +48,100 @@ pub fn credentials_path() -> PathBuf {
     assets::credentials_path()
 }
 
-/// Load stored credentials from disk
-pub fn load_credentials() -> Result<Credentials> {
-    let path = credentials_path();
-    let data = std::fs::read_to_string(&path)
-        .with_context(|| format!("Failed to read credentials from {}", path.display()))?;
-    let creds: Credentials = serde_json::from_str(&data).context("Failed to parse credentials")?;
-    Ok(creds)
+/// Load credentials from the default path, with backward-compatible migration.
+pub fn load_credentials() -> Result<CredentialsFile> {
+    load_credentials_from_path(&credentials_path())
 }
 
-/// Save credentials to disk with restricted permissions
-pub fn save_credentials(creds: &Credentials) -> Result<()> {
-    let dir = credentials_dir();
-    std::fs::create_dir_all(&dir)
-        .with_context(|| format!("Failed to create directory {}", dir.display()))?;
+/// Load credentials from an arbitrary path (testable).
+/// Tries new format first, falls back to old single-object format and migrates.
+pub fn load_credentials_from_path(path: &Path) -> Result<CredentialsFile> {
+    let data = std::fs::read_to_string(path)
+        .with_context(|| format!("Failed to read credentials from {}", path.display()))?;
 
-    let path = credentials_path();
-    let data = serde_json::to_string_pretty(creds)?;
-    std::fs::write(&path, &data)
+    // Try new format first
+    if let Ok(file) = serde_json::from_str::<CredentialsFile>(&data) {
+        return Ok(file);
+    }
+
+    // Fall back to old single-object format
+    let old: GatewayCredential =
+        serde_json::from_str(&data).context("Failed to parse credentials (old or new format)")?;
+    let file = CredentialsFile {
+        gateways: vec![old],
+    };
+
+    // Migrate in-place
+    let migrated = serde_json::to_string_pretty(&file)?;
+    std::fs::write(path, &migrated)
+        .with_context(|| format!("Failed to migrate credentials at {}", path.display()))?;
+
+    Ok(file)
+}
+
+/// Save the full credentials file to the default path with restricted permissions.
+pub fn save_credentials(file: &CredentialsFile) -> Result<()> {
+    save_credentials_to_path(file, &credentials_path())
+}
+
+/// Save to an arbitrary path (testable).
+pub fn save_credentials_to_path(file: &CredentialsFile, path: &Path) -> Result<()> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)
+            .with_context(|| format!("Failed to create directory {}", dir.display()))?;
+    }
+
+    let data = serde_json::to_string_pretty(file)?;
+    std::fs::write(path, &data)
         .with_context(|| format!("Failed to write credentials to {}", path.display()))?;
 
-    // Set file permissions to 0600 (owner read/write only)
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
     }
 
     Ok(())
 }
 
-/// Delete stored credentials
+/// Add or update a single gateway credential in the file (upsert by gateway_url).
+pub fn add_or_update_gateway(cred: &GatewayCredential) -> Result<()> {
+    let path = credentials_path();
+    let mut file = load_credentials().unwrap_or(CredentialsFile {
+        gateways: Vec::new(),
+    });
+
+    if let Some(existing) = file
+        .gateways
+        .iter_mut()
+        .find(|g| g.gateway_url == cred.gateway_url)
+    {
+        *existing = cred.clone();
+    } else {
+        file.gateways.push(cred.clone());
+    }
+
+    save_credentials_to_path(&file, &path)
+}
+
+/// Remove a gateway by URL. Returns true if it was found and removed.
+pub fn remove_gateway(gateway_url: &str) -> Result<bool> {
+    let path = credentials_path();
+    let mut file = load_credentials()?;
+    let before = file.gateways.len();
+    file.gateways.retain(|g| g.gateway_url != gateway_url);
+    let removed = file.gateways.len() < before;
+
+    if file.gateways.is_empty() {
+        delete_credentials()?;
+    } else {
+        save_credentials_to_path(&file, &path)?;
+    }
+
+    Ok(removed)
+}
+
+/// Delete stored credentials (entire file).
 pub fn delete_credentials() -> Result<()> {
     let path = credentials_path();
     if path.exists() {

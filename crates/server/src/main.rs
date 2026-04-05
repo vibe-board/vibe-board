@@ -37,7 +37,11 @@ enum Commands {
     },
 
     /// Delete stored gateway credentials
-    Logout,
+    Logout {
+        /// Remove only this gateway (by URL). Omit to remove all.
+        #[arg(long)]
+        gateway: Option<String>,
+    },
 
     /// Show gateway connection status
     Status,
@@ -65,7 +69,9 @@ async fn main() -> Result<(), VibeBoardError> {
             init_tracing_simple();
             cmd_login(&gateway).await.map_err(VibeBoardError::Other)
         }
-        Some(Commands::Logout) => cmd_logout().map_err(VibeBoardError::Other),
+        Some(Commands::Logout { gateway }) => {
+            cmd_logout(gateway.as_deref()).map_err(VibeBoardError::Other)
+        }
         Some(Commands::Status) => cmd_status().map_err(VibeBoardError::Other),
     }
 }
@@ -159,15 +165,25 @@ async fn cmd_server() -> Result<(), VibeBoardError> {
     // Create BridgeManager for E2EE gateway connection lifecycle
     let bridge_manager = Arc::new(e2ee_manager::BridgeManager::new(actual_port));
 
-    // If we have stored credentials, start bridge immediately
+    // If we have stored credentials, start bridges for all gateways
     match e2ee_config::load_credentials() {
-        Ok(creds) => {
-            bridge_manager.start(&creds).await;
+        Ok(file) => {
+            if file.gateways.is_empty() {
+                tracing::info!("No gateway credentials found, bridge will not start");
+            } else {
+                tracing::info!("Starting bridges for {} gateway(s)", file.gateways.len());
+                for cred in &file.gateways {
+                    bridge_manager.start_gateway(cred).await;
+                }
+            }
         }
         Err(_) => {
             tracing::info!("No gateway credentials found, bridge will not start");
         }
     }
+
+    // Seed file hash so the watcher doesn't re-process the initial state
+    bridge_manager.seed_file_hash().await;
 
     // Watch credentials file for changes (e.g., from CLI login while server is running)
     if let Err(e) = bridge_manager.clone().start_credentials_watcher().await {
@@ -280,7 +296,7 @@ async fn cmd_login(gateway_url: &str) -> anyhow::Result<()> {
         session_token: auth.token,
         user_id: auth.user_id,
     };
-    e2ee_config::save_credentials(&creds)?;
+    e2ee_config::add_or_update_gateway(&creds)?;
     tracing::info!(
         "Credentials saved to {}",
         e2ee_config::credentials_path().display()
@@ -309,14 +325,21 @@ async fn cmd_login(gateway_url: &str) -> anyhow::Result<()> {
 
 fn cmd_status() -> anyhow::Result<()> {
     match e2ee_config::load_credentials() {
-        Ok(creds) => {
-            println!("Status: Configured");
-            println!("  Gateway: {}", creds.gateway_url);
-            println!("  User ID: {}", creds.user_id);
-            println!(
-                "  Credentials: {}",
-                e2ee_config::credentials_path().display()
-            );
+        Ok(file) => {
+            if file.gateways.is_empty() {
+                println!("Status: Not configured");
+                println!("  Run `vibe-board login --gateway <url>` to set up");
+            } else {
+                println!("Status: Configured ({} gateway(s))", file.gateways.len());
+                for (i, cred) in file.gateways.iter().enumerate() {
+                    println!("  [{}] Gateway: {}", i + 1, cred.gateway_url);
+                    println!("      User ID: {}", cred.user_id);
+                }
+                println!(
+                    "  Credentials: {}",
+                    e2ee_config::credentials_path().display()
+                );
+            }
         }
         Err(_) => {
             println!("Status: Not configured");
