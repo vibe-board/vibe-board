@@ -74,8 +74,12 @@ pub fn create_unified_diff(file_path: &str, old: &str, new: &str) -> String {
 
 /// Compute addition/deletion counts between two text snapshots.
 pub fn compute_line_change_counts(old: &str, new: &str) -> (usize, usize) {
-    let old = ensure_newline(old);
-    let new = ensure_newline(new);
+    // Normalize line endings (CRLF → LF) before diffing to avoid inflated
+    // counts when git blobs and filesystem files have different line endings.
+    let old = normalize_line_endings(old);
+    let new = normalize_line_endings(new);
+    let old = ensure_newline(&old);
+    let new = ensure_newline(&new);
 
     let mut opts = DiffOptions::new();
     opts.context_lines(0);
@@ -88,6 +92,15 @@ pub fn compute_line_change_counts(old: &str, new: &str) -> (usize, usize) {
             tracing::error!("git2 diff failed: {}", e);
             (0, 0)
         }
+    }
+}
+
+/// Strip CR characters so that CRLF and LF line endings compare equally.
+fn normalize_line_endings(s: &str) -> Cow<'_, str> {
+    if s.contains('\r') {
+        Cow::Owned(s.replace('\r', ""))
+    } else {
+        Cow::Borrowed(s)
     }
 }
 

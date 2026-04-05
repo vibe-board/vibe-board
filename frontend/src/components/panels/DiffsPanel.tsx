@@ -1,4 +1,5 @@
 import { useDiffStream } from '@/hooks/useDiffStream';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useMemo, useCallback, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
@@ -60,6 +61,7 @@ export function DiffsPanel({
   gitOps,
 }: DiffsPanelProps) {
   const { t } = useTranslation('tasks');
+  const isMobile = useMediaQuery('(max-width: 768px)');
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
 
   const isCommitMode = !!commitSha;
@@ -121,13 +123,23 @@ export function DiffsPanel({
     return diffs.map((d, i) => getDiffId({ diff: d, index: i }));
   }, [diffs]);
 
-  const toggle = useCallback((id: string) => {
-    setCollapsedIds((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }, []);
+  const toggle = useCallback(
+    (id: string) => {
+      setCollapsedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) {
+          next.delete(id);
+        } else {
+          if (isMobile) {
+            next.clear();
+          }
+          next.delete(id);
+        }
+        return next;
+      });
+    },
+    [isMobile]
+  );
 
   const allCollapsed = collapsedIds.size === diffs.length;
   const handleCollapseAll = useCallback(() => {
@@ -158,6 +170,7 @@ export function DiffsPanel({
       gitOps={gitOps}
       loading={loading}
       onBack={isCommitMode ? onClearCommit : undefined}
+      isMobile={isMobile}
       t={t}
     />
   );
@@ -176,6 +189,7 @@ interface DiffsPanelContentProps {
   gitOps?: GitOperationsInputs;
   loading: boolean;
   onBack?: () => void;
+  isMobile: boolean;
   t: (key: string, params?: Record<string, unknown>) => string;
 }
 
@@ -192,6 +206,7 @@ export function DiffsPanelContent({
   gitOps,
   loading,
   onBack,
+  isMobile,
   t,
 }: DiffsPanelContentProps) {
   return (
@@ -213,34 +228,38 @@ export function DiffsPanelContent({
               {diffs.length > 0 && (
                 <>
                   <DiffViewSwitch />
-                  <div className="h-4 w-px bg-border" />
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="icon"
-                          onClick={handleCollapseAll}
-                          aria-pressed={allCollapsed}
-                          aria-label={
-                            allCollapsed
+                  {!isMobile && (
+                    <>
+                      <div className="h-4 w-px bg-border" />
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="icon"
+                              onClick={handleCollapseAll}
+                              aria-pressed={allCollapsed}
+                              aria-label={
+                                allCollapsed
+                                  ? t('diff.expandAll')
+                                  : t('diff.collapseAll')
+                              }
+                            >
+                              {allCollapsed ? (
+                                <ChevronsDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronsUp className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            {allCollapsed
                               ? t('diff.expandAll')
-                              : t('diff.collapseAll')
-                          }
-                        >
-                          {allCollapsed ? (
-                            <ChevronsDown className="h-4 w-4" />
-                          ) : (
-                            <ChevronsUp className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        {allCollapsed
-                          ? t('diff.expandAll')
-                          : t('diff.collapseAll')}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                              : t('diff.collapseAll')}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </>
+                  )}
                 </>
               )}
             </>
