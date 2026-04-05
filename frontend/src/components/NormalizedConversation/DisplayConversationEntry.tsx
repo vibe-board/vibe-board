@@ -20,6 +20,12 @@ import {
   CheckSquare,
   ChevronDown,
   Clock,
+  Sparkle,
+  Sparkles,
+  Zap,
+  Flame,
+  Bolt,
+  FlameKindling,
   Gauge,
   Hammer,
   Edit,
@@ -57,6 +63,7 @@ type Props = {
   executionProcessId?: string;
   taskAttempt?: WorkspaceWithSession;
   task?: Task;
+  isLastEntry?: boolean;
 };
 
 type FileEditAction = Extract<ActionType, { action: 'file_edit' }>;
@@ -210,6 +217,23 @@ const getContentClassName = (entryType: NormalizedEntryType) => {
     return `${base} text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/20 px-3 py-2 border-l-4 border-blue-400`;
 
   return base;
+};
+
+const ENERGY_ICONS = [Sparkle, Sparkles, Zap, Flame, Bolt, FlameKindling];
+
+const isTaskProgressEntry = (
+  entry: NormalizedEntry | ProcessStartPayload
+): boolean => {
+  if (!('entry_type' in entry)) return false;
+  return (
+    entry.entry_type.type === 'system_message' &&
+    /^task_progress:\d+$/.test(entry.content)
+  );
+};
+
+const getTaskProgressCount = (content: string): number => {
+  const match = content.match(/^task_progress:(\d+)$/);
+  return match ? parseInt(match[1], 10) : 0;
 };
 
 /*********************
@@ -709,6 +733,7 @@ function DisplayConversationEntry({
   executionProcessId,
   taskAttempt,
   task,
+  isLastEntry,
 }: Props) {
   const { t } = useTranslation('common');
   const isNormalizedEntry = (
@@ -743,6 +768,20 @@ function DisplayConversationEntry({
   const isUserMessage = entryType.type === 'user_message';
   const isUserFeedback = entryType.type === 'user_feedback';
   const isLoading = entryType.type === 'loading';
+
+  // Task progress dice indicator
+  if (isTaskProgressEntry(entry) && isNormalizedEntry(entry)) {
+    if (!isLastEntry) {
+      return null; // Hide stale task_progress entries
+    }
+    const count = getTaskProgressCount(entry.content);
+    const EnergyIcon = ENERGY_ICONS[(count - 1) % 6];
+    return (
+      <div className="px-4 py-2 flex items-center gap-2 text-muted-foreground">
+        <EnergyIcon className="h-4 w-4" />
+      </div>
+    );
+  }
   const isFileEdit = (a: ActionType): a is FileEditAction =>
     a.action === 'file_edit';
 

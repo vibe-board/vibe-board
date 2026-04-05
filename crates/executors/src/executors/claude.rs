@@ -472,6 +472,10 @@ pub struct ClaudeLogProcessor {
     last_assistant_message: Option<String>,
     // Buffer for status updates that arrive before the ToolUse entry is in tool_map
     pending_tool_statuses: HashMap<String, Vec<(ToolStatus, String)>>,
+    // Track consecutive task_progress entries for deduplication
+    task_progress_index: Option<usize>,
+    task_progress_count: u32,
+    task_progress_fingerprint: Option<String>,
 }
 
 impl ClaudeLogProcessor {
@@ -489,7 +493,16 @@ impl ClaudeLogProcessor {
             streaming_message_id: None,
             last_assistant_message: None,
             pending_tool_statuses: HashMap::new(),
+            task_progress_index: None,
+            task_progress_count: 0,
+            task_progress_fingerprint: None,
         }
+    }
+
+    fn reset_task_progress(&mut self) {
+        self.task_progress_index = None;
+        self.task_progress_count = 0;
+        self.task_progress_fingerprint = None;
     }
 
     /// Process raw logs and convert them to normalized entries with patches
@@ -981,6 +994,8 @@ impl ClaudeLogProcessor {
                 api_key_source,
                 model: _,
                 status,
+                tools,
+                agents,
                 ..
             } => {
                 // emit billing warning if required
@@ -1003,7 +1018,51 @@ impl ClaudeLogProcessor {
                         }
                     }
                     Some("compact_boundary") | Some("task_started") => {}
+                    Some("task_progress") => {
+                        // Compare only fields that affect frontend rendering:
+                        // subtype + status + tools + agents
+                        let fingerprint = serde_json::to_string(&serde_json::json!({
+                            "subtype": subtype,
+                            "status": status,
+                            "tools": tools,
+                            "agents": agents,
+                        }))
+                        .unwrap_or_default();
+
+                        if let Some(existing_idx) = self.task_progress_index
+                            && self.task_progress_fingerprint.as_deref() == Some(&fingerprint)
+                        {
+                            // Same fingerprint: replace at existing index with incremented count
+                            self.task_progress_count += 1;
+                            let entry = NormalizedEntry {
+                                timestamp: None,
+                                entry_type: NormalizedEntryType::SystemMessage,
+                                content: format!("task_progress:{}", self.task_progress_count),
+                                metadata: None,
+                            };
+                            patches.push(ConversationPatch::replace(existing_idx, entry));
+                        } else {
+                            // Different fingerprint or no existing entry:
+                            // replace old entry in-place (or add new one)
+                            self.task_progress_count = 1;
+                            self.task_progress_fingerprint = Some(fingerprint);
+                            let entry = NormalizedEntry {
+                                timestamp: None,
+                                entry_type: NormalizedEntryType::SystemMessage,
+                                content: "task_progress:1".to_string(),
+                                metadata: None,
+                            };
+                            if let Some(existing_idx) = self.task_progress_index {
+                                patches.push(ConversationPatch::replace(existing_idx, entry));
+                            } else {
+                                let idx = entry_index_provider.next();
+                                self.task_progress_index = Some(idx);
+                                patches.push(ConversationPatch::add_normalized_entry(idx, entry));
+                            }
+                        }
+                    }
                     Some(subtype) => {
+                        self.reset_task_progress();
                         let entry = NormalizedEntry {
                             timestamp: None,
                             entry_type: NormalizedEntryType::SystemMessage,
@@ -1032,6 +1091,7 @@ impl ClaudeLogProcessor {
                 }
             }
             ClaudeJson::Assistant { message, .. } => {
+                self.reset_task_progress();
                 if let Some(patch) = extract_model_name(self, message, entry_index_provider) {
                     patches.push(patch);
                 }
@@ -1124,6 +1184,8 @@ impl ClaudeLogProcessor {
                 if *is_replay {
                     return patches;
                 }
+
+                self.reset_task_progress();
 
                 if matches!(self.strategy, HistoryStrategy::AmpResume)
                     && message
@@ -1378,6 +1440,7 @@ impl ClaudeLogProcessor {
                 );
             }
             ClaudeJson::ToolResult { .. } => {
+                self.reset_task_progress();
                 // Add proper ToolResult support to NormalizedEntry when the type system supports it
             }
             ClaudeJson::StreamEvent {
@@ -1483,6 +1546,7 @@ impl ClaudeLogProcessor {
                 result,
                 ..
             } => {
+                self.reset_task_progress();
                 // Emit one usage entry per model with full context window info
                 if let Some(model_usage) = model_usage.as_ref() {
                     for (name, usage) in model_usage {
@@ -3339,6 +3403,236 @@ mod tests {
         assert!(
             thinking_idx < text_idx,
             "Thinking (index {thinking_idx}) should come before text (index {text_idx})"
+        );
+    }
+
+    #[test]
+    fn test_task_progress_consecutive_merge() {
+        // Two consecutive identical task_progress messages:
+        // first → ADD ("task_progress:1"), second → REPLACE at same index ("task_progress:2")
+        let mut processor = ClaudeLogProcessor::new();
+        let provider = EntryIndexProvider::test_new();
+
+        let task_progress_json = ClaudeJson::System {
+            subtype: Some("task_progress".to_string()),
+            session_id: None,
+            cwd: None,
+            tools: None,
+            model: Some("claude-sonnet-4".to_string()),
+            api_key_source: None,
+            status: None,
+            slash_commands: vec![],
+            plugins: vec![],
+            agents: vec![],
+        };
+
+        // First task_progress: should ADD
+        let patches_1 =
+            processor.normalize_entries(&task_progress_json, "/tmp/worktree", &provider);
+        assert_eq!(
+            patches_1.len(),
+            1,
+            "First task_progress should produce 1 patch"
+        );
+        let (idx_1, entry_1) = extract_normalized_entry_from_patch(&patches_1[0]).unwrap();
+        assert_eq!(entry_1.content, "task_progress:1");
+        assert!(
+            serde_json::to_value(&patches_1[0])
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|op| op.get("op").and_then(|o| o.as_str()) == Some("add")),
+            "First task_progress should be an Add"
+        );
+
+        // Second identical task_progress: should REPLACE at same index
+        let patches_2 =
+            processor.normalize_entries(&task_progress_json, "/tmp/worktree", &provider);
+        assert_eq!(
+            patches_2.len(),
+            1,
+            "Second task_progress should produce 1 patch"
+        );
+        let (idx_2, entry_2) = extract_normalized_entry_from_patch(&patches_2[0]).unwrap();
+        assert_eq!(
+            idx_2, idx_1,
+            "Second task_progress should replace at same index"
+        );
+        assert_eq!(entry_2.content, "task_progress:2");
+        assert!(
+            serde_json::to_value(&patches_2[0])
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|op| op.get("op").and_then(|o| o.as_str()) == Some("replace")),
+            "Second task_progress should be a Replace"
+        );
+    }
+
+    #[test]
+    fn test_task_progress_reset_on_different_message() {
+        // task_progress → different system message → task_progress
+        // The second task_progress should be a NEW entry (different index)
+        let mut processor = ClaudeLogProcessor::new();
+        let provider = EntryIndexProvider::test_new();
+
+        let task_progress_json = ClaudeJson::System {
+            subtype: Some("task_progress".to_string()),
+            session_id: None,
+            cwd: None,
+            tools: None,
+            model: Some("claude-sonnet-4".to_string()),
+            api_key_source: None,
+            status: None,
+            slash_commands: vec![],
+            plugins: vec![],
+            agents: vec![],
+        };
+
+        // First task_progress: ADD
+        let patches_1 =
+            processor.normalize_entries(&task_progress_json, "/tmp/worktree", &provider);
+        let (idx_1, entry_1) = extract_normalized_entry_from_patch(&patches_1[0]).unwrap();
+        assert_eq!(entry_1.content, "task_progress:1");
+
+        // Different system message (not task_progress): should reset tracking
+        // Use a subtype that hits the catch-all arm (which calls reset_task_progress)
+        let other_json = ClaudeJson::System {
+            subtype: Some("other_subtype".to_string()),
+            session_id: None,
+            cwd: None,
+            tools: None,
+            model: Some("claude-sonnet-4".to_string()),
+            api_key_source: None,
+            status: None,
+            slash_commands: vec![],
+            plugins: vec![],
+            agents: vec![],
+        };
+        processor.normalize_entries(&other_json, "/tmp/worktree", &provider);
+
+        // Second task_progress: should be a NEW entry at a different index
+        let patches_3 =
+            processor.normalize_entries(&task_progress_json, "/tmp/worktree", &provider);
+        assert_eq!(
+            patches_3.len(),
+            1,
+            "Second task_progress after reset should produce 1 patch"
+        );
+        let (idx_3, entry_3) = extract_normalized_entry_from_patch(&patches_3[0]).unwrap();
+        assert_ne!(
+            idx_3, idx_1,
+            "Second task_progress should be at a different index"
+        );
+        assert_eq!(entry_3.content, "task_progress:1");
+        assert!(
+            serde_json::to_value(&patches_3[0])
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|op| op.get("op").and_then(|o| o.as_str()) == Some("add")),
+            "Second task_progress after reset should be an Add"
+        );
+    }
+
+    #[test]
+    fn test_task_progress_different_content_still_merges() {
+        // task_progress → task_progress with different model (not in fingerprint)
+        // model is NOT compared, so they should still merge
+        let mut processor = ClaudeLogProcessor::new();
+        let provider = EntryIndexProvider::test_new();
+
+        let task_progress_1 = ClaudeJson::System {
+            subtype: Some("task_progress".to_string()),
+            session_id: None,
+            cwd: None,
+            tools: None,
+            model: Some("claude-sonnet-4".to_string()),
+            api_key_source: None,
+            status: None,
+            slash_commands: vec![],
+            plugins: vec![],
+            agents: vec![],
+        };
+
+        // First task_progress: ADD
+        let patches_1 = processor.normalize_entries(&task_progress_1, "/tmp/worktree", &provider);
+        let (idx_1, entry_1) = extract_normalized_entry_from_patch(&patches_1[0]).unwrap();
+        assert_eq!(entry_1.content, "task_progress:1");
+        assert!(
+            serde_json::to_value(&patches_1[0])
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|op| op.get("op").and_then(|o| o.as_str()) == Some("add")),
+            "First task_progress should be an Add"
+        );
+
+        // Second task_progress with different model (model not in fingerprint)
+        let task_progress_2 = ClaudeJson::System {
+            subtype: Some("task_progress".to_string()),
+            session_id: None,
+            cwd: None,
+            tools: None,
+            model: Some("claude-opus-4".to_string()), // different model
+            api_key_source: None,
+            status: None,
+            slash_commands: vec![],
+            plugins: vec![],
+            agents: vec![],
+        };
+
+        // Should REPLACE at same index (model not in fingerprint, still merges)
+        let patches_2 = processor.normalize_entries(&task_progress_2, "/tmp/worktree", &provider);
+        assert_eq!(
+            patches_2.len(),
+            1,
+            "Different model should still merge (model not in fingerprint)"
+        );
+        let (idx_2, entry_2) = extract_normalized_entry_from_patch(&patches_2[0]).unwrap();
+        assert_eq!(
+            idx_2, idx_1,
+            "Different model should still merge at same index"
+        );
+        assert_eq!(entry_2.content, "task_progress:2");
+        assert!(
+            serde_json::to_value(&patches_2[0])
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|op| op.get("op").and_then(|o| o.as_str()) == Some("replace")),
+            "Different model should still be a Replace"
+        );
+
+        // Third task_progress with DIFFERENT status (in fingerprint) → should NOT merge
+        let task_progress_3 = ClaudeJson::System {
+            subtype: Some("task_progress".to_string()),
+            session_id: None,
+            cwd: None,
+            tools: None,
+            model: Some("claude-opus-4".to_string()),
+            api_key_source: None,
+            status: Some("running".to_string()), // different status
+            slash_commands: vec![],
+            plugins: vec![],
+            agents: vec![],
+        };
+
+        let patches_3 = processor.normalize_entries(&task_progress_3, "/tmp/worktree", &provider);
+        assert_eq!(patches_3.len(), 1);
+        let (idx_3, entry_3) = extract_normalized_entry_from_patch(&patches_3[0]).unwrap();
+        assert_eq!(
+            idx_3, idx_1,
+            "Different status should replace old entry in-place"
+        );
+        assert_eq!(
+            entry_3.content, "task_progress:1",
+            "Different status should reset count to 1"
         );
     }
 }

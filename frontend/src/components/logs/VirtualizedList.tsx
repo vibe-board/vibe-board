@@ -140,7 +140,8 @@ const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
   const renderItem = useCallback(
     (
       data: PatchTypeWithKey,
-      ctx: { attempt: WorkspaceWithSession; task?: Task }
+      ctx: { attempt: WorkspaceWithSession; task?: Task },
+      isLast: boolean
     ) => {
       if (!data) return null;
       if (data.type === 'STDOUT') return <p>{data.content}</p>;
@@ -153,6 +154,7 @@ const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
             executionProcessId={data.executionProcessId}
             taskAttempt={ctx.attempt}
             task={ctx.task}
+            isLastEntry={isLast}
           />
         );
       }
@@ -200,13 +202,14 @@ const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
             >
               {virtualItems.map((virtualRow) => {
                 const entry = entries[virtualRow.index];
+                const isLast = virtualRow.index === entries.length - 1;
                 return (
                   <div
                     key={virtualRow.key}
                     data-index={virtualRow.index}
                     ref={virtualizer.measureElement}
                   >
-                    {renderItem(entry, context)}
+                    {renderItem(entry, context, isLast)}
                   </div>
                 );
               })}
