@@ -103,6 +103,10 @@ type WysiwygProps = {
   showStaticToolbar?: boolean;
   /** Save status indicator for static toolbar */
   saveStatus?: 'idle' | 'saved';
+  /** Called when the editor's contentEditable gains focus */
+  onFocus?: () => void;
+  /** Called when the editor's contentEditable loses focus */
+  onBlur?: () => void;
 };
 
 /** Ref interface for WYSIWYGEditor, exposing imperative methods */
@@ -150,6 +154,8 @@ const WYSIWYGEditor = forwardRef<WYSIWYGEditorRef, WysiwygProps>(
       onCodeClick,
       showStaticToolbar = false,
       saveStatus,
+      onFocus: onFocusProp,
+      onBlur: onBlurProp,
     }: WysiwygProps,
     ref: React.ForwardedRef<WYSIWYGEditorRef>
   ) {
@@ -308,6 +314,8 @@ const WYSIWYGEditor = forwardRef<WYSIWYGEditorRef, WysiwygProps>(
                           disabled ? 'Markdown content' : 'Markdown editor'
                         }
                         onPaste={handlePaste}
+                        onFocus={onFocusProp}
+                        onBlur={onBlurProp}
                       />
                     }
                     placeholder={placeholderElement}

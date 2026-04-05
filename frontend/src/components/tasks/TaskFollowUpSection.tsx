@@ -255,12 +255,15 @@ export function TaskFollowUpSection({
       500
     );
 
-  // Sync local message from scratch when it loads (but not while user is typing)
+  // Sync local message from scratch only on initial load (not on blur/focus transitions)
+  // to avoid overwriting user input with stale scratch data during debounced save window
+  const hasLoadedRef = useRef(false);
   useEffect(() => {
     if (isScratchLoading) return;
-    if (isTextareaFocused) return; // Don't overwrite while user is typing
+    if (hasLoadedRef.current) return;
+    hasLoadedRef.current = true;
     setLocalMessage(scratchData?.message ?? '');
-  }, [isScratchLoading, scratchData?.message, isTextareaFocused]);
+  }, [isScratchLoading, scratchData?.message]);
 
   // During retry, follow-up box is greyed/disabled (not hidden)
   // Use RetryUi context so optimistic retry immediately disables this box
@@ -342,17 +345,8 @@ export function TaskFollowUpSection({
     // Refresh when a new process starts (could be queued message consumption or follow-up)
     if (processes.length > prevCount) {
       refreshQueueStatus();
-      // Re-sync local message from current scratch state
-      // If scratch was deleted, scratchData will be undefined, so localMessage becomes ''
-      setLocalMessage(scratchData?.message ?? '');
     }
-  }, [
-    isAttemptRunning,
-    workspaceId,
-    processes.length,
-    refreshQueueStatus,
-    scratchData?.message,
-  ]);
+  }, [isAttemptRunning, workspaceId, processes.length, refreshQueueStatus]);
 
   // When queued, display the queued message content so user can edit it
   const displayMessage =
@@ -936,16 +930,7 @@ export function TaskFollowUpSection({
               </div>
             )}
 
-            <div
-              className="flex flex-col gap-2"
-              onFocus={() => setIsTextareaFocused(true)}
-              onBlur={(e) => {
-                // Only blur if focus is leaving the container entirely
-                if (!e.currentTarget.contains(e.relatedTarget)) {
-                  setIsTextareaFocused(false);
-                }
-              }}
-            >
+            <div className="flex flex-col gap-2">
               <WYSIWYGEditor
                 placeholder={editorPlaceholder}
                 value={displayMessage}
@@ -958,6 +943,8 @@ export function TaskFollowUpSection({
                 taskAttemptId={workspaceId}
                 onCmdEnter={handleSubmitShortcut}
                 className="min-h-[40px]"
+                onFocus={() => setIsTextareaFocused(true)}
+                onBlur={() => setIsTextareaFocused(false)}
               />
             </div>
           </div>
