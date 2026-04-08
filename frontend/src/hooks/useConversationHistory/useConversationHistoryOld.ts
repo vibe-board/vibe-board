@@ -693,8 +693,13 @@ export const useConversationHistoryOld = ({
       // Normalized logs: WS replay full history + live updates
       const url = `/api/execution-processes/${executionProcess.id}/normalized-logs/ws`;
 
-      return new Promise<void>((resolve, reject) => {
+      return new Promise<void>((resolve) => {
         const controller = streamJsonPatchEntries<PatchType>(url, {
+          reconnect: {
+            maxRetries: 10,
+            getReconnectUrl: (maxIndex) =>
+              `/api/execution-processes/${executionProcess.id}/normalized-logs-live/ws?after=${maxIndex}`,
+          },
           onEntries(allEntries) {
             const patchesWithKey = (allEntries as (PatchType | null)[])
               .map((entry, index) =>
@@ -731,8 +736,9 @@ export const useConversationHistoryOld = ({
             resolve();
           },
           onError: () => {
-            controller.close();
-            reject();
+            // Don't close the controller here — ws.onerror fires before
+            // ws.onclose in browsers, and closing would prevent reconnection.
+            // The reconnect logic in onclose handles transient errors.
           },
         });
       });

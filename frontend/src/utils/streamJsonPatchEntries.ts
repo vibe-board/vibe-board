@@ -14,6 +14,12 @@ export interface StreamOptions<E = unknown> {
   onError?: (err: unknown) => void;
   /** called once when a "finished" event is received */
   onFinished?: (entries: E[]) => void;
+  /** If provided, enables auto-reconnect on unclean close */
+  reconnect?: {
+    maxRetries: number;
+    /** Build the URL for reconnection given the highest entry index seen so far */
+    getReconnectUrl: (maxEntryIndex: number) => string;
+  };
 }
 
 interface StreamController<E = unknown> {
@@ -23,9 +29,11 @@ interface StreamController<E = unknown> {
   getSnapshot(): PatchContainer<E>;
   /** Best-effort connection state */
   isConnected(): boolean;
+  /** True while attempting to reconnect after a drop */
+  isReconnecting(): boolean;
   /** Subscribe to updates; returns an unsubscribe function */
   onChange(cb: (entries: E[]) => void): () => void;
-  /** Close the stream */
+  /** Close the stream (prevents further reconnection) */
   close(): void;
 }
 
@@ -41,27 +49,20 @@ export function streamJsonPatchEntries<E = unknown>(
   opts: StreamOptions<E> = {}
 ): StreamController<E> {
   let connected = false;
+  let reconnecting = false;
+  let closed = false; // set by close() to stop reconnection
+  let finished = false;
+  let ws: WebSocket | RemoteWs | null = null;
+  let retryAttempts = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let maxEntryIndex = -1;
+
   let snapshot: PatchContainer<E> = structuredClone(
     opts.initial ?? ({ entries: [] } as PatchContainer<E>)
   );
 
   const subscribers = new Set<(entries: E[]) => void>();
   if (opts.onEntries) subscribers.add(opts.onEntries);
-
-  // In gateway mode, use E2EE connection for remote WebSocket
-  const conn = getGatewayConnection();
-  let ws: WebSocket | RemoteWs;
-  if (conn) {
-    const parsed = new URL(url, window.location.origin);
-    ws = conn.openWsStream(
-      parsed.pathname,
-      parsed.search?.substring(1) || undefined
-    );
-  } else {
-    // Convert HTTP endpoint to WebSocket endpoint
-    const wsUrl = url.replace(/^http/, 'ws');
-    ws = new WebSocket(wsUrl);
-  }
 
   const notify = () => {
     for (const cb of subscribers) {
@@ -73,20 +74,32 @@ export function streamJsonPatchEntries<E = unknown>(
     }
   };
 
-  const handleMessage = (event: MessageEvent) => {
+  /** Extract the highest /entries/{N} index from a set of patch ops */
+  function updateMaxIndex(ops: Operation[]) {
+    for (const op of ops) {
+      const match = op.path.match(/^\/entries\/(\d+)$/);
+      if (match) {
+        const idx = parseInt(match[1], 10);
+        if (idx > maxEntryIndex) {
+          maxEntryIndex = idx;
+        }
+      }
+    }
+  }
+
+  function handleMessage(event: MessageEvent) {
     try {
       const msg = JSON.parse(event.data);
 
-      // Handle JsonPatch messages (from LogMsg::to_ws_message)
       if (msg.JsonPatch) {
         const raw = msg.JsonPatch as Operation[];
         const ops = dedupeOps(raw);
 
-        // Apply to a working copy (applyPatch mutates)
+        updateMaxIndex(ops);
+
         const next = structuredClone(snapshot);
         applyUpsertPatch(next, ops);
 
-        // Skip notify if the patch was a no-op (e.g., replace with identical content)
         if (JSON.stringify(next) === JSON.stringify(snapshot)) {
           return;
         }
@@ -95,31 +108,71 @@ export function streamJsonPatchEntries<E = unknown>(
         notify();
       }
 
-      // Handle Finished messages
       if (msg.finished !== undefined) {
+        finished = true;
         opts.onFinished?.(snapshot.entries);
-        ws.close();
+        ws?.close();
       }
     } catch (err) {
       opts.onError?.(err);
     }
-  };
+  }
 
-  ws.onopen = () => {
-    connected = true;
-    opts.onConnect?.();
-  };
+  function scheduleReconnect() {
+    if (closed || finished || !opts.reconnect) return;
+    if (retryAttempts >= opts.reconnect.maxRetries) return;
 
-  ws.onmessage = handleMessage;
+    reconnecting = true;
+    const delay = Math.min(8000, 500 * Math.pow(2, retryAttempts));
+    retryAttempts++;
 
-  ws.onerror = (err) => {
-    connected = false;
-    opts.onError?.(err);
-  };
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      if (closed || finished) return;
+      const reconnectUrl = opts.reconnect!.getReconnectUrl(maxEntryIndex);
+      openConnection(reconnectUrl);
+    }, delay);
+  }
 
-  ws.onclose = () => {
-    connected = false;
-  };
+  function openConnection(connectUrl: string) {
+    const conn = getGatewayConnection();
+    if (conn) {
+      const parsed = new URL(connectUrl, window.location.origin);
+      ws = conn.openWsStream(
+        parsed.pathname,
+        parsed.search?.substring(1) || undefined
+      );
+    } else {
+      const wsUrl = connectUrl.replace(/^http/, 'ws');
+      ws = new WebSocket(wsUrl);
+    }
+
+    ws.onopen = () => {
+      connected = true;
+      reconnecting = false;
+      retryAttempts = 0;
+      opts.onConnect?.();
+    };
+
+    ws.onmessage = handleMessage;
+
+    ws.onerror = (err) => {
+      connected = false;
+      opts.onError?.(err);
+    };
+
+    ws.onclose = () => {
+      connected = false;
+      ws = null;
+
+      if (!closed && !finished) {
+        scheduleReconnect();
+      }
+    };
+  }
+
+  // Initial connection
+  openConnection(url);
 
   return {
     getEntries(): E[] {
@@ -131,14 +184,23 @@ export function streamJsonPatchEntries<E = unknown>(
     isConnected(): boolean {
       return connected;
     },
+    isReconnecting(): boolean {
+      return reconnecting;
+    },
     onChange(cb: (entries: E[]) => void): () => void {
       subscribers.add(cb);
-      // push current state immediately
       cb(snapshot.entries);
       return () => subscribers.delete(cb);
     },
     close(): void {
-      ws.close();
+      closed = true;
+      reconnecting = false;
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      ws?.close();
+      ws = null;
       subscribers.clear();
       connected = false;
     },
