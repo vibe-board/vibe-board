@@ -128,17 +128,22 @@ export function DiffsPanel({
       setCollapsedIds((prev) => {
         const next = new Set(prev);
         if (next.has(id)) {
+          // Collapsed → expand
           next.delete(id);
-        } else {
           if (isMobile) {
-            next.clear();
+            // Mobile: collapse all others so only this one is expanded
+            for (const otherId of ids) {
+              if (otherId !== id) next.add(otherId);
+            }
           }
-          next.delete(id);
+        } else {
+          // Expanded → collapse
+          next.add(id);
         }
         return next;
       });
     },
-    [isMobile]
+    [isMobile, ids]
   );
 
   const allCollapsed = collapsedIds.size === diffs.length;
