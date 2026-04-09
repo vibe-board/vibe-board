@@ -1050,8 +1050,33 @@ export const useConversationHistoryOld = ({
                 (e) => !existingKeys.has(e.patchKey)
               );
               if (unique.length === 0) return prev;
+
+              // Find the correct insertion point: the first non-user
+              // entry belonging to this process. New entries go right
+              // before it (i.e. after the synthetic user message).
+              const pid = processWithMore.executionProcess.id;
+              let insertIdx = -1;
+              let userMsgIdx = -1;
+              for (let i = 0; i < prev.length; i++) {
+                if (prev[i].executionProcessId !== pid) continue;
+                if (prev[i].patchKey.endsWith(':user')) {
+                  userMsgIdx = i;
+                } else {
+                  insertIdx = i;
+                  break;
+                }
+              }
+              // Fallback: after user message, or position 0 if neither found
+              if (insertIdx === -1) {
+                insertIdx = userMsgIdx !== -1 ? userMsgIdx + 1 : 0;
+              }
+
               lastPrependCountRef.current = unique.length;
-              const next = [...unique, ...prev];
+              const next = [
+                ...prev.slice(0, insertIdx),
+                ...unique,
+                ...prev.slice(insertIdx),
+              ];
               entriesLengthRef.current = next.length;
               return next;
             });
