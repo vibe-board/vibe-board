@@ -300,6 +300,39 @@
           "button": "重置"
         }
       },
+      "configTransfer": {
+        "title": "配置迁移",
+        "description": "导出或导入设置，以在多台机器之间同步。",
+        "exportButton": "导出",
+        "importButton": "导入",
+        "export": {
+          "title": "导出配置",
+          "selectLabel": "选择要导出的内容：",
+          "button": "导出",
+          "sections": {
+            "config": "常规设置",
+            "configDesc": "主题、语言、编辑器、Git 设置...",
+            "profiles": "Agent 配置",
+            "profilesDesc": "执行器配置、MCP 服务器",
+            "gateway_credentials": "网关凭据",
+            "gateway_credentialsDesc": "E2EE 连接凭据",
+            "ui_preferences": "界面偏好",
+            "ui_preferencesDesc": "布局、面板状态、过滤器"
+          }
+        },
+        "import": {
+          "title": "导入配置",
+          "selectFile": "选择文件...",
+          "selectLabel": "选择要导入的内容：",
+          "button": "导入",
+          "warning": "这将覆盖所选部分的当前设置。",
+          "invalidFile": "配置文件无效。",
+          "unsupportedVersion": "此文件由更新版本创建，无法导入。",
+          "success": "配置导入成功。",
+          "partialSuccess": "部分配置导入失败：",
+          "error": "配置导入失败。"
+        }
+      },
       "beta": {
         "title": "Beta 功能",
         "description": "在正式发布前试用实验性功能。",

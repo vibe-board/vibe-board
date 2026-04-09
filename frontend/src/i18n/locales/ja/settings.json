@@ -300,6 +300,39 @@
           "button": "リセット"
         }
       },
+      "configTransfer": {
+        "title": "設定の移行",
+        "description": "設定をエクスポートまたはインポートして、複数のマシン間で同期します。",
+        "exportButton": "エクスポート",
+        "importButton": "インポート",
+        "export": {
+          "title": "設定のエクスポート",
+          "selectLabel": "エクスポートする項目を選択：",
+          "button": "エクスポート",
+          "sections": {
+            "config": "一般設定",
+            "configDesc": "テーマ、言語、エディタ、Git設定...",
+            "profiles": "エージェント設定",
+            "profilesDesc": "エクゼキューター設定、MCPサーバー",
+            "gateway_credentials": "ゲートウェイ認証情報",
+            "gateway_credentialsDesc": "E2EE接続認証情報",
+            "ui_preferences": "UI設定",
+            "ui_preferencesDesc": "レイアウト、パネル状態、フィルター"
+          }
+        },
+        "import": {
+          "title": "設定のインポート",
+          "selectFile": "ファイルを選択...",
+          "selectLabel": "インポートする項目を選択：",
+          "button": "インポート",
+          "warning": "選択したセクションの現在の設定が上書きされます。",
+          "invalidFile": "設定ファイルが無効です。",
+          "unsupportedVersion": "このファイルは新しいバージョンで作成されたため、インポートできません。",
+          "success": "設定のインポートが完了しました。",
+          "partialSuccess": "一部のセクションのインポートに失敗しました：",
+          "error": "設定のインポートに失敗しました。"
+        }
+      },
       "beta": {
         "title": "ベータ機能",
         "description": "リリース前の実験的な機能を試す。",

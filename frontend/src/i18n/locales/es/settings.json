@@ -300,6 +300,39 @@
           "button": "Restablecer"
         }
       },
+      "configTransfer": {
+        "title": "Transferencia de configuración",
+        "description": "Exporta o importa tu configuración para sincronizar entre máquinas.",
+        "exportButton": "Exportar",
+        "importButton": "Importar",
+        "export": {
+          "title": "Exportar configuración",
+          "selectLabel": "Selecciona qué exportar:",
+          "button": "Exportar",
+          "sections": {
+            "config": "Configuración general",
+            "configDesc": "Tema, idioma, editor, configuración de Git...",
+            "profiles": "Perfiles de agente",
+            "profilesDesc": "Configuraciones de ejecutor, servidores MCP",
+            "gateway_credentials": "Credenciales del gateway",
+            "gateway_credentialsDesc": "Credenciales de conexión E2EE",
+            "ui_preferences": "Preferencias de interfaz",
+            "ui_preferencesDesc": "Diseño, estados de panel, filtros"
+          }
+        },
+        "import": {
+          "title": "Importar configuración",
+          "selectFile": "Seleccionar archivo...",
+          "selectLabel": "Selecciona qué importar:",
+          "button": "Importar",
+          "warning": "Esto sobrescribirá tu configuración actual para las secciones seleccionadas.",
+          "invalidFile": "Archivo de configuración inválido.",
+          "unsupportedVersion": "Este archivo fue creado por una versión más nueva y no se puede importar.",
+          "success": "Configuración importada exitosamente.",
+          "partialSuccess": "Algunas secciones no se pudieron importar:",
+          "error": "Error al importar la configuración."
+        }
+      },
       "beta": {
         "title": "Funciones Beta",
         "description": "Prueba funciones experimentales antes de su lanzamiento.",

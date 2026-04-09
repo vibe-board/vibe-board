@@ -300,6 +300,39 @@
           "button": "Reset"
         }
       },
+      "configTransfer": {
+        "title": "Configuration Transfer",
+        "description": "Export or import your settings to sync across machines.",
+        "exportButton": "Export",
+        "importButton": "Import",
+        "export": {
+          "title": "Export Configuration",
+          "selectLabel": "Select what to export:",
+          "button": "Export",
+          "sections": {
+            "config": "General Settings",
+            "configDesc": "Theme, language, editor, git settings...",
+            "profiles": "Agent Profiles",
+            "profilesDesc": "Executor configs, MCP servers",
+            "gateway_credentials": "Gateway Credentials",
+            "gateway_credentialsDesc": "E2EE connection credentials",
+            "ui_preferences": "UI Preferences",
+            "ui_preferencesDesc": "Layout, panel states, filters"
+          }
+        },
+        "import": {
+          "title": "Import Configuration",
+          "selectFile": "Select file...",
+          "selectLabel": "Select what to import:",
+          "button": "Import",
+          "warning": "This will overwrite your current settings for selected sections.",
+          "invalidFile": "Invalid configuration file.",
+          "unsupportedVersion": "This file was created by a newer version and cannot be imported.",
+          "success": "Configuration imported successfully.",
+          "partialSuccess": "Some sections failed to import:",
+          "error": "Failed to import configuration."
+        }
+      },
       "beta": {
         "title": "Beta Features",
         "description": "Try out experimental features before they're released.",

@@ -300,6 +300,39 @@
           "button": "Réinitialiser"
         }
       },
+      "configTransfer": {
+        "title": "Transfert de configuration",
+        "description": "Exportez ou importez vos paramètres pour les synchroniser entre machines.",
+        "exportButton": "Exporter",
+        "importButton": "Importer",
+        "export": {
+          "title": "Exporter la configuration",
+          "selectLabel": "Sélectionnez ce que vous souhaitez exporter :",
+          "button": "Exporter",
+          "sections": {
+            "config": "Paramètres généraux",
+            "configDesc": "Thème, langue, éditeur, paramètres Git...",
+            "profiles": "Profils d'agent",
+            "profilesDesc": "Configurations d'exécuteur, serveurs MCP",
+            "gateway_credentials": "Identifiants de passerelle",
+            "gateway_credentialsDesc": "Identifiants de connexion E2EE",
+            "ui_preferences": "Préférences d'interface",
+            "ui_preferencesDesc": "Disposition, états des panneaux, filtres"
+          }
+        },
+        "import": {
+          "title": "Importer la configuration",
+          "selectFile": "Sélectionner un fichier...",
+          "selectLabel": "Sélectionnez ce que vous souhaitez importer :",
+          "button": "Importer",
+          "warning": "Cela écrasera vos paramètres actuels pour les sections sélectionnées.",
+          "invalidFile": "Fichier de configuration invalide.",
+          "unsupportedVersion": "Ce fichier a été créé par une version plus récente et ne peut pas être importé.",
+          "success": "Configuration importée avec succès.",
+          "partialSuccess": "Certaines sections n'ont pas pu être importées :",
+          "error": "Échec de l'importation de la configuration."
+        }
+      },
       "beta": {
         "title": "Fonctionnalités bêta",
         "description": "Essayez les fonctionnalités expérimentales avant leur sortie.",

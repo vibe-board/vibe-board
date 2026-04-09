@@ -10,6 +10,7 @@ use crate::{DeploymentImpl, e2ee_manager::BridgeManager, middleware};
 
 pub mod approvals;
 pub mod config;
+pub mod config_transfer;
 pub mod containers;
 pub mod e2ee;
 pub mod filesystem;
@@ -39,6 +40,7 @@ pub fn router(
     let base_routes = Router::new()
         .route("/health", get(health::health_check))
         .merge(config::router())
+        .merge(config_transfer::router())
         .merge(containers::router(&deployment))
         .merge(projects::router(&deployment))
         .merge(tasks::router(&deployment))

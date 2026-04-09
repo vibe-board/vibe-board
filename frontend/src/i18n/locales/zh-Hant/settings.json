@@ -300,6 +300,39 @@
           "button": "重設"
         }
       },
+      "configTransfer": {
+        "title": "設定遷移",
+        "description": "匯出或匯入設定，以在多台機器之間同步。",
+        "exportButton": "匯出",
+        "importButton": "匯入",
+        "export": {
+          "title": "匯出設定",
+          "selectLabel": "選擇要匯出的內容：",
+          "button": "匯出",
+          "sections": {
+            "config": "一般設定",
+            "configDesc": "主題、語言、編輯器、Git 設定...",
+            "profiles": "Agent 設定",
+            "profilesDesc": "執行器設定、MCP 伺服器",
+            "gateway_credentials": "閘道憑證",
+            "gateway_credentialsDesc": "E2EE 連線憑證",
+            "ui_preferences": "介面偏好",
+            "ui_preferencesDesc": "佈局、面板狀態、篩選器"
+          }
+        },
+        "import": {
+          "title": "匯入設定",
+          "selectFile": "選擇檔案...",
+          "selectLabel": "選擇要匯入的內容：",
+          "button": "匯入",
+          "warning": "這將覆蓋所選部分的當前設定。",
+          "invalidFile": "設定檔無效。",
+          "unsupportedVersion": "此檔案由更新版本建立，無法匯入。",
+          "success": "設定匯入成功。",
+          "partialSuccess": "部分設定匯入失敗：",
+          "error": "設定匯入失敗。"
+        }
+      },
       "beta": {
         "title": "Beta 功能",
         "description": "在正式發布前試用實驗性功能。",

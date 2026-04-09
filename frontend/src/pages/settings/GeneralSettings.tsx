@@ -27,6 +27,8 @@ import {
   RotateCcw,
   AlertTriangle,
   Shield,
+  Download,
+  Upload,
 } from 'lucide-react';
 import { getNotificationPermission } from '@/hooks/useTaskNotifications';
 import {
@@ -48,6 +50,8 @@ import { useUserSystem } from '@/components/ConfigProvider';
 import { TagManager } from '@/components/TagManager';
 import { FolderPickerDialog } from '@/components/dialogs/shared/FolderPickerDialog';
 import { E2EESettingsDialog } from '@/components/dialogs/E2EESettingsDialog';
+import { ExportConfigDialog } from '@/components/dialogs/settings/ExportConfigDialog';
+import { ImportConfigDialog } from '@/components/dialogs/settings/ImportConfigDialog';
 import ExecutorProfileSelector from '@/components/settings/ExecutorProfileSelector';
 
 export function GeneralSettings() {
@@ -974,6 +978,33 @@ export function GeneralSettings() {
             </div>
             <Button variant="outline" onClick={resetOnboarding}>
               {t('settings.general.safety.onboarding.button')}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('settings.general.configTransfer.title')}</CardTitle>
+          <CardDescription>
+            {t('settings.general.configTransfer.description')}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => ExportConfigDialog.show({})}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              {t('settings.general.configTransfer.exportButton')}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => ImportConfigDialog.show({})}
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              {t('settings.general.configTransfer.importButton')}
             </Button>
           </div>
         </CardContent>

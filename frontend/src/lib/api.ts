@@ -1166,6 +1166,34 @@ export const profilesApi = {
   },
 };
 
+// Config Transfer APIs
+export interface ConfigExportEnvelope {
+  export_version: number;
+  exported_at: string;
+  source_app_version: string;
+  sections: Record<string, unknown>;
+}
+
+export interface ConfigImportResult {
+  results: Record<string, { status: string; message?: string }>;
+}
+
+export const configTransferApi = {
+  exportConfig: async (): Promise<ConfigExportEnvelope> => {
+    const response = await makeRequest('/api/config/export');
+    return handleApiResponse<ConfigExportEnvelope>(response);
+  },
+  importConfig: async (
+    sections: Record<string, unknown>
+  ): Promise<ConfigImportResult> => {
+    const response = await makeRequest('/api/config/import', {
+      method: 'POST',
+      body: JSON.stringify({ sections }),
+    });
+    return handleApiResponse<ConfigImportResult>(response);
+  },
+};
+
 /** Upload helper: routes FormData through E2EE in gateway mode */
 const uploadFormData = async (
   url: string,

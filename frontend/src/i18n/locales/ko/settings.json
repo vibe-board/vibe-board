@@ -300,6 +300,39 @@
           "button": "초기화"
         }
       },
+      "configTransfer": {
+        "title": "설정 이전",
+        "description": "설정을 내보내거나 가져와서 여러 기기 간에 동기화합니다.",
+        "exportButton": "내보내기",
+        "importButton": "가져오기",
+        "export": {
+          "title": "설정 내보내기",
+          "selectLabel": "내보낼 항목 선택:",
+          "button": "내보내기",
+          "sections": {
+            "config": "일반 설정",
+            "configDesc": "테마, 언어, 편집기, Git 설정...",
+            "profiles": "에이전트 프로필",
+            "profilesDesc": "실행기 설정, MCP 서버",
+            "gateway_credentials": "게이트웨이 자격 증명",
+            "gateway_credentialsDesc": "E2EE 연결 자격 증명",
+            "ui_preferences": "UI 환경설정",
+            "ui_preferencesDesc": "레이아웃, 패널 상태, 필터"
+          }
+        },
+        "import": {
+          "title": "설정 가져오기",
+          "selectFile": "파일 선택...",
+          "selectLabel": "가져올 항목 선택:",
+          "button": "가져오기",
+          "warning": "선택한 섹션의 현재 설정을 덮어씁니다.",
+          "invalidFile": "잘못된 설정 파일입니다.",
+          "unsupportedVersion": "이 파일은 최신 버전에서 생성되어 가져올 수 없습니다.",
+          "success": "설정을 성공적으로 가져왔습니다.",
+          "partialSuccess": "일부 섹션 가져오기에 실패했습니다:",
+          "error": "설정 가져오기에 실패했습니다."
+        }
+      },
       "beta": {
         "title": "베타 기능",
         "description": "출시 전 실험적인 기능을 체험해보세요.",
