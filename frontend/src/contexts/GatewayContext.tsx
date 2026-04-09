@@ -59,6 +59,7 @@ const GatewayContext = createContext<GatewayContextValue | null>(null);
 
 const SESSION_KEY = 'vk_gateway_session';
 const SELECTED_MACHINE_KEY = 'vk_gateway_selected_machine';
+const LAST_MACHINE_HINT_KEY = 'vk_gateway_last_machine';
 
 function loadSession(): GatewaySession | null {
   try {
@@ -79,15 +80,31 @@ function clearStoredSession(): void {
 }
 
 function loadSelectedMachine(): string | null {
-  return localStorage.getItem(SELECTED_MACHINE_KEY);
+  // Per-tab: check sessionStorage first (survives refresh, isolated per tab)
+  const perTab = sessionStorage.getItem(SELECTED_MACHINE_KEY);
+  if (perTab) return perTab;
+  // Migrate: if old localStorage key exists, treat it as the hint
+  const legacy = localStorage.getItem(SELECTED_MACHINE_KEY);
+  if (legacy) {
+    localStorage.setItem(LAST_MACHINE_HINT_KEY, legacy);
+    localStorage.removeItem(SELECTED_MACHINE_KEY);
+  }
+  // New tab: fall back to shared hint from any previous tab
+  const hint = localStorage.getItem(LAST_MACHINE_HINT_KEY);
+  if (hint) {
+    sessionStorage.setItem(SELECTED_MACHINE_KEY, hint);
+  }
+  return hint;
 }
 
 function saveSelectedMachine(machineId: string): void {
-  localStorage.setItem(SELECTED_MACHINE_KEY, machineId);
+  sessionStorage.setItem(SELECTED_MACHINE_KEY, machineId);
+  localStorage.setItem(LAST_MACHINE_HINT_KEY, machineId);
 }
 
 function clearSelectedMachine(): void {
-  localStorage.removeItem(SELECTED_MACHINE_KEY);
+  sessionStorage.removeItem(SELECTED_MACHINE_KEY);
+  // Do not clear LAST_MACHINE_HINT_KEY — it's a shared hint for new tabs
 }
 
 export function GatewayProvider({ children }: { children: ReactNode }) {
