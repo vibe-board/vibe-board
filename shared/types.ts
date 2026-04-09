@@ -493,6 +493,8 @@ export type CommitInfo = { sha: string, message: string,
  */
 body: string | null, author: string, timestamp: Date, additions: number, deletions: number, files_changed: number, };
 
+export type CommitHistoryResponse = { commits: Array<CommitInfo>, has_more: boolean, };
+
 export type ExecutorAction = { typ: ExecutorActionType, next_action: ExecutorAction | null, };
 
 export type McpConfig = { servers: { [key in string]?: JsonValue }, servers_path: Array<string>, template: JsonValue, preconfigured: JsonValue, is_toml_config: boolean, };

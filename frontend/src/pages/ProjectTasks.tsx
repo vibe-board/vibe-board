@@ -391,6 +391,18 @@ export function ProjectTasks() {
     }
   }, [searchParams, setSearchParams]);
 
+  // Redirect diffs view to commits in direct mode (diffs are not available)
+  useEffect(() => {
+    if (!attempt || attempt.mode !== 'direct') return;
+    const view = searchParams.get('view');
+    if (view === 'diffs') {
+      const params = new URLSearchParams(searchParams);
+      params.set('view', 'commits');
+      params.delete('commit');
+      setSearchParams(params, { replace: true });
+    }
+  }, [attempt, searchParams, setSearchParams]);
+
   const setMode = useCallback(
     (newMode: LayoutMode) => {
       const params = new URLSearchParams(searchParams);
@@ -896,6 +908,7 @@ export function ProjectTasks() {
             onModeChange={setMode}
             task={selectedTask}
             attempt={attempt ?? null}
+            isDirect={attempt?.mode === 'direct'}
             onClose={() =>
               navigate(`/local-projects/${projectId}/tasks`, { replace: true })
             }

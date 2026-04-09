@@ -101,6 +101,14 @@ pub struct CommitInfo {
     pub files_changed: u32,
 }
 
+/// Paginated response for commit history
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export)]
+pub struct CommitHistoryResponse {
+    pub commits: Vec<CommitInfo>,
+    pub has_more: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct HeadInfo {
     pub branch: String,
@@ -2062,6 +2070,91 @@ impl GitService {
         }
 
         Ok(commits)
+    }
+
+    /// Get paginated commit history for a branch without a base branch.
+    /// Used in direct mode where there is no target branch to compare against.
+    /// Returns commits in reverse chronological order (newest first).
+    pub fn get_commit_history_all(
+        &self,
+        repo_path: &Path,
+        branch_name: &str,
+        skip: usize,
+        limit: usize,
+    ) -> Result<CommitHistoryResponse, GitServiceError> {
+        let repo = self.open_repo(repo_path)?;
+
+        let branch_oid = Self::find_branch(&repo, branch_name)?
+            .get()
+            .peel_to_commit()?
+            .id();
+
+        let mut revwalk = repo.revwalk()?;
+        revwalk.push(branch_oid)?;
+        revwalk.set_sorting(Sort::TIME)?;
+
+        let mut commits = Vec::new();
+        let mut skipped = 0;
+        let mut has_more = false;
+
+        for oid_result in revwalk {
+            let oid = oid_result?;
+
+            if skipped < skip {
+                skipped += 1;
+                continue;
+            }
+
+            if commits.len() >= limit {
+                has_more = true;
+                break;
+            }
+
+            let commit = repo.find_commit(oid)?;
+
+            let full_message = commit.message().unwrap_or("");
+            let message = full_message.lines().next().unwrap_or("").to_string();
+            let body = {
+                let rest: String = full_message
+                    .lines()
+                    .skip(1)
+                    .collect::<Vec<_>>()
+                    .join("\n")
+                    .trim()
+                    .to_string();
+                if rest.is_empty() { None } else { Some(rest) }
+            };
+
+            let author = commit.author().name().unwrap_or("Unknown").to_string();
+
+            let timestamp = {
+                let time = commit.time();
+                DateTime::from_timestamp(time.seconds(), 0).unwrap_or_else(Utc::now)
+            };
+
+            let commit_tree = commit.tree()?;
+            let parent_tree = if commit.parent_count() == 0 {
+                None
+            } else {
+                Some(commit.parent(0)?.tree()?)
+            };
+
+            let diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&commit_tree), None)?;
+            let stats = diff.stats()?;
+
+            commits.push(CommitInfo {
+                sha: oid.to_string(),
+                message,
+                body,
+                author,
+                timestamp,
+                additions: stats.insertions() as u32,
+                deletions: stats.deletions() as u32,
+                files_changed: stats.files_changed() as u32,
+            });
+        }
+
+        Ok(CommitHistoryResponse { commits, has_more })
     }
 
     /// Get the diff for a specific commit

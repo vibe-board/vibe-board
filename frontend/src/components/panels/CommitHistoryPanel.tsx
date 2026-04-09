@@ -189,9 +189,12 @@ export function CommitHistoryPanel({
 }: CommitHistoryPanelProps) {
   const { t } = useTranslation('tasks');
   const {
-    data: commits,
+    commits,
     isLoading,
     error,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
   } = useCommitHistory(selectedAttempt?.id ?? null, repoId);
 
   if (error) {
@@ -206,7 +209,7 @@ export function CommitHistoryPanel({
 
   return (
     <div className="h-full flex flex-col relative">
-      {commits && commits.length > 0 && (
+      {commits.length > 0 && (
         <div className="sticky top-0 z-10 bg-background border-b px-3 py-2">
           <div className="flex items-center">
             <span className="text-sm text-muted-foreground whitespace-nowrap">
@@ -220,7 +223,7 @@ export function CommitHistoryPanel({
           <div className="flex items-center justify-center h-full">
             <Loader />
           </div>
-        ) : !commits || commits.length === 0 ? (
+        ) : commits.length === 0 ? (
           <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
             {t('commit.noCommits')}
           </div>
@@ -235,6 +238,23 @@ export function CommitHistoryPanel({
                 onViewDiff={onViewDiff}
               />
             ))}
+            {hasNextPage && (
+              <div className="flex justify-center py-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fetchNextPage()}
+                  disabled={isFetchingNextPage}
+                >
+                  {isFetchingNextPage ? (
+                    <Loader className="h-4 w-4 mr-2" />
+                  ) : null}
+                  {isFetchingNextPage
+                    ? t('commit.loadingMore', 'Loading...')
+                    : t('commit.loadMore', 'Load More')}
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>

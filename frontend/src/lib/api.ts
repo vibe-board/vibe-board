@@ -3,7 +3,6 @@
 import {
   ApprovalStatus,
   ApiResponse,
-  CommitInfo,
   Config,
   CreateFollowUpAttempt,
   ResetProcessRequest,
@@ -82,6 +81,7 @@ import {
   CreateFromPrError,
   Diff,
   PaginatedTaskHistory,
+  CommitHistoryResponse,
 } from 'shared/types';
 import type { WorkspaceWithSession } from '@/types/attempt';
 import { createWorkspaceWithSession } from '@/types/attempt';
@@ -837,12 +837,13 @@ export const attemptsApi = {
   getCommitHistory: async (
     attemptId: string,
     repoId: string,
-    limit: number = 50
-  ): Promise<CommitInfo[]> => {
+    limit: number = 50,
+    skip: number = 0
+  ): Promise<CommitHistoryResponse> => {
     const response = await makeRequest(
-      `/api/task-attempts/${attemptId}/commits?repo_id=${repoId}&limit=${limit}`
+      `/api/task-attempts/${attemptId}/commits?repo_id=${repoId}&limit=${limit}&skip=${skip}`
     );
-    return handleApiResponse<CommitInfo[]>(response);
+    return handleApiResponse<CommitHistoryResponse>(response);
   },
 
   /** Get diff for a specific commit */

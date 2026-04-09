@@ -40,7 +40,7 @@ use executors::{
     executors::{CodingAgent, ExecutorError},
     profile::{ExecutorConfigs, ExecutorProfileId},
 };
-use git::{CommitInfo, ConflictOp, GitCliError, GitService, GitServiceError};
+use git::{ConflictOp, GitCliError, GitService, GitServiceError};
 use git2::BranchType;
 use serde::{Deserialize, Serialize};
 use services::services::{
@@ -1159,6 +1159,8 @@ pub struct CommitHistoryQuery {
     pub repo_id: Uuid,
     #[serde(default = "default_commit_limit")]
     pub limit: usize,
+    #[serde(default)]
+    pub skip: usize,
 }
 
 fn default_commit_limit() -> usize {
@@ -1170,7 +1172,7 @@ pub async fn get_commit_history(
     Extension(workspace): Extension<Workspace>,
     State(deployment): State<DeploymentImpl>,
     Query(query): Query<CommitHistoryQuery>,
-) -> Result<ResponseJson<ApiResponse<Vec<CommitInfo>>>, ApiError> {
+) -> Result<ResponseJson<ApiResponse<git::CommitHistoryResponse>>, ApiError> {
     let pool = &deployment.db().pool;
     let workspace_repo =
         WorkspaceRepo::find_by_workspace_and_repo_id(pool, workspace.id, query.repo_id)
@@ -1188,14 +1190,28 @@ pub async fn get_commit_history(
     let worktree_path = repo_worktree_path(workspace_path, &workspace, &repo);
 
     let git_service = GitService::new();
-    let commits = git_service.get_commit_history(
-        &worktree_path,
-        &workspace.branch,
-        &workspace_repo.target_branch,
-        query.limit,
-    )?;
 
-    Ok(ResponseJson(ApiResponse::success(commits)))
+    let response = if workspace.mode == WorkspaceMode::Direct {
+        git_service.get_commit_history_all(
+            &worktree_path,
+            &workspace.branch,
+            query.skip,
+            query.limit,
+        )?
+    } else {
+        let commits = git_service.get_commit_history(
+            &worktree_path,
+            &workspace.branch,
+            &workspace_repo.target_branch,
+            query.limit,
+        )?;
+        git::CommitHistoryResponse {
+            commits,
+            has_more: false,
+        }
+    };
+
+    Ok(ResponseJson(ApiResponse::success(response)))
 }
 
 #[derive(Debug, Deserialize)]

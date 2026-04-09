@@ -537,71 +537,128 @@ const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
                         )}
                       </form.Field>
                       {isSingleRepo && (
-                        <form.Field name="repoBranches">
-                          {(field) => {
-                            const config = repoBranchConfigs[0];
-                            const selectedBranch =
-                              field.state.value.find(
-                                (v) => v.repoId === config.repoId
-                              )?.branch ?? config.targetBranch;
+                        <form.Field name="workspaceMode">
+                          {(wmField) => {
+                            if (wmField.state.value === 'direct') {
+                              const config = repoBranchConfigs[0];
+                              const currentBranch = config.branches.find(
+                                (b) => b.is_current
+                              );
+                              return currentBranch ? (
+                                <div className="flex items-center gap-1 text-sm text-muted-foreground px-1">
+                                  <span>{currentBranch.name}</span>
+                                </div>
+                              ) : null;
+                            }
                             return (
-                              <div
-                                className={cn(
-                                  'flex-1 min-w-0',
-                                  isSubmitting &&
-                                    'opacity-50 pointer-events-none'
-                                )}
-                              >
-                                <BranchSelector
-                                  branches={config.branches}
-                                  selectedBranch={selectedBranch}
-                                  onBranchSelect={(branch) => {
-                                    field.handleChange([
-                                      { repoId: config.repoId, branch },
-                                    ]);
-                                  }}
-                                  placeholder={
-                                    branchesLoading
-                                      ? t('createAttemptDialog.loadingBranches')
-                                      : t('createAttemptDialog.selectBranch')
-                                  }
-                                />
-                              </div>
+                              <form.Field name="repoBranches">
+                                {(field) => {
+                                  const config = repoBranchConfigs[0];
+                                  const selectedBranch =
+                                    field.state.value.find(
+                                      (v) => v.repoId === config.repoId
+                                    )?.branch ?? config.targetBranch;
+                                  return (
+                                    <div
+                                      className={cn(
+                                        'flex-1 min-w-0',
+                                        isSubmitting &&
+                                          'opacity-50 pointer-events-none'
+                                      )}
+                                    >
+                                      <BranchSelector
+                                        branches={config.branches}
+                                        selectedBranch={selectedBranch}
+                                        onBranchSelect={(branch) => {
+                                          field.handleChange([
+                                            { repoId: config.repoId, branch },
+                                          ]);
+                                        }}
+                                        placeholder={
+                                          branchesLoading
+                                            ? t(
+                                                'createAttemptDialog.loadingBranches'
+                                              )
+                                            : t(
+                                                'createAttemptDialog.selectBranch'
+                                              )
+                                        }
+                                      />
+                                    </div>
+                                  );
+                                }}
+                              </form.Field>
                             );
                           }}
                         </form.Field>
                       )}
                     </div>
                     {!isSingleRepo && (
-                      <form.Field name="repoBranches">
-                        {(field) => {
-                          const configs = repoBranchConfigs.map((config) => ({
-                            ...config,
-                            targetBranch:
-                              field.state.value.find(
-                                (v) => v.repoId === config.repoId
-                              )?.branch ?? config.targetBranch,
-                          }));
+                      <form.Field name="workspaceMode">
+                        {(wmField) => {
+                          if (wmField.state.value === 'direct') {
+                            return (
+                              <div className="text-sm text-muted-foreground px-1">
+                                {repoBranchConfigs.map((config) => {
+                                  const currentBranch = config.branches.find(
+                                    (b) => b.is_current
+                                  );
+                                  return currentBranch ? (
+                                    <div
+                                      key={config.repoId}
+                                      className="flex items-center gap-1"
+                                    >
+                                      <span className="font-medium">
+                                        {config.repoDisplayName}:
+                                      </span>
+                                      <span>{currentBranch.name}</span>
+                                    </div>
+                                  ) : null;
+                                })}
+                              </div>
+                            );
+                          }
                           return (
-                            <RepoBranchSelector
-                              configs={configs}
-                              onBranchChange={(repoId, branch) => {
-                                const newValue = field.state.value.map((v) =>
-                                  v.repoId === repoId ? { ...v, branch } : v
+                            <form.Field name="repoBranches">
+                              {(field) => {
+                                const configs = repoBranchConfigs.map(
+                                  (config) => ({
+                                    ...config,
+                                    targetBranch:
+                                      field.state.value.find(
+                                        (v) => v.repoId === config.repoId
+                                      )?.branch ?? config.targetBranch,
+                                  })
                                 );
-                                if (
-                                  !newValue.find((v) => v.repoId === repoId)
-                                ) {
-                                  newValue.push({ repoId, branch });
-                                }
-                                field.handleChange(newValue);
+                                return (
+                                  <RepoBranchSelector
+                                    configs={configs}
+                                    onBranchChange={(repoId, branch) => {
+                                      const newValue = field.state.value.map(
+                                        (v) =>
+                                          v.repoId === repoId
+                                            ? { ...v, branch }
+                                            : v
+                                      );
+                                      if (
+                                        !newValue.find(
+                                          (v) => v.repoId === repoId
+                                        )
+                                      ) {
+                                        newValue.push({ repoId, branch });
+                                      }
+                                      field.handleChange(newValue);
+                                    }}
+                                    isLoading={branchesLoading}
+                                    showLabel={true}
+                                    className={cn(
+                                      isSubmitting &&
+                                        'opacity-50 pointer-events-none'
+                                    )}
+                                  />
+                                );
                               }}
-                              isLoading={branchesLoading}
-                              showLabel={true}
-                              className={cn(
-                                isSubmitting && 'opacity-50 pointer-events-none'
-                              )}
-                            />
+                            </form.Field>
                           );
                         }}
                       </form.Field>

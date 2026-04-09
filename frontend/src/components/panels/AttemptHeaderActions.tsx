@@ -26,6 +26,7 @@ interface AttemptHeaderActionsProps {
   onModeChange?: (mode: LayoutMode) => void;
   task: Task;
   attempt?: WorkspaceWithSession | null;
+  isDirect?: boolean;
 }
 
 export const AttemptHeaderActions = ({
@@ -34,6 +35,7 @@ export const AttemptHeaderActions = ({
   onModeChange,
   task,
   attempt,
+  isDirect,
 }: AttemptHeaderActionsProps) => {
   const { t } = useTranslation('tasks');
   const posthog = usePostHog();
@@ -103,20 +105,22 @@ export const AttemptHeaderActions = ({
               </TooltipContent>
             </Tooltip>
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <ToggleGroupItem
-                  value="diffs"
-                  aria-label="Diffs"
-                  active={mode === 'diffs'}
-                >
-                  <FileDiff className="h-4 w-4" />
-                </ToggleGroupItem>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {t('attemptHeaderActions.diffs')}
-              </TooltipContent>
-            </Tooltip>
+            {!isDirect && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <ToggleGroupItem
+                    value="diffs"
+                    aria-label="Diffs"
+                    active={mode === 'diffs'}
+                  >
+                    <FileDiff className="h-4 w-4" />
+                  </ToggleGroupItem>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {t('attemptHeaderActions.diffs')}
+                </TooltipContent>
+              </Tooltip>
+            )}
 
             <Tooltip>
               <TooltipTrigger asChild>
