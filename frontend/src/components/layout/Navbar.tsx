@@ -26,6 +26,7 @@ import {
   LogIn,
   Monitor,
   ArrowLeftRight,
+  SquareTerminal,
 } from 'lucide-react';
 import { Logo } from '@/components/Logo';
 import { SearchBar } from '@/components/SearchBar';
@@ -48,6 +49,9 @@ import { OAuthDialog } from '@/components/dialogs/global/OAuthDialog';
 import { useUserSystem } from '@/components/ConfigProvider';
 import { oauthApi } from '@/lib/api';
 import { useGateway } from '@/contexts/GatewayContext';
+import { cn } from '@/lib/utils';
+import { useTerminalDrawer } from '@/contexts/TerminalDrawerContext';
+import { useHomeDir } from '@/hooks/useHomeDir';
 
 const INTERNAL_NAV = [
   { label: 'Projects', icon: FolderOpen, to: '/local-projects' },
@@ -107,6 +111,17 @@ export function Navbar() {
 
   const { data: repos } = useProjectRepos(projectId);
   const isSingleRepoProject = repos?.length === 1;
+  const { isDrawerOpen, toggleDrawer } = useTerminalDrawer();
+  const { data: homeDirData } = useHomeDir();
+
+  const handleToggleTerminal = useCallback(() => {
+    if (projectId && repos?.length) {
+      const repoPath = String(repos[0].path);
+      toggleDrawer(repoPath, `project-terminal:${projectId}`);
+    } else if (homeDirData?.home_dir) {
+      toggleDrawer(homeDirData.home_dir, 'global-terminal');
+    }
+  }, [projectId, repos, homeDirData, toggleDrawer]);
 
   const setSearchBarRef = useCallback(
     (node: HTMLInputElement | null) => {
@@ -294,6 +309,16 @@ export function Navbar() {
             <NavDivider /> */}
 
             <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn('h-9 w-9', isDrawerOpen && 'bg-accent')}
+                onClick={handleToggleTerminal}
+                disabled={!homeDirData?.home_dir && !repos?.length}
+                aria-label="Toggle terminal"
+              >
+                <SquareTerminal className="h-4 w-4" />
+              </Button>
               <Button
                 variant="ghost"
                 size="icon"

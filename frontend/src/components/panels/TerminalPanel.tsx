@@ -7,12 +7,17 @@ interface TerminalPanelProps {
   workspaceId: string;
   taskId: string;
   cwd: string | null;
+  /** Build the base endpoint URL for a terminal tab.
+   *  If not provided, defaults to workspace-based endpoint.
+   */
+  buildEndpointUrl?: (cwd: string) => string;
 }
 
 export function TerminalPanel({
   workspaceId,
   taskId,
   cwd,
+  buildEndpointUrl,
 }: TerminalPanelProps) {
   const {
     getTabsForWorkspace,
@@ -70,16 +75,21 @@ export function TerminalPanel({
         onNewTab={() => cwd && createTab(workspaceId, taskId, cwd)}
       />
       <div className="flex-1 min-h-0 overflow-hidden">
-        {tabs.map((tab) => (
-          <XTermInstance
-            key={tab.id}
-            workspaceId={workspaceId}
-            isActive={tab.id === activeTab?.id}
-            onClose={() => closeTab(workspaceId, tab.id)}
-            sessionId={tab.sessionId}
-            onSessionId={(sid) => setSessionId(workspaceId, tab.id, sid)}
-          />
-        ))}
+        {tabs.map((tab) => {
+          const endpointUrl = buildEndpointUrl
+            ? buildEndpointUrl(tab.cwd)
+            : `/api/terminal/ws?workspace_id=${workspaceId}`;
+          return (
+            <XTermInstance
+              key={tab.id}
+              endpointUrl={endpointUrl}
+              isActive={tab.id === activeTab?.id}
+              onClose={() => closeTab(workspaceId, tab.id)}
+              sessionId={tab.sessionId}
+              onSessionId={(sid) => setSessionId(workspaceId, tab.id, sid)}
+            />
+          );
+        })}
       </div>
     </div>
   );

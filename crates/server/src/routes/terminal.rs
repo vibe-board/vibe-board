@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use axum::{
-    Router,
+    Json, Router,
     extract::{
         Query, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -110,6 +110,72 @@ pub async fn terminal_ws(
             query.rows,
             query.session_id,
         )
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DirectTerminalQuery {
+    pub cwd: String,
+    pub session_id: Option<Uuid>,
+    #[serde(default = "default_cols")]
+    pub cols: u16,
+    #[serde(default = "default_rows")]
+    pub rows: u16,
+}
+
+pub async fn direct_terminal_ws(
+    ws: WebSocketUpgrade,
+    State(deployment): State<DeploymentImpl>,
+    Query(query): Query<DirectTerminalQuery>,
+) -> Result<impl IntoResponse, ApiError> {
+    let working_dir = PathBuf::from(&query.cwd);
+
+    // Validate: must be absolute
+    if !working_dir.is_absolute() {
+        return Err(ApiError::BadRequest(
+            "cwd must be an absolute path".to_string(),
+        ));
+    }
+
+    // Validate: no .. segments
+    for component in working_dir.components() {
+        if matches!(component, std::path::Component::ParentDir) {
+            return Err(ApiError::BadRequest(
+                "cwd must not contain '..' segments".to_string(),
+            ));
+        }
+    }
+
+    // Validate: exists and is a directory
+    if !working_dir.is_dir() {
+        return Err(ApiError::BadRequest(
+            "cwd does not exist or is not a directory".to_string(),
+        ));
+    }
+
+    Ok(ws.on_upgrade(move |socket| {
+        handle_terminal_ws(
+            socket,
+            deployment,
+            working_dir,
+            query.cols,
+            query.rows,
+            query.session_id,
+        )
+    }))
+}
+
+#[derive(Debug, Serialize)]
+pub struct HomeDirResponse {
+    pub home_dir: String,
+}
+
+pub async fn get_home_dir() -> Result<Json<HomeDirResponse>, ApiError> {
+    let home = dirs::home_dir()
+        .ok_or_else(|| ApiError::BadRequest("Could not determine home directory".to_string()))?;
+
+    Ok(Json(HomeDirResponse {
+        home_dir: home.to_string_lossy().to_string(),
     }))
 }
 
@@ -306,5 +372,8 @@ async fn send_error(mut socket: WebSocket, message: &str) -> Result<(), axum::Er
 }
 
 pub fn router() -> Router<DeploymentImpl> {
-    Router::new().route("/terminal/ws", get(terminal_ws))
+    Router::new()
+        .route("/terminal/ws", get(terminal_ws))
+        .route("/terminal/direct-ws", get(direct_terminal_ws))
+        .route("/terminal/home-dir", get(get_home_dir))
 }

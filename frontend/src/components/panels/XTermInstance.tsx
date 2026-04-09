@@ -10,7 +10,7 @@ import { getGatewayConnection } from '@/lib/gatewayMode';
 import type { RemoteWs } from '@/lib/e2ee/remoteWs';
 
 interface XTermInstanceProps {
-  workspaceId: string;
+  endpointUrl: string;
   isActive: boolean;
   onClose?: () => void;
   /** Backend PTY session ID for reconnection */
@@ -81,7 +81,7 @@ function ensureViewportReady(
 }
 
 export function XTermInstance({
-  workspaceId,
+  endpointUrl,
   isActive,
   onClose,
   sessionId,
@@ -97,12 +97,12 @@ export function XTermInstance({
   const endpoint = useMemo(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
-    let url = `${protocol}//${host}/api/terminal/ws?workspace_id=${workspaceId}&cols=${initialSizeRef.current.cols}&rows=${initialSizeRef.current.rows}`;
+    let url = `${protocol}//${host}${endpointUrl}&cols=${initialSizeRef.current.cols}&rows=${initialSizeRef.current.rows}`;
     if (sessionId) {
       url += `&session_id=${sessionId}`;
     }
     return url;
-  }, [workspaceId, sessionId]);
+  }, [endpointUrl, sessionId]);
 
   // The actual init logic, called when container has dimensions
   const initTerminal = useCallback(() => {

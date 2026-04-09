@@ -1456,3 +1456,12 @@ export const searchApi = {
     return handleApiResponse<SearchResult[]>(response);
   },
 };
+
+// System APIs (raw JSON responses, not wrapped in ApiResponse)
+export const systemApi = {
+  getHomeDir: async (): Promise<{ home_dir: string }> => {
+    const response = await makeRequest('/api/terminal/home-dir');
+    const data = await response.json();
+    return data;
+  },
+};

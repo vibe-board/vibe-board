@@ -6587,6 +6587,7 @@ dependencies = [
  "clap",
  "db",
  "deployment",
+ "dirs 5.0.1",
  "dotenv",
  "e2ee-core",
  "executors",

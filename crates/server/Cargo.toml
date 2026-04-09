@@ -57,6 +57,7 @@ rpassword = "7"
 notify = "8.2.0"
 notify-debouncer-full = "0.5.0"
 qr2term = "0.3"
+dirs = "5.0"
 
 [dev-dependencies]
 tempfile = "3.21"
