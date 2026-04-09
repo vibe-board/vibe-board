@@ -95,32 +95,21 @@ Each workspace creates a **git worktree** - a separate working directory with a 
 
 ### Where Worktrees Are Stored
 
-Worktrees are stored in a platform-specific directory by default:
-
-| Platform | Default Location |
-|----------|-----------------|
-| **macOS** | `/var/folders/.../T/vibe-board/worktrees` (system temp) |
-| **Linux** | `/var/tmp/vibe-board/worktrees` |
-| **Windows** | `%TEMP%\vibe-board\worktrees` |
+Worktrees are stored in `~/.vibe-board/worktrees` by default on all platforms.
 
 You can configure a custom location in **Settings → General → Workspace Directory**. When set, worktrees are stored in `{your-path}/.vibe-board-workspaces`.
 
 ### Checking Disk Usage
 
 <Tabs>
-<Tab title="macOS">
+<Tab title="macOS / Linux">
 ```bash
-du -sh $TMPDIR/vibe-board/worktrees
-```
-</Tab>
-<Tab title="Linux">
-```bash
-du -sh /var/tmp/vibe-board/worktrees
+du -sh ~/.vibe-board/worktrees
 ```
 </Tab>
 <Tab title="Windows">
 ```powershell
-Get-ChildItem "$env:TEMP\vibe-board\worktrees" -Recurse | Measure-Object -Property Length -Sum
+Get-ChildItem "$env:USERPROFILE\.vibe-board\worktrees" -Recurse | Measure-Object -Property Length -Sum
 ```
 </Tab>
 </Tabs>

@@ -112,16 +112,10 @@ pub fn get_vibe_board_temp_dir() -> std::path::PathBuf {
         "vibe-board"
     };
 
-    if cfg!(target_os = "macos") {
-        // macOS already uses /var/folders/... which is persistent storage
-        std::env::temp_dir().join(dir_name)
-    } else if cfg!(target_os = "linux") {
-        // Linux: use /var/tmp instead of /tmp to avoid RAM usage
-        std::path::PathBuf::from("/var/tmp").join(dir_name)
-    } else {
-        // Windows and other platforms: use temp dir with vibe-board subdirectory
-        std::env::temp_dir().join(dir_name)
-    }
+    // All platforms: use home directory for persistent storage
+    dirs::home_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join(format!(".{dir_name}"))
 }
 
 /// Expand leading ~ to user's home directory.
