@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -102,6 +103,7 @@ const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
     []
   );
   const [showDiscardWarning, setShowDiscardWarning] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const forceCreateOnlyRef = useRef(false);
 
   const { data: taskImages } = useTaskImages(
@@ -169,51 +171,60 @@ const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
 
   // Form submission handler
   const handleSubmit = async ({ value }: { value: TaskFormValues }) => {
-    if (editMode) {
-      await updateTask.mutateAsync(
-        {
-          taskId: props.task.id,
-          data: {
-            title: value.title,
-            description: value.description,
-            status: value.status,
-            parent_workspace_id: null,
-            image_ids: images.length > 0 ? images.map((img) => img.id) : null,
-          },
-        },
-        { onSuccess: () => modal.remove() }
-      );
-    } else {
-      const imageIds =
-        newlyUploadedImageIds.length > 0 ? newlyUploadedImageIds : null;
-      const task = {
-        project_id: projectId,
-        title: value.title,
-        description: value.description,
-        status: null,
-        parent_workspace_id:
-          mode === 'subtask' ? props.parentTaskAttemptId : null,
-        image_ids: imageIds,
-        shared_task_id: null,
-      };
-      const shouldAutoStart = value.autoStart && !forceCreateOnlyRef.current;
-      if (shouldAutoStart) {
-        const repos = value.repoBranches.map((rb) => ({
-          repo_id: rb.repoId,
-          target_branch: rb.branch,
-        }));
-        await createAndStart.mutateAsync(
+    setSubmitError(null);
+    try {
+      if (editMode) {
+        await updateTask.mutateAsync(
           {
-            task,
-            executor_profile_id: value.executorProfileId!,
-            repos,
-            workspace_mode: value.workspaceMode,
+            taskId: props.task.id,
+            data: {
+              title: value.title,
+              description: value.description,
+              status: value.status,
+              parent_workspace_id: null,
+              image_ids: images.length > 0 ? images.map((img) => img.id) : null,
+            },
           },
           { onSuccess: () => modal.remove() }
         );
       } else {
-        await createTask.mutateAsync(task, { onSuccess: () => modal.remove() });
+        const imageIds =
+          newlyUploadedImageIds.length > 0 ? newlyUploadedImageIds : null;
+        const task = {
+          project_id: projectId,
+          title: value.title,
+          description: value.description,
+          status: null,
+          parent_workspace_id:
+            mode === 'subtask' ? props.parentTaskAttemptId : null,
+          image_ids: imageIds,
+          shared_task_id: null,
+        };
+        const shouldAutoStart = value.autoStart && !forceCreateOnlyRef.current;
+        if (shouldAutoStart) {
+          const repos = value.repoBranches.map((rb) => ({
+            repo_id: rb.repoId,
+            target_branch: rb.branch,
+          }));
+          await createAndStart.mutateAsync(
+            {
+              task,
+              executor_profile_id: value.executorProfileId!,
+              repos,
+              workspace_mode: value.workspaceMode,
+            },
+            { onSuccess: () => modal.remove() }
+          );
+        } else {
+          await createTask.mutateAsync(task, {
+            onSuccess: () => modal.remove(),
+          });
+        }
       }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : t('errors.createFailed');
+      setSubmitError(message);
     }
   };
 
@@ -238,7 +249,10 @@ const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
       // we use an onMount validator so that the primary action button can
       // enable/disable itself based on `canSubmit`
       onMount: ({ value }) => validator(value),
-      onChange: ({ value }) => validator(value),
+      onChange: ({ value }) => {
+        if (submitError) setSubmitError(null);
+        return validator(value);
+      },
     },
   });
 
@@ -425,6 +439,14 @@ const TaskFormDialogImpl = NiceModal.create<TaskFormDialogProps>((props) => {
                 </p>
               </div>
             </div>
+          )}
+
+          {/* Error message */}
+          {submitError && (
+            <Alert variant="destructive">
+              <AlertTitle>{t('common:error')}</AlertTitle>
+              <AlertDescription>{submitError}</AlertDescription>
+            </Alert>
           )}
 
           {/* Title */}
