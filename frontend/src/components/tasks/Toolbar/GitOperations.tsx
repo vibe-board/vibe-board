@@ -241,6 +241,8 @@ function GitOperations({
       });
       setMergeSuccess(true);
       setTimeout(() => setMergeSuccess(false), 2000);
+    } catch {
+      // Error already handled by useMerge onError → setMergeError
     } finally {
       setMerging(false);
     }

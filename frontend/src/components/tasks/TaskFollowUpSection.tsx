@@ -36,6 +36,7 @@ import { cn } from '@/lib/utils';
 import { useReview } from '@/contexts/ReviewProvider';
 import { useClickedElements } from '@/contexts/ClickedElementsProvider';
 import { useEntries } from '@/contexts/EntriesContext';
+import { useGitOperationsError } from '@/contexts/GitOperationsContext';
 import { useKeySubmitFollowUp, Scope } from '@/keyboard';
 import { useHotkeysContext } from 'react-hotkeys-hook';
 import { useProject } from '@/contexts/ProjectContext';
@@ -396,6 +397,7 @@ export function TaskFollowUpSection({
     }, [entries]);
 
   const { answer: submitQuestionAnswer } = useApprovalMutation();
+  const { setMergeError } = useGitOperationsError();
 
   // Send follow-up action
   const { isSendingFollowUp, followUpError, setFollowUpError, onSendFollowUp } =
@@ -412,6 +414,7 @@ export function TaskFollowUpSection({
       clearClickedElements,
       onBeforeSend: () => {
         cancelDebouncedSave(); // Cancel pending save BEFORE HTTP request to prevent race condition
+        setMergeError(null); // Clear any persisted merge error — user is starting a new conversation
       },
       onAfterSendCleanup: () => {
         setLocalMessage(''); // Clear local state immediately

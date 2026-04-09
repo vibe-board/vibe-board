@@ -12,7 +12,7 @@ export function useGitOperations(
   attemptId: string | undefined,
   repoId: string | undefined
 ) {
-  const { setError } = useGitOperationsError();
+  const { setError, setMergeError } = useGitOperationsError();
 
   const rebase = useRebase(
     attemptId,
@@ -33,13 +33,13 @@ export function useGitOperations(
 
   const merge = useMerge(
     attemptId,
-    () => setError(null),
+    () => setMergeError(null),
     (err: unknown) => {
       const message =
         err && typeof err === 'object' && 'message' in err
           ? String(err.message)
           : 'Failed to merge';
-      setError(message);
+      setMergeError(message);
     }
   );
 

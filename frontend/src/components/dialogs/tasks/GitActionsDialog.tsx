@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { ExternalLink, GitPullRequest } from 'lucide-react';
+import { ExternalLink, GitPullRequest, X } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -40,7 +40,8 @@ function GitActionsDialogContent({
     attempt.id
   );
   const { isAttemptRunning } = useAttemptExecution(attempt.id);
-  const { error: gitError } = useGitOperationsError();
+  const { error, mergeError, setMergeError } = useGitOperationsError();
+  const gitError = mergeError || error;
   const { repos, selectedRepoId } = useAttemptRepo(attempt.id);
 
   const getSelectedRepoStatus = () => {
@@ -78,8 +79,16 @@ function GitActionsDialogContent({
         </div>
       )}
       {gitError && (
-        <div className="p-3 border border-destructive rounded text-destructive text-sm">
-          {gitError}
+        <div className="p-3 border border-destructive rounded text-destructive text-sm flex items-center justify-between gap-2">
+          <span>{gitError}</span>
+          {mergeError && (
+            <button
+              onClick={() => setMergeError(null)}
+              className="shrink-0 text-destructive/60 hover:text-destructive"
+            >
+              <X size={14} />
+            </button>
+          )}
         </div>
       )}
       <GitOperations

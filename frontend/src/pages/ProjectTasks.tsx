@@ -11,6 +11,7 @@ import {
   ExternalLink,
   Plus,
   Sparkles,
+  X,
 } from 'lucide-react';
 import { Loader } from '@/components/ui/loader';
 import { tasksApi } from '@/lib/api';
@@ -102,13 +103,22 @@ const normalizeStatus = (status: string): TaskStatus =>
   status.toLowerCase() as TaskStatus;
 
 function GitErrorBanner() {
-  const { error: gitError } = useGitOperationsError();
+  const { error, mergeError, setMergeError } = useGitOperationsError();
+  const displayError = mergeError || error;
 
-  if (!gitError) return null;
+  if (!displayError) return null;
 
   return (
-    <div className="mx-4 mt-4 p-3 border border-destructive rounded">
-      <div className="text-destructive text-sm">{gitError}</div>
+    <div className="mx-4 mt-4 p-3 border border-destructive rounded flex items-center justify-between gap-2">
+      <div className="text-destructive text-sm">{displayError}</div>
+      {mergeError && (
+        <button
+          onClick={() => setMergeError(null)}
+          className="shrink-0 text-destructive/60 hover:text-destructive"
+        >
+          <X size={14} />
+        </button>
+      )}
     </div>
   );
 }
