@@ -223,10 +223,16 @@ pub async fn create_task_and_start(
         .await;
 
     let attempt_id = Uuid::new_v4();
-    let git_branch_name = deployment
-        .container()
-        .git_branch_from_workspace(&attempt_id, &task.title)
-        .await;
+    let git_branch_name = if workspace_mode == WorkspaceMode::Direct {
+        // Direct mode works on the existing branch — use the first repo's target branch
+        // instead of generating a new branch name that would never be created.
+        payload.repos[0].target_branch.clone()
+    } else {
+        deployment
+            .container()
+            .git_branch_from_workspace(&attempt_id, &task.title)
+            .await
+    };
 
     // Compute agent_working_dir based on repo count and workspace mode:
     // - Single repo, worktree mode: join repo name with default_working_dir (if set), or just repo name

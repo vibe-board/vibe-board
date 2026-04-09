@@ -1043,14 +1043,14 @@ pub async fn get_task_attempt_branch_status(
 
     let mut results = Vec::with_capacity(repositories.len());
 
-    for repo in repositories {
+    for repo in &repositories {
         let Some(target_branch) = target_branches.get(&repo.id).cloned() else {
             continue;
         };
 
         let repo_merges = merges_by_repo.get(&repo.id).cloned().unwrap_or_default();
 
-        let worktree_path = workspace_dir.join(&repo.name);
+        let worktree_path = repo_worktree_path(&workspace_dir, &workspace, repo);
 
         let head_oid = deployment
             .git()
@@ -1131,7 +1131,7 @@ pub async fn get_task_attempt_branch_status(
 
         results.push(RepoBranchStatus {
             repo_id: repo.id,
-            repo_name: repo.name,
+            repo_name: repo.name.clone(),
             status: BranchStatus {
                 commits_ahead,
                 commits_behind,
