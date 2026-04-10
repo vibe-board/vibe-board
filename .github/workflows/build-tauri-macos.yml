@@ -39,10 +39,8 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Install system dependencies
-        run: |
-          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+        with:
+          targets: aarch64-apple-darwin
 
       - name: Cache Cargo
         uses: actions/cache@v5
@@ -76,10 +74,12 @@ jobs:
           cd tauri-client
           pnpm build
 
-      - name: Build Tauri macOS app
+      - name: Build Tauri macOS app (arm64)
         run: |
           cd tauri-client
-          pnpm tauri build --target universal-apple-darwin
+          pnpm tauri build --target aarch64-apple-darwin
+        env:
+          MACOSX_DEPLOYMENT_TARGET: 11.0
 
       - name: List build artifacts
         run: |
@@ -87,21 +87,21 @@ jobs:
           find tauri-client/src-tauri/target -name "*.dmg" -type f 2>/dev/null || true
           echo "=== APP bundles ==="
           find tauri-client/src-tauri/target -name "*.app" -type d 2>/dev/null || true
-          echo "=== All release artifacts ==="
-          find tauri-client/src-tauri/target/universal-apple-darwin/release/bundle -type f 2>/dev/null || true
+          echo "=== Bundle directory ==="
+          find tauri-client/src-tauri/target/aarch64-apple-darwin/release/bundle -type f 2>/dev/null || true
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v6
         with:
-          name: vibe-board-macos-dmg
-          path: tauri-client/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          name: vibe-board-macos-arm64-dmg
+          path: tauri-client/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
           retention-days: 7
           if-no-files-found: warn
 
       - name: Upload APP artifact
         uses: actions/upload-artifact@v6
         with:
-          name: vibe-board-macos-app
-          path: tauri-client/src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app
+          name: vibe-board-macos-arm64-app
+          path: tauri-client/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app
           retention-days: 7
           if-no-files-found: warn
