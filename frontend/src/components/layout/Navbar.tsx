@@ -4,7 +4,7 @@ import {
   useNavigate,
   useSearchParams,
 } from 'react-router-dom';
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { siDiscord } from 'simple-icons';
 import { Button } from '@/components/ui/button';
 import {
@@ -111,8 +111,19 @@ export function Navbar() {
 
   const { data: repos } = useProjectRepos(projectId);
   const isSingleRepoProject = repos?.length === 1;
-  const { isDrawerOpen, toggleDrawer } = useTerminalDrawer();
+  const { isDrawerOpen, drawerWorkspaceId, closeDrawer, toggleDrawer } =
+    useTerminalDrawer();
   const { data: homeDirData } = useHomeDir();
+
+  // Close project terminal when navigating away from that project
+  useEffect(() => {
+    if (!isDrawerOpen) return;
+    if (!drawerWorkspaceId.startsWith('project-terminal:')) return;
+    const drawerProjectId = drawerWorkspaceId.replace('project-terminal:', '');
+    if (drawerProjectId !== projectId) {
+      closeDrawer();
+    }
+  }, [projectId, isDrawerOpen, drawerWorkspaceId, closeDrawer]);
 
   const handleToggleTerminal = useCallback(() => {
     if (projectId && repos?.length) {
