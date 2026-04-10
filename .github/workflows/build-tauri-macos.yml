@@ -1,0 +1,101 @@
+name: Build Tauri macOS App
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: tauri-macos-${{ github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: 22
+  PNPM_VERSION: 10.13.1
+
+jobs:
+  build-tauri-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Cache Cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            ~/.cargo/git/db
+            ~/.cargo/bin
+          key: cargo-tauri-macos-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-tauri-macos-${{ runner.os }}-
+
+      - name: Cache pnpm store
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.pnpm-store
+            tauri-client/node_modules
+          key: pnpm-tauri-macos-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-tauri-macos-
+
+      - name: Install dependencies
+        run: |
+          cd tauri-client
+          pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        run: |
+          cd tauri-client
+          pnpm build
+
+      - name: Build Tauri macOS app
+        run: |
+          cd tauri-client
+          pnpm tauri build --target universal-apple-darwin
+
+      - name: List build artifacts
+        run: |
+          echo "=== DMG files ==="
+          find tauri-client/src-tauri/target -name "*.dmg" -type f 2>/dev/null || true
+          echo "=== APP bundles ==="
+          find tauri-client/src-tauri/target -name "*.app" -type d 2>/dev/null || true
+          echo "=== All release artifacts ==="
+          find tauri-client/src-tauri/target/universal-apple-darwin/release/bundle -type f 2>/dev/null || true
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: vibe-board-macos-dmg
+          path: tauri-client/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload APP artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: vibe-board-macos-app
+          path: tauri-client/src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app
+          retention-days: 7
+          if-no-files-found: warn

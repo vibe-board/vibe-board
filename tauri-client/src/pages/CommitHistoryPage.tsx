@@ -42,10 +42,11 @@ export default function CommitHistoryPage() {
   const { data: repos } = useAttemptRepos(attemptId ?? '');
   const repoId = repos?.[0]?.id ?? '';
 
-  const { data: commits, isLoading: commitsLoading } = useAttemptCommits(
+  const { data: commitsResponse, isLoading: commitsLoading } = useAttemptCommits(
     attemptId ?? '',
     repoId || undefined,
   );
+  const commits = commitsResponse?.commits;
 
   const { data: commitDiffs, isLoading: diffLoading } = useCommitDiff(
     attemptId ?? '',

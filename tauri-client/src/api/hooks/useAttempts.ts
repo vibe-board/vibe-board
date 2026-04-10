@@ -11,7 +11,7 @@ import type {
   TaskRelationships,
   CreateTaskAttemptBody,
   Diff,
-  CommitInfo,
+  CommitHistoryResponse,
   CreateFollowUpAttempt,
   RunAgentSetupRequest,
   RunAgentSetupResponse,
@@ -142,16 +142,16 @@ export function useAttemptCommits(
   id: string,
   repoId?: string,
   options?: Omit<
-    UseQueryOptions<CommitInfo[], ApiError>,
+    UseQueryOptions<CommitHistoryResponse, ApiError>,
     'queryKey' | 'queryFn'
   >,
 ) {
-  return useQuery<CommitInfo[], ApiError>({
+  return useQuery<CommitHistoryResponse, ApiError>({
     queryKey: attemptKeys.commits(id, repoId),
     queryFn: () => {
       const params: Record<string, string> = {};
       if (repoId) params.repo_id = repoId;
-      return apiClient.get<CommitInfo[]>(
+      return apiClient.get<CommitHistoryResponse>(
         `/task-attempts/${id}/commits`,
         params,
       );
