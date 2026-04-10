@@ -74,39 +74,59 @@ jobs:
           cd tauri-client
           pnpm build
 
-      - name: Debug dist directory
-        run: |
-          echo "=== Repo root dist ==="
-          ls -la dist/ 2>/dev/null || echo "No dist at repo root"
-          echo "=== tauri-client/dist ==="
-          ls -la tauri-client/dist/ 2>/dev/null || echo "No dist at tauri-client/dist"
-          echo "=== frontendDist resolution from src-tauri ==="
-          echo "tauri.conf.json frontendDist: ../../dist"
-          echo "Resolved: $(cd tauri-client/src-tauri && realpath ../../dist 2>/dev/null || echo 'not found')"
-
-      - name: Build Tauri macOS app (arm64)
+      - name: Build Tauri binary only (no bundling)
         run: |
           cd tauri-client
-          pnpm tauri build --target aarch64-apple-darwin
+          pnpm tauri build --target aarch64-apple-darwin --bundles none
         env:
           MACOSX_DEPLOYMENT_TARGET: 11.0
 
+      - name: Create .app bundle manually
+        run: |
+          BINARY="tauri-client/src-tauri/target/aarch64-apple-darwin/release/vibe-board-mobile"
+          APP_DIR="tauri-client/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Vibe Board.app"
+          mkdir -p "${APP_DIR}/Contents/MacOS"
+          mkdir -p "${APP_DIR}/Contents/Resources"
+          cp "${BINARY}" "${APP_DIR}/Contents/MacOS/Vibe Board"
+          chmod +x "${APP_DIR}/Contents/MacOS/Vibe Board"
+          cat > "${APP_DIR}/Contents/Info.plist" << 'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleExecutable</key>
+            <string>Vibe Board</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.vibe-board.app</string>
+            <key>CFBundleName</key>
+            <string>Vibe Board</string>
+            <key>CFBundleVersion</key>
+            <string>0.1.0</string>
+            <key>CFBundleShortVersionString</key>
+            <string>0.1.0</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>11.0</string>
+          </dict>
+          </plist>
+          PLIST
+          echo "Created .app bundle:"
+          ls -la "${APP_DIR}/Contents/MacOS/"
+
       - name: List build artifacts
         run: |
-          echo "=== DMG files ==="
-          find tauri-client/src-tauri/target -name "*.dmg" -type f 2>/dev/null || true
-          echo "=== APP bundles ==="
+          echo "=== Binary ==="
+          ls -la tauri-client/src-tauri/target/aarch64-apple-darwin/release/vibe-board-mobile 2>/dev/null || echo "No binary"
+          echo "=== APP bundle ==="
           find tauri-client/src-tauri/target -name "*.app" -type d 2>/dev/null || true
-          echo "=== Bundle directory ==="
-          find tauri-client/src-tauri/target/aarch64-apple-darwin/release/bundle -type f 2>/dev/null || true
 
-      - name: Upload DMG artifact
+      - name: Upload binary artifact
         uses: actions/upload-artifact@v6
         with:
-          name: vibe-board-macos-arm64-dmg
-          path: tauri-client/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+          name: vibe-board-macos-arm64-binary
+          path: tauri-client/src-tauri/target/aarch64-apple-darwin/release/vibe-board-mobile
           retention-days: 7
-          if-no-files-found: warn
 
       - name: Upload APP artifact
         uses: actions/upload-artifact@v6
