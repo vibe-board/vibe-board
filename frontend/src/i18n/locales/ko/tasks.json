@@ -27,6 +27,8 @@
     "createSubtask": "Create subtask",
     "duplicate": "Duplicate",
     "editBranchName": "브랜치 이름 편집",
+    "copyRunCommand": "실행 명령어 복사",
+    "commandCopied": "복사됨!",
     "gitActions": "Git 작업",
     "openInIde": "Open attempt in IDE",
     "task": "Task",

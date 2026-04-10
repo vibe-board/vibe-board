@@ -27,6 +27,8 @@
     "createSubtask": "Create subtask",
     "duplicate": "Duplicate",
     "editBranchName": "ブランチ名を編集",
+    "copyRunCommand": "実行コマンドをコピー",
+    "commandCopied": "コピーしました！",
     "gitActions": "Gitアクション",
     "openInIde": "Open attempt in IDE",
     "task": "Task",

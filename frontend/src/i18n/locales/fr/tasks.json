@@ -510,6 +510,8 @@
     "createSubtask": "Créer une sous-tâche",
     "gitActions": "Actions Git",
     "editBranchName": "Modifier le nom de la branche",
+    "copyRunCommand": "Copier la commande d'exécution",
+    "commandCopied": "Copié !",
     "startReview": "Démarrer la révision",
     "startingReview": "Démarrage de la révision...",
     "task": "Tâche",

@@ -27,6 +27,8 @@
     "createSubtask": "Create subtask",
     "duplicate": "Duplicate",
     "editBranchName": "Editar nombre de rama",
+    "copyRunCommand": "Copiar comando de ejecución",
+    "commandCopied": "¡Copiado!",
     "gitActions": "Acciones de Git",
     "openInIde": "Open attempt in IDE",
     "task": "Task",

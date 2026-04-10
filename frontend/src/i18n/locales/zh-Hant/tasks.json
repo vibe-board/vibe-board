@@ -433,6 +433,8 @@
     "createSubtask": "建立子任務",
     "gitActions": "Git 操作",
     "editBranchName": "編輯分支名稱",
+    "copyRunCommand": "複製執行命令",
+    "commandCopied": "已複製！",
     "task": "任務",
     "duplicate": "複製",
     "startReview": "開始審查",
