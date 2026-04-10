@@ -589,7 +589,8 @@
     "workspaceModeDirect": "直接（原地）"
   },
   "terminal": {
-    "selectWorkspace": "選擇一個工作區以開啟終端機"
+    "selectWorkspace": "選擇一個工作區以開啟終端機",
+    "workspaceCleanedUp": "工作區目錄已被清理。已完成或已取消的任務無法使用終端機。"
   },
   "restoreLogsDialog": {
     "title": "確認重試",

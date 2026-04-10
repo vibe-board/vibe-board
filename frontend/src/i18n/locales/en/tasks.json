@@ -666,7 +666,8 @@
     "workspaceModeDirect": "Direct (in-place)"
   },
   "terminal": {
-    "selectWorkspace": "Select a workspace to open terminal"
+    "selectWorkspace": "Select a workspace to open terminal",
+    "workspaceCleanedUp": "The workspace directory has been cleaned up. Terminal is not available for completed or cancelled tasks."
   },
   "restoreLogsDialog": {
     "title": "Confirm Retry",

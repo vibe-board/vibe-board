@@ -666,7 +666,8 @@
     "workspaceModeDirect": "Direct (sur place)"
   },
   "terminal": {
-    "selectWorkspace": "Sélectionnez un espace de travail pour ouvrir le terminal"
+    "selectWorkspace": "Sélectionnez un espace de travail pour ouvrir le terminal",
+    "workspaceCleanedUp": "Le répertoire de l'espace de travail a été nettoyé. Le terminal n'est pas disponible pour les tâches terminées ou annulées."
   },
   "restoreLogsDialog": {
     "title": "Confirmer la nouvelle tentative",

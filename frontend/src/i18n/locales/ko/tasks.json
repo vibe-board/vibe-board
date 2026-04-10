@@ -589,7 +589,8 @@
     "workspaceModeDirect": "직접 (제자리)"
   },
   "terminal": {
-    "selectWorkspace": "터미널을 열려면 작업 공간을 선택하세요"
+    "selectWorkspace": "터미널을 열려면 작업 공간을 선택하세요",
+    "workspaceCleanedUp": "작업 공간 디렉토리가 정리되었습니다. 완료되거나 취소된 작업에서는 터미널을 사용할 수 없습니다."
   },
   "restoreLogsDialog": {
     "title": "재시도 확인",

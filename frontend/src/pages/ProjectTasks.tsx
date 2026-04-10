@@ -1034,6 +1034,15 @@ export function ProjectTasks() {
         taskId={taskId}
         cwd={terminalCwd}
       />
+    ) : taskId ? (
+      <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+        {t(
+          selectedTask?.status === 'done' ||
+            selectedTask?.status === 'cancelled'
+            ? 'terminal.workspaceCleanedUp'
+            : 'terminal.selectWorkspace'
+        )}
+      </div>
     ) : null;
 
   const auxContent =

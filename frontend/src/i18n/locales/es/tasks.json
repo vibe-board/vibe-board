@@ -589,7 +589,8 @@
     "workspaceModeDirect": "Directo (en sitio)"
   },
   "terminal": {
-    "selectWorkspace": "Selecciona un espacio de trabajo para abrir terminal"
+    "selectWorkspace": "Selecciona un espacio de trabajo para abrir terminal",
+    "workspaceCleanedUp": "El directorio del espacio de trabajo ha sido limpiado. El terminal no está disponible para tareas completadas o canceladas."
   },
   "restoreLogsDialog": {
     "title": "Confirmar Reintento",

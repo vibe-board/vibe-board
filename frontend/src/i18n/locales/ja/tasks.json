@@ -589,7 +589,8 @@
     "workspaceModeDirect": "直接（インプレース）"
   },
   "terminal": {
-    "selectWorkspace": "ターミナルを開くにはワークスペースを選択してください"
+    "selectWorkspace": "ターミナルを開くにはワークスペースを選択してください",
+    "workspaceCleanedUp": "ワークスペースディレクトリはクリーンアップされました。完了またはキャンセルされたタスクではターミナルを使用できません。"
   },
   "restoreLogsDialog": {
     "title": "リトライを確認",
