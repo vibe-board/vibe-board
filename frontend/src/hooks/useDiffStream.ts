@@ -28,6 +28,8 @@ export const useDiffStream = (
     queryFn: () => attemptsApi.getWorkspaceDiffs(attemptId!, repoId ?? ''),
     enabled: enabled && !!attemptId && !!repoId,
     staleTime: 0,
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
   });
 
   const errorString = error ? String(error) : null;

@@ -17,6 +17,8 @@ export function useCommitHistory(
       lastPage.has_more ? lastPageParam + PAGE_SIZE : undefined,
     enabled: !!attemptId && !!repoId,
     staleTime: 30_000,
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
   });
 
   const commits: CommitInfo[] =
