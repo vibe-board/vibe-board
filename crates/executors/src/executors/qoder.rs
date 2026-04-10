@@ -38,6 +38,11 @@ impl Qoder {
             CommandBuilder::new("npx -y @qoder-ai/qodercli@0.1.31").extend_params(["--acp"]);
         apply_overrides(builder, &self.cmd)
     }
+
+    pub fn build_interactive_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
+        let builder = CommandBuilder::new("npx -y @qoder-ai/qodercli@0.1.31");
+        apply_overrides(builder, &self.cmd)
+    }
 }
 
 #[async_trait]

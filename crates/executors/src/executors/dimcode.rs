@@ -37,6 +37,11 @@ impl Dimcode {
         let builder = CommandBuilder::new("npx -y dimcode@0.0.17").extend_params(["acp"]);
         apply_overrides(builder, &self.cmd)
     }
+
+    pub fn build_interactive_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
+        let builder = CommandBuilder::new("npx -y dimcode@0.0.17");
+        apply_overrides(builder, &self.cmd)
+    }
 }
 
 #[async_trait]

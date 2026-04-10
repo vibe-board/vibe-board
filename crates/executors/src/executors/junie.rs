@@ -37,6 +37,11 @@ impl Junie {
         let builder = CommandBuilder::new("junie").extend_params(["--acp=true"]);
         apply_overrides(builder, &self.cmd)
     }
+
+    pub fn build_interactive_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
+        let builder = CommandBuilder::new("junie");
+        apply_overrides(builder, &self.cmd)
+    }
 }
 
 #[async_trait]

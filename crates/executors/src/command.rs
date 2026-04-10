@@ -22,8 +22,8 @@ pub enum CommandBuildError {
 
 #[derive(Debug, Clone)]
 pub struct CommandParts {
-    program: String,
-    args: Vec<String>,
+    pub(crate) program: String,
+    pub(crate) args: Vec<String>,
 }
 
 impl CommandParts {
@@ -189,5 +189,84 @@ pub fn apply_overrides(
         builder.extend_shell_params(extra.clone())
     } else {
         Ok(builder)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InteractiveCommand {
+    pub command: String,
+}
+
+/// Format a `CommandBuilder` and optional env vars into a single-line shell command.
+/// Env vars are prepended as `KEY=value` pairs, shell-quoted if needed.
+pub fn format_interactive_command(
+    builder: &CommandBuilder,
+    env: &Option<HashMap<String, String>>,
+) -> Result<InteractiveCommand, CommandBuildError> {
+    let parts = builder.build_initial()?;
+    let mut segments: Vec<String> = Vec::new();
+
+    // Prepend user-configured env vars
+    if let Some(env_map) = env {
+        let mut keys: Vec<&String> = env_map.keys().collect();
+        keys.sort(); // deterministic output
+        for key in keys {
+            let val = &env_map[key];
+            let quoted = shlex::try_quote(val)?;
+            segments.push(format!("{key}={quoted}"));
+        }
+    }
+
+    // Add program
+    segments.push(shlex::try_quote(&parts.program)?.into_owned());
+
+    // Add args
+    for arg in &parts.args {
+        segments.push(shlex::try_quote(arg)?.into_owned());
+    }
+
+    Ok(InteractiveCommand {
+        command: segments.join(" "),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_interactive_command_basic() {
+        let builder = CommandBuilder::new("npx -y @anthropic-ai/claude-code@2.1.45")
+            .extend_params(["--model", "opus"]);
+        let env = Some(HashMap::from([(
+            "MY_KEY".to_string(),
+            "my_value".to_string(),
+        )]));
+        let result = format_interactive_command(&builder, &env).unwrap();
+        assert_eq!(
+            result.command,
+            "MY_KEY=my_value npx -y @anthropic-ai/claude-code@2.1.45 --model opus"
+        );
+    }
+
+    #[test]
+    fn format_interactive_command_no_env() {
+        let builder = CommandBuilder::new("claude").extend_params(["--model", "sonnet"]);
+        let result = format_interactive_command(&builder, &None).unwrap();
+        assert_eq!(result.command, "claude --model sonnet");
+    }
+
+    #[test]
+    fn format_interactive_command_quotes_spaces() {
+        let builder = CommandBuilder::new("claude");
+        let env = Some(HashMap::from([(
+            "KEY".to_string(),
+            "value with spaces".to_string(),
+        )]));
+        let result = format_interactive_command(&builder, &env).unwrap();
+        assert!(
+            result.command.contains("KEY='value with spaces'")
+                || result.command.contains("KEY=\"value with spaces\"")
+        );
     }
 }

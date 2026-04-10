@@ -1164,6 +1164,15 @@ export const profilesApi = {
     });
     return handleApiResponse<string>(response);
   },
+  getInteractiveCommand: async (
+    executor: string,
+    variant: string
+  ): Promise<{ command: string }> => {
+    const response = await makeRequest(
+      `/api/profiles/${encodeURIComponent(executor)}/${encodeURIComponent(variant)}/interactive-command`
+    );
+    return handleApiResponse<{ command: string }>(response);
+  },
 };
 
 // Config Transfer APIs

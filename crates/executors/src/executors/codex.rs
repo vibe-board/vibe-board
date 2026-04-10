@@ -295,6 +295,14 @@ impl Codex {
         apply_overrides(builder, &self.cmd)
     }
 
+    pub fn build_interactive_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
+        let mut builder = CommandBuilder::new(DEFAULT_CODEX_BASE);
+        if self.oss.unwrap_or(false) {
+            builder = builder.extend_params(["--oss"]);
+        }
+        apply_overrides(builder, &self.cmd)
+    }
+
     fn build_new_conversation_params(&self, cwd: &Path) -> NewConversationParams {
         let sandbox = match self.sandbox.as_ref() {
             None | Some(SandboxMode::Auto) => Some(CodexSandboxMode::WorkspaceWrite), // match the Auto preset in codex

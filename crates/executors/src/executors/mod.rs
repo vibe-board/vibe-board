@@ -18,7 +18,7 @@ use crate::executors::qa_mock::QaMockExecutor;
 use crate::{
     actions::{ExecutorAction, review::RepoReviewContext},
     approvals::ExecutorApprovalService,
-    command::CommandBuildError,
+    command::{CommandBuildError, InteractiveCommand, format_interactive_command},
     env::ExecutionEnv,
     executors::{
         amp::Amp, auggie::Auggie, autohand::Autohand, claude::ClaudeCode, cline::Cline,
@@ -262,6 +262,129 @@ impl CodingAgent {
             Self::QaMock(_) => vec![], // QA mock doesn't need special capabilities
         }
     }
+
+    /// Build the interactive CLI command for this executor (without protocol params).
+    /// Returns a single-line shell command with env vars prepended.
+    pub fn interactive_command(&self) -> Result<InteractiveCommand, CommandBuildError> {
+        match self {
+            Self::ClaudeCode(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::CursorAgent(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::Amp(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::Droid(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::Codex(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::Opencode(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::Gemini(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::QwenCode(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::Copilot(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::Kilo(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::Cline(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::Auggie(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::Autohand(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::CrowCli(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::Deepagents(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::Dimcode(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::FastAgent(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::Goose(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::Junie(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::Kimi(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::MinionCode(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::MistralVibe(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::Nova(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::PiAcp(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::Qoder(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::Stakpak(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::CodebuddyCode(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::CorustAgent(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            #[cfg(feature = "qa-mode")]
+            Self::QaMock(_) => Ok(InteractiveCommand {
+                command: "qa-mock".to_string(),
+            }),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -445,6 +568,67 @@ mod tests {
     use std::str::FromStr;
 
     use super::*;
+
+    #[test]
+    fn interactive_command_claude_code_strips_protocol_params() {
+        let agent: CodingAgent = serde_json::from_value(serde_json::json!({
+            "CLAUDE_CODE": {
+                "model": "opus"
+            }
+        }))
+        .unwrap();
+        let result = agent.interactive_command().unwrap();
+        assert!(result.command.contains("--model opus"));
+        assert!(!result.command.contains("--output-format"));
+        assert!(!result.command.contains("--input-format"));
+        assert!(!result.command.contains("--permission-prompt-tool"));
+        assert!(!result.command.contains("--verbose"));
+        assert!(!result.command.contains(" -p "));
+        assert!(!result.command.ends_with(" -p"));
+    }
+
+    #[test]
+    fn interactive_command_gemini_strips_acp() {
+        let agent: CodingAgent = serde_json::from_value(serde_json::json!({
+            "GEMINI": {
+                "model": "gemini-2.5-pro",
+                "yolo": true
+            }
+        }))
+        .unwrap();
+        let result = agent.interactive_command().unwrap();
+        assert!(result.command.contains("--model"));
+        assert!(result.command.contains("--yolo"));
+        assert!(!result.command.contains("--experimental-acp"));
+        assert!(!result.command.contains("acp"));
+    }
+
+    #[test]
+    fn interactive_command_codex_strips_app_server() {
+        let agent: CodingAgent = serde_json::from_value(serde_json::json!({
+            "CODEX": {
+                "oss": true
+            }
+        }))
+        .unwrap();
+        let result = agent.interactive_command().unwrap();
+        assert!(result.command.contains("--oss"));
+        assert!(!result.command.contains("app-server"));
+    }
+
+    #[test]
+    fn interactive_command_with_env_vars() {
+        let agent: CodingAgent = serde_json::from_value(serde_json::json!({
+            "CLAUDE_CODE": {
+                "env": {
+                    "ANTHROPIC_API_KEY": "sk-test"
+                }
+            }
+        }))
+        .unwrap();
+        let result = agent.interactive_command().unwrap();
+        assert!(result.command.starts_with("ANTHROPIC_API_KEY=sk-test"));
+    }
 
     #[test]
     fn test_cursor_agent_deserialization() {

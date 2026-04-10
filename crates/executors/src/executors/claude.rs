@@ -173,6 +173,23 @@ impl ClaudeCode {
         apply_overrides(builder, &self.cmd)
     }
 
+    pub fn build_interactive_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
+        let mut builder =
+            CommandBuilder::new(base_command(self.claude_code_router.unwrap_or(false)));
+
+        if self.dangerously_skip_permissions.unwrap_or(false) {
+            builder = builder.extend_params(["--dangerously-skip-permissions"]);
+        }
+        if let Some(model) = &self.model {
+            builder = builder.extend_params(["--model", model]);
+        }
+        if let Some(agent) = &self.agent {
+            builder = builder.extend_params(["--agent", agent]);
+        }
+
+        apply_overrides(builder, &self.cmd)
+    }
+
     /// Returns the permission mode to switch to after initialization.
     /// Only needed for plan/approvals which start with bypassPermissions and switch later.
     /// In default mode, bypassPermissions is already correct.

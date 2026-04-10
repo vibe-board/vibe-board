@@ -38,6 +38,11 @@ impl Auggie {
             CommandBuilder::new("npx -y @augmentcode/auggie@0.19.0").extend_params(["--acp"]);
         apply_overrides(builder, &self.cmd)
     }
+
+    pub fn build_interactive_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
+        let builder = CommandBuilder::new("npx -y @augmentcode/auggie@0.19.0");
+        apply_overrides(builder, &self.cmd)
+    }
 }
 
 #[async_trait]

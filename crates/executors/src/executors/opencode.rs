@@ -89,6 +89,11 @@ impl Opencode {
         apply_overrides(builder, &self.cmd)
     }
 
+    pub fn build_interactive_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
+        let builder = CommandBuilder::new(DEFAULT_OPENCODE_BASE);
+        apply_overrides(builder, &self.cmd)
+    }
+
     /// Compute a cache key for model context windows based on configuration that can affect the list of available models.
     fn compute_models_cache_key(&self) -> String {
         serde_json::to_string(&self.cmd).unwrap_or_default()

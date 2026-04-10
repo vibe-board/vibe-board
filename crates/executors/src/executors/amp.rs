@@ -41,6 +41,14 @@ impl Amp {
         }
         apply_overrides(builder, &self.cmd)
     }
+
+    pub fn build_interactive_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
+        let mut builder = CommandBuilder::new("npx -y @sourcegraph/amp@latest");
+        if self.dangerously_allow_all.unwrap_or(false) {
+            builder = builder.extend_params(["--dangerously-allow-all"]);
+        }
+        apply_overrides(builder, &self.cmd)
+    }
 }
 
 #[async_trait]

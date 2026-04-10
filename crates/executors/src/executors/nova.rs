@@ -37,6 +37,11 @@ impl Nova {
         let builder = CommandBuilder::new("npx -y @compass-ai/nova@1.0.78").extend_params(["acp"]);
         apply_overrides(builder, &self.cmd)
     }
+
+    pub fn build_interactive_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
+        let builder = CommandBuilder::new("npx -y @compass-ai/nova@1.0.78");
+        apply_overrides(builder, &self.cmd)
+    }
 }
 
 #[async_trait]

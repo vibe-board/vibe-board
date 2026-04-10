@@ -51,6 +51,18 @@ impl Gemini {
 
         apply_overrides(builder, &self.cmd)
     }
+
+    pub fn build_interactive_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
+        let mut builder = CommandBuilder::new("npx -y @google/gemini-cli@0.27.0");
+        if let Some(model) = &self.model {
+            builder = builder.extend_params(["--model", model.as_str()]);
+        }
+        if self.yolo.unwrap_or(false) {
+            builder = builder.extend_params(["--yolo"]);
+            builder = builder.extend_params(["--allowed-tools", "run_shell_command"]);
+        }
+        apply_overrides(builder, &self.cmd)
+    }
 }
 
 #[async_trait]

@@ -35,6 +35,11 @@ impl MinionCode {
         let builder = CommandBuilder::new("uvx minion-code@0.1.42").extend_params(["acp"]);
         apply_overrides(builder, &self.cmd)
     }
+
+    pub fn build_interactive_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
+        let builder = CommandBuilder::new("uvx minion-code@0.1.42");
+        apply_overrides(builder, &self.cmd)
+    }
 }
 
 #[async_trait]

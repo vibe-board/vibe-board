@@ -37,6 +37,11 @@ impl Deepagents {
         let builder = CommandBuilder::new("npx -y deepagents-acp@0.1.1");
         apply_overrides(builder, &self.cmd)
     }
+
+    pub fn build_interactive_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
+        let builder = CommandBuilder::new("npx -y deepagents-acp@0.1.1");
+        apply_overrides(builder, &self.cmd)
+    }
 }
 
 #[async_trait]

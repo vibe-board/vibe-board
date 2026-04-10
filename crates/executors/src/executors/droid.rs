@@ -100,6 +100,25 @@ impl Droid {
 
         apply_overrides(builder, &self.cmd)
     }
+
+    pub fn build_interactive_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
+        use crate::command::{CommandBuilder, apply_overrides};
+        let mut builder = CommandBuilder::new("droid");
+        builder = match &self.autonomy {
+            Autonomy::Normal => builder,
+            Autonomy::Low => builder.extend_params(["--auto", "low"]),
+            Autonomy::Medium => builder.extend_params(["--auto", "medium"]),
+            Autonomy::High => builder.extend_params(["--auto", "high"]),
+            Autonomy::SkipPermissionsUnsafe => builder.extend_params(["--skip-permissions-unsafe"]),
+        };
+        if let Some(model) = &self.model {
+            builder = builder.extend_params(["--model", model.as_str()]);
+        }
+        if let Some(effort) = &self.reasoning_effort {
+            builder = builder.extend_params(["--reasoning-effort", effort.as_ref()]);
+        }
+        apply_overrides(builder, &self.cmd)
+    }
 }
 
 async fn spawn_droid(

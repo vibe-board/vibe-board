@@ -35,6 +35,11 @@ impl FastAgent {
         let builder = CommandBuilder::new("uvx fast-agent-acp==0.5.11").extend_params(["-x"]);
         apply_overrides(builder, &self.cmd)
     }
+
+    pub fn build_interactive_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
+        let builder = CommandBuilder::new("uvx fast-agent-acp==0.5.11");
+        apply_overrides(builder, &self.cmd)
+    }
 }
 
 #[async_trait]

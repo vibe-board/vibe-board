@@ -78,6 +78,33 @@ impl Copilot {
 
         apply_overrides(builder, &self.cmd)
     }
+
+    pub fn build_interactive_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
+        let mut builder = CommandBuilder::new("npx -y @github/copilot@0.0.403");
+        if self.allow_all_tools.unwrap_or(false) {
+            builder = builder.extend_params(["--allow-all-tools"]);
+        }
+        if let Some(model) = &self.model {
+            builder = builder.extend_params(["--model", model]);
+        }
+        if let Some(tool) = &self.allow_tool {
+            builder = builder.extend_params(["--allow-tool", tool]);
+        }
+        if let Some(tool) = &self.deny_tool {
+            builder = builder.extend_params(["--deny-tool", tool]);
+        }
+        if let Some(dirs) = &self.add_dir {
+            for dir in dirs {
+                builder = builder.extend_params(["--add-dir", dir]);
+            }
+        }
+        if let Some(servers) = &self.disable_mcp_server {
+            for server in servers {
+                builder = builder.extend_params(["--disable-mcp-server", server]);
+            }
+        }
+        apply_overrides(builder, &self.cmd)
+    }
 }
 
 #[async_trait]

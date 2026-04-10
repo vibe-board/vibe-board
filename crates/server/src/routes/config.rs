@@ -45,6 +45,10 @@ pub fn router() -> Router<DeploymentImpl> {
         .route("/mcp-config", get(get_mcp_servers).post(update_mcp_servers))
         .route("/profiles", get(get_profiles).put(update_profiles))
         .route(
+            "/profiles/{executor}/{variant}/interactive-command",
+            get(get_interactive_command),
+        )
+        .route(
             "/editors/check-availability",
             get(check_editor_availability),
         )
@@ -579,4 +583,32 @@ async fn handle_agent_slash_commands_ws(
         .send(LogMsg::Finished.to_ws_message_unchecked())
         .await;
     Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+struct InteractiveCommandParams {
+    executor: BaseCodingAgent,
+    variant: String,
+}
+
+async fn get_interactive_command(
+    State(_deployment): State<DeploymentImpl>,
+    Path(params): Path<InteractiveCommandParams>,
+) -> ResponseJson<ApiResponse<executors::command::InteractiveCommand>> {
+    let profiles = ExecutorConfigs::get_cached();
+    let profile_id = ExecutorProfileId::with_variant(params.executor, params.variant);
+
+    let agent = match profiles.get_coding_agent(&profile_id) {
+        Some(agent) => agent,
+        None => {
+            return ResponseJson(ApiResponse::error("Executor profile not found"));
+        }
+    };
+
+    match agent.interactive_command() {
+        Ok(cmd) => ResponseJson(ApiResponse::success(cmd)),
+        Err(e) => ResponseJson(ApiResponse::error(&format!(
+            "Failed to build interactive command: {e}"
+        ))),
+    }
 }

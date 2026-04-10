@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { profilesApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -128,6 +130,24 @@ export function ActionsDropdown({ task, attempt }: ActionsDropdownProps) {
     });
   };
 
+  const [commandCopied, setCommandCopied] = useState(false);
+
+  const handleCopyRunCommand = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!task) return;
+    try {
+      const result = await profilesApi.getInteractiveCommand(
+        task.executor,
+        task.variant ?? 'DEFAULT'
+      );
+      await navigator.clipboard.writeText(result.command);
+      setCommandCopied(true);
+      setTimeout(() => setCommandCopied(false), 2000);
+    } catch (err) {
+      console.warn('Failed to copy run command:', err);
+    }
+  };
+
   return (
     <>
       <DropdownMenu>
@@ -184,6 +204,11 @@ export function ActionsDropdown({ task, attempt }: ActionsDropdownProps) {
                 onClick={handleEditBranchName}
               >
                 {t('actionsMenu.editBranchName')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleCopyRunCommand}>
+                {commandCopied
+                  ? t('actionsMenu.commandCopied')
+                  : t('actionsMenu.copyRunCommand')}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
             </>

@@ -510,6 +510,8 @@
     "createSubtask": "Create subtask",
     "gitActions": "Git actions",
     "editBranchName": "Edit branch name",
+    "copyRunCommand": "Copy Run Command",
+    "commandCopied": "Copied!",
     "startReview": "Start Review",
     "startingReview": "Starting Review...",
     "task": "Task",

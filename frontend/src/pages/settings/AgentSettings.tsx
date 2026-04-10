@@ -26,7 +26,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
 import { JSONEditor } from '@/components/ui/json-editor';
-import { ChevronDown, Loader2, GripVertical } from 'lucide-react';
+import { ChevronDown, Loader2, GripVertical, Copy, Check } from 'lucide-react';
 import {
   DndContext,
   closestCenter,
@@ -46,6 +46,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 
 import { cn } from '@/lib/utils';
+import { profilesApi } from '@/lib/api';
 import { ExecutorConfigForm } from '@/components/ExecutorConfigForm';
 import { useProfiles } from '@/hooks/useProfiles';
 import { useUserSystem } from '@/components/ConfigProvider';
@@ -93,6 +94,8 @@ export function AgentSettings() {
   const [localParsedProfiles, setLocalParsedProfiles] =
     useState<ExecutorConfigs | null>(null);
   const [isDirty, setIsDirty] = useState(false);
+
+  const [commandCopied, setCommandCopied] = useState(false);
 
   // Default executor profile state
   const [executorDraft, setExecutorDraft] = useState<ExecutorProfileId | null>(
@@ -259,6 +262,20 @@ export function AgentSettings() {
 
     markDirty(updatedProfiles);
     setSelectedConfiguration(configName);
+  };
+
+  const handleCopyCommand = async () => {
+    try {
+      const result = await profilesApi.getInteractiveCommand(
+        selectedExecutorType,
+        selectedConfiguration
+      );
+      await navigator.clipboard.writeText(result.command);
+      setCommandCopied(true);
+      setTimeout(() => setCommandCopied(false), 2000);
+    } catch (err) {
+      console.warn('Failed to copy command:', err);
+    }
   };
 
   // Open delete dialog
@@ -847,31 +864,50 @@ export function AgentSettings() {
                         Object.keys(currentExecutor).length <= 1;
 
                       return (
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          className="h-10"
-                          onClick={() =>
-                            openDeleteDialog(selectedConfiguration)
-                          }
-                          disabled={
-                            profilesSaving ||
-                            !currentExecutor ||
-                            isLastConfig ||
-                            hasDependents
-                          }
-                          title={
-                            hasDependents
-                              ? `Cannot delete: inherited by ${dependents.join(', ')}`
-                              : isLastConfig
-                                ? t('settings.agents.editor.deleteTitle')
-                                : t('settings.agents.editor.deleteButton', {
-                                    name: selectedConfiguration,
-                                  })
-                          }
-                        >
-                          {t('settings.agents.editor.deleteText')}
-                        </Button>
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-10"
+                            onClick={handleCopyCommand}
+                            disabled={profilesSaving}
+                            title={t('settings.agents.editor.copyCommandTitle')}
+                          >
+                            {commandCopied ? (
+                              <Check className="mr-1 h-4 w-4" />
+                            ) : (
+                              <Copy className="mr-1 h-4 w-4" />
+                            )}
+                            {commandCopied
+                              ? t('settings.agents.editor.commandCopied')
+                              : t('settings.agents.editor.copyCommand')}
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            className="h-10"
+                            onClick={() =>
+                              openDeleteDialog(selectedConfiguration)
+                            }
+                            disabled={
+                              profilesSaving ||
+                              !currentExecutor ||
+                              isLastConfig ||
+                              hasDependents
+                            }
+                            title={
+                              hasDependents
+                                ? `Cannot delete: inherited by ${dependents.join(', ')}`
+                                : isLastConfig
+                                  ? t('settings.agents.editor.deleteTitle')
+                                  : t('settings.agents.editor.deleteButton', {
+                                      name: selectedConfiguration,
+                                    })
+                            }
+                          >
+                            {t('settings.agents.editor.deleteText')}
+                          </Button>
+                        </>
                       );
                     })()}
                   </div>

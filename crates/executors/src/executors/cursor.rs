@@ -67,6 +67,19 @@ impl CursorAgent {
 
         apply_overrides(builder, &self.cmd)
     }
+
+    pub fn build_interactive_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
+        let mut builder = CommandBuilder::new(Self::base_command());
+
+        if self.force.unwrap_or(false) {
+            builder = builder.extend_params(["--force"]);
+        }
+        if let Some(model) = &self.model {
+            builder = builder.extend_params(["--model", model]);
+        }
+
+        apply_overrides(builder, &self.cmd)
+    }
 }
 
 #[async_trait]

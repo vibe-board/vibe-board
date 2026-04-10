@@ -38,6 +38,11 @@ impl Autohand {
             CommandBuilder::new("npx -y @autohandai/autohand-acp@0.2.1").extend_params(["acp"]);
         apply_overrides(builder, &self.cmd)
     }
+
+    pub fn build_interactive_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
+        let builder = CommandBuilder::new("npx -y @autohandai/autohand-acp@0.2.1");
+        apply_overrides(builder, &self.cmd)
+    }
 }
 
 #[async_trait]
