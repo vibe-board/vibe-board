@@ -50,9 +50,7 @@ const DialogImpl = NiceModal.create<NoProps>(() => {
       }
     } catch (e) {
       setTestStatus('error');
-      setTestError(
-        e instanceof Error ? e.message : 'Could not reach backend'
-      );
+      setTestError(e instanceof Error ? e.message : 'Could not reach backend');
     }
   }, [backendUrl]);
 
@@ -165,8 +163,7 @@ const DialogImpl = NiceModal.create<NoProps>(() => {
                   size="sm"
                   onClick={startBackend}
                   disabled={
-                    backendStatus === 'starting' ||
-                    backendStatus === 'running'
+                    backendStatus === 'starting' || backendStatus === 'running'
                   }
                 >
                   {backendStatus === 'starting'
@@ -195,9 +192,7 @@ const DialogImpl = NiceModal.create<NoProps>(() => {
             )}
             {backendStatus === 'running' && (
               <Alert variant="success">
-                <AlertDescription>
-                  Local backend is running
-                </AlertDescription>
+                <AlertDescription>Local backend is running</AlertDescription>
               </Alert>
             )}
           </div>
@@ -229,5 +224,4 @@ const DialogImpl = NiceModal.create<NoProps>(() => {
   );
 });
 
-export const ConnectionSetupDialog =
-  defineModal<void, void>(DialogImpl);
+export const ConnectionSetupDialog = defineModal<void, void>(DialogImpl);
