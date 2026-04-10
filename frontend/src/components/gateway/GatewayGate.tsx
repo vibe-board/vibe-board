@@ -4,7 +4,9 @@
  * In local mode, it renders children directly.
  */
 import type { ReactNode } from 'react';
+import { useEffect } from 'react';
 import { useGateway } from '@/contexts/GatewayContext';
+import { ConnectionSetupDialog } from '@/components/dialogs/ConnectionSetupDialog';
 import { GatewayLoginPage } from './GatewayLoginPage';
 import { GatewayMachineSelectPage } from './GatewayMachineSelectPage';
 import { QueryClientProvider } from '@tanstack/react-query';
@@ -17,8 +19,14 @@ export function GatewayGate({ children }: { children: ReactNode }) {
 
   switch (phase) {
     case 'local':
-      // Not gateway mode — render the app directly
-      return <>{children}</>;
+      // Not gateway mode — render the app directly.
+      // In Tauri, show connection setup dialog if no backend URL is configured.
+      return (
+        <>
+          <TauriConnectionCheck />
+          {children}
+        </>
+      );
 
     case 'detecting':
       return (
@@ -66,6 +74,24 @@ export function GatewayGate({ children }: { children: ReactNode }) {
     default:
       return <>{children}</>;
   }
+}
+
+/**
+ * In Tauri, checks if a backend URL is configured. If not, opens the
+ * connection setup dialog so the user can configure the connection.
+ */
+function TauriConnectionCheck() {
+  useEffect(() => {
+    if (
+      typeof window !== 'undefined' &&
+      window.__TAURI__ &&
+      !localStorage.getItem('vb-backend-url') &&
+      !localStorage.getItem('vb-gateway-url')
+    ) {
+      ConnectionSetupDialog.show();
+    }
+  }, []);
+  return null;
 }
 
 function GatewayShell({ children }: { children: ReactNode }) {
