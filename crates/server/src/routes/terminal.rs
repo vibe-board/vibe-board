@@ -10,7 +10,10 @@ use axum::{
     routing::get,
 };
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
-use db::models::{workspace::Workspace, workspace_repo::WorkspaceRepo};
+use db::models::{
+    workspace::{Workspace, WorkspaceMode},
+    workspace_repo::WorkspaceRepo,
+};
 use deployment::Deployment;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -83,21 +86,27 @@ pub async fn terminal_ws(
         ));
     }
 
+    // In direct mode, container_ref is already the repo path — don't append repo name.
+    // In worktree mode, container_ref is the workspace dir and repos are subdirectories.
     let mut working_dir = base_dir.clone();
-    match WorkspaceRepo::find_repos_for_workspace(&deployment.db().pool, query.workspace_id).await {
-        Ok(repos) if repos.len() == 1 => {
-            let repo_dir = base_dir.join(&repos[0].name);
-            if repo_dir.exists() {
-                working_dir = repo_dir;
+    if attempt.mode == WorkspaceMode::Worktree {
+        match WorkspaceRepo::find_repos_for_workspace(&deployment.db().pool, query.workspace_id)
+            .await
+        {
+            Ok(repos) if repos.len() == 1 => {
+                let repo_dir = base_dir.join(&repos[0].name);
+                if repo_dir.exists() {
+                    working_dir = repo_dir;
+                }
             }
-        }
-        Ok(_) => {}
-        Err(e) => {
-            tracing::warn!(
-                "Failed to resolve repos for workspace {}: {}",
-                attempt.id,
-                e
-            );
+            Ok(_) => {}
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to resolve repos for workspace {}: {}",
+                    attempt.id,
+                    e
+                );
+            }
         }
     }
 
