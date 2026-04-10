@@ -77,7 +77,7 @@ jobs:
       - name: Build Tauri binary only (no bundling)
         run: |
           cd tauri-client
-          pnpm tauri build --target aarch64-apple-darwin --bundles none
+          pnpm tauri build --target aarch64-apple-darwin --bundles app
         env:
           MACOSX_DEPLOYMENT_TARGET: 11.0
 
