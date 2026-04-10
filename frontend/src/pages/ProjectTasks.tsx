@@ -401,14 +401,15 @@ export function ProjectTasks() {
     }
   }, [searchParams, setSearchParams]);
 
-  // Redirect diffs view to commits in direct mode (diffs are not available)
+  // Redirect diffs view to commits in direct mode (workspace diffs are not available)
+  // Allow ?view=diffs&commit=sha — viewing a specific commit's diff still works
   useEffect(() => {
     if (!attempt || attempt.mode !== 'direct') return;
     const view = searchParams.get('view');
-    if (view === 'diffs') {
+    const commit = searchParams.get('commit');
+    if (view === 'diffs' && !commit) {
       const params = new URLSearchParams(searchParams);
       params.set('view', 'commits');
-      params.delete('commit');
       setSearchParams(params, { replace: true });
     }
   }, [attempt, searchParams, setSearchParams]);
