@@ -32,9 +32,12 @@
     "prepack": "pnpm run build:npx",
     "gateway:build": "cd frontend && pnpm run build && cd .. && cargo build --release --bin e2ee-gateway",
     "gateway:dev": "RUST_LOG=debug cargo run --bin e2ee-gateway",
-    "prepare": "husky"
+    "prepare": "husky",
+    "tauri:dev": "FRONTEND_PORT=1420 BACKEND_PORT=1421 concurrently \"pnpm run backend:dev:watch\" \"pnpm tauri dev\"",
+    "tauri:build": "pnpm tauri build"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.10.1",
     "concurrently": "^8.2.2",
     "husky": "^9.1.7",
     "vite": "^6.3.5"
