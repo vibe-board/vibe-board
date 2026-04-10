@@ -1,8 +1,10 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{self, Error as AnyhowError};
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use clap::{Parser, Subcommand};
+use fs2::FileExt;
 use deployment::{Deployment, DeploymentError};
 use server::{DeploymentImpl, e2ee_config, e2ee_crypto, e2ee_manager, routes};
 use services::services::container::ContainerService;
@@ -22,6 +24,11 @@ use utils::{
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
+
+    /// Custom data directory path (or set VIBE_BOARD_DATA_DIR env var).
+    /// Isolates DB, config, worktrees, and port file.
+    #[arg(long, env = "VIBE_BOARD_DATA_DIR", global = true)]
+    data_dir: Option<PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -59,9 +66,31 @@ pub enum VibeBoardError {
     Other(#[from] AnyhowError),
 }
 
+/// Acquire an exclusive file lock on the data directory.
+/// Returns the file handle (holds lock until dropped).
+fn acquire_instance_lock(data_dir: &std::path::Path) -> Result<std::fs::File, VibeBoardError> {
+    let lock_path = data_dir.join(".lock");
+    let file = std::fs::File::create(&lock_path)
+        .map_err(|e| anyhow::anyhow!("Failed to create lock file {}: {}", lock_path.display(), e))?;
+    file.try_lock_exclusive()
+        .map_err(|_| anyhow::anyhow!(
+            "Another vibe-board instance is already using data directory: {}\n\
+             If you are sure no other instance is running, delete {}",
+            data_dir.display(),
+            lock_path.display()
+        ))?;
+    Ok(file)
+}
+
 #[tokio::main]
 async fn main() -> Result<(), VibeBoardError> {
     let cli = Cli::parse();
+
+    if let Some(ref data_dir) = cli.data_dir {
+        let data_dir = std::fs::canonicalize(data_dir)
+            .unwrap_or_else(|_| data_dir.clone());
+        utils::assets::set_data_dir(data_dir);
+    }
 
     match cli.command {
         None | Some(Commands::Server) => cmd_server().await,
@@ -109,6 +138,8 @@ async fn cmd_server() -> Result<(), VibeBoardError> {
     if !asset_dir().exists() {
         std::fs::create_dir_all(asset_dir())?;
     }
+
+    let _lock_file = acquire_instance_lock(&asset_dir())?;
 
     let deployment = DeploymentImpl::new().await?;
     deployment.update_sentry_scope().await?;

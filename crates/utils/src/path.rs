@@ -106,6 +106,11 @@ pub fn normalize_macos_private_alias<P: AsRef<Path>>(p: P) -> PathBuf {
 }
 
 pub fn get_vibe_board_temp_dir() -> std::path::PathBuf {
+    // If a custom data dir is set, use its worktrees subdirectory
+    if crate::assets::DATA_DIR_OVERRIDE.get().is_some() {
+        return crate::assets::asset_dir().join("worktrees");
+    }
+
     let dir_name = if cfg!(debug_assertions) {
         "vibe-board-dev"
     } else {

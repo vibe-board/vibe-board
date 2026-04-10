@@ -30,6 +30,12 @@ fn main() -> anyhow::Result<()> {
             let version = utils::version::APP_VERSION_WITH_SHA;
             tracing::debug!("[MCP] Starting MCP task server version {version}...");
 
+            // Initialize data dir from env if set
+            if let Ok(data_dir) = std::env::var("VIBE_BOARD_DATA_DIR") {
+                let path = std::path::PathBuf::from(data_dir);
+                utils::assets::set_data_dir(path);
+            }
+
             // Read backend port from port file or environment variable
             let base_url = if let Ok(url) = std::env::var("VIBE_BACKEND_URL") {
                 tracing::info!("[MCP] Using backend URL from VIBE_BACKEND_URL: {}", url);
