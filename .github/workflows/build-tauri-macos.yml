@@ -74,6 +74,16 @@ jobs:
           cd tauri-client
           pnpm build
 
+      - name: Debug dist directory
+        run: |
+          echo "=== Repo root dist ==="
+          ls -la dist/ 2>/dev/null || echo "No dist at repo root"
+          echo "=== tauri-client/dist ==="
+          ls -la tauri-client/dist/ 2>/dev/null || echo "No dist at tauri-client/dist"
+          echo "=== frontendDist resolution from src-tauri ==="
+          echo "tauri.conf.json frontendDist: ../../dist"
+          echo "Resolved: $(cd tauri-client/src-tauri && realpath ../../dist 2>/dev/null || echo 'not found')"
+
       - name: Build Tauri macOS app (arm64)
         run: |
           cd tauri-client
