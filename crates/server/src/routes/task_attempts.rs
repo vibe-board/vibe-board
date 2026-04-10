@@ -1192,9 +1192,12 @@ pub async fn get_commit_history(
     let git_service = GitService::new();
 
     let response = if workspace.mode == WorkspaceMode::Direct {
+        let head_info = git_service
+            .get_head_info(&worktree_path)
+            .map_err(|e| ApiError::BadRequest(format!("Failed to get HEAD info: {e}")))?;
         git_service.get_commit_history_all(
             &worktree_path,
-            &workspace.branch,
+            &head_info.branch,
             query.skip,
             query.limit,
         )?
