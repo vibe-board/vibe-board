@@ -300,6 +300,15 @@ impl Codex {
         if self.oss.unwrap_or(false) {
             builder = builder.extend_params(["--oss"]);
         }
+        if let Some(model) = &self.model {
+            builder = builder.extend_params(["--model", model]);
+        }
+        if let Some(sandbox) = &self.sandbox {
+            builder = builder.extend_params(["--sandbox", sandbox.as_ref()]);
+        }
+        if let Some(approval) = &self.ask_for_approval {
+            builder = builder.extend_params(["--approval-mode", approval.as_ref()]);
+        }
         apply_overrides(builder, &self.cmd)
     }
 

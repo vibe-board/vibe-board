@@ -90,7 +90,10 @@ impl Opencode {
     }
 
     pub fn build_interactive_command_builder(&self) -> Result<CommandBuilder, CommandBuildError> {
-        let builder = CommandBuilder::new(DEFAULT_OPENCODE_BASE);
+        let mut builder = CommandBuilder::new(DEFAULT_OPENCODE_BASE);
+        if let Some(model) = &self.model {
+            builder = builder.extend_params(["--model", model]);
+        }
         apply_overrides(builder, &self.cmd)
     }
 
