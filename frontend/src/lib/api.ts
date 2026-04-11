@@ -138,9 +138,7 @@ export function getWsBaseUrl(): string {
   if (typeof window !== 'undefined' && window.__TAURI__) {
     const backendUrl = localStorage.getItem('vb-backend-url') || '';
     if (backendUrl) {
-      return backendUrl
-        .replace(/^https:/, 'wss:')
-        .replace(/^http:/, 'ws:');
+      return backendUrl.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
     }
     return '';
   }
