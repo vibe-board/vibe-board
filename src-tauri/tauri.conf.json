@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.vibeboard.desktop",
   "build": {
-    "beforeDevCommand": "pnpm run --filter frontend dev -- --port 1420",
-    "beforeBuildCommand": "pnpm run --filter frontend build",
+    "beforeDevCommand": "cd frontend && pnpm run dev -- --port 1420",
+    "beforeBuildCommand": "cd frontend && pnpm run build",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../frontend/dist"
   },
