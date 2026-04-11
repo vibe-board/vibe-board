@@ -129,6 +129,25 @@ function getApiBaseUrl(): string {
   return '';
 }
 
+/**
+ * Returns the WebSocket base URL for Tauri mode, or builds one from window.location.
+ * - Browser mode: uses window.location.protocol/host (ws:// or wss://)
+ * - Tauri mode: converts backend URL from localStorage (http→ws, https→wss)
+ */
+export function getWsBaseUrl(): string {
+  if (typeof window !== 'undefined' && window.__TAURI__) {
+    const backendUrl = localStorage.getItem('vb-backend-url') || '';
+    if (backendUrl) {
+      return backendUrl
+        .replace(/^https:/, 'wss:')
+        .replace(/^http:/, 'ws:');
+    }
+    return '';
+  }
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}`;
+}
+
 const makeRequest = async (
   url: string,
   options: RequestInit = {},

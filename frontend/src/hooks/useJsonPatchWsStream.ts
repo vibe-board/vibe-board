@@ -3,6 +3,7 @@ import { produce } from 'immer';
 import type { Operation } from 'rfc6902';
 import { applyUpsertPatch } from '@/utils/jsonPatch';
 import { getGatewayConnection } from '@/lib/gatewayMode';
+import { getWsBaseUrl } from '@/lib/api';
 import type { RemoteWs } from '@/lib/e2ee/remoteWs';
 
 type WsJsonPatchMsg = { JsonPatch: Operation[] };
@@ -118,8 +119,10 @@ export const useJsonPatchWsStream = <T extends object>(
           url.search?.substring(1) || undefined
         );
       } else {
-        // Convert HTTP endpoint to WebSocket endpoint
-        const wsEndpoint = endpoint.replace(/^http/, 'ws');
+        const wsBase = getWsBaseUrl();
+        const wsEndpoint = endpoint.startsWith('/')
+          ? `${wsBase}${endpoint}`
+          : endpoint.replace(/^http/, 'ws');
         ws = new WebSocket(wsEndpoint);
       }
 
