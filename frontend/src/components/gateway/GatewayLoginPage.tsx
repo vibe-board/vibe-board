@@ -32,7 +32,7 @@ export function GatewayLoginPage() {
       </div>
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {isSignupMode && (
           <div className="space-y-1">
             <label htmlFor="name" className="block text-sm font-medium">
@@ -55,9 +55,8 @@ export function GatewayLoginPage() {
           </label>
           <input
             id="email"
-            type="email"
+            type="text"
             autoComplete="email"
-            required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="gateway-input"
@@ -73,7 +72,6 @@ export function GatewayLoginPage() {
             id="password"
             type="password"
             autoComplete="current-password"
-            required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="gateway-input"
