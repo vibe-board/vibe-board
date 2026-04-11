@@ -178,7 +178,9 @@ function TauriConnectionSetupForm() {
       </div>
 
       {mode === 'direct' ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        <div
+          style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
+        >
           <div>
             <label
               style={{
@@ -254,7 +256,9 @@ function TauriConnectionSetupForm() {
           </p>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        <div
+          style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
+        >
           <div>
             <label
               style={{
