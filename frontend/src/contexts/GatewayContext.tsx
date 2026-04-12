@@ -275,7 +275,7 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
     };
 
     ws.onerror = () => {
-      setConnectionError('Failed to connect to gateway');
+      console.warn('[Gateway] WebSocket error on machine-list connection');
     };
 
     return () => {
