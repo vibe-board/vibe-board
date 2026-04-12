@@ -219,7 +219,8 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
         setPhase('login');
       }
       // Check registration status
-      fetch('/api/auth/registration-status')
+      const regUrl = getGatewayUrl();
+      fetch(`${regUrl}/api/auth/registration-status`)
         .then((r) => r.json())
         .then((d) => setRegistrationOpen(d.open))
         .catch(() => setRegistrationOpen(false));
@@ -288,7 +289,8 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
       setAuthLoading(true);
       setAuthError(null);
       try {
-        const resp = await fetch('/api/auth/signup', {
+        const gatewayUrl = getGatewayUrl();
+        const resp = await fetch(`${gatewayUrl}/api/auth/signup`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password, name }),
@@ -318,7 +320,8 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
     setAuthLoading(true);
     setAuthError(null);
     try {
-      const resp = await fetch('/api/auth/login', {
+      const gatewayUrl = getGatewayUrl();
+      const resp = await fetch(`${gatewayUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
