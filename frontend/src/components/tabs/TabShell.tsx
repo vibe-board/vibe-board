@@ -6,11 +6,39 @@ import { HomeTab } from './HomeTab';
 import { ProjectTab } from './ProjectTab';
 
 export function TabShell() {
-  const { initialized, init, tabs, activeTabId } = useConnectionStore();
+  const { initialized, init, tabs, activeTabId, closeTab, setActiveTab } =
+    useConnectionStore();
 
   useEffect(() => {
     init();
   }, [init]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+1~9: switch to tab by position
+      if (e.ctrlKey && e.key >= '1' && e.key <= '9') {
+        e.preventDefault();
+        const idx = parseInt(e.key, 10) - 1;
+        if (idx === 0) {
+          setActiveTab('home');
+        } else {
+          const tab = tabs[idx - 1]; // tabs array is 0-indexed, Ctrl+2 = first project tab
+          if (tab) setActiveTab(tab.id);
+        }
+      }
+
+      // Ctrl+W: close active tab
+      if (e.ctrlKey && e.key === 'w') {
+        if (activeTabId !== 'home') {
+          e.preventDefault();
+          closeTab(activeTabId);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [tabs, activeTabId, setActiveTab, closeTab]);
 
   if (!initialized) {
     return (
