@@ -1,6 +1,7 @@
 // frontend/src/contexts/ConnectionContext.tsx
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, type ReactNode } from 'react';
 import type { UnifiedConnection } from '@/lib/connections/types';
+import { setActiveConnection } from '@/lib/gatewayMode';
 
 const ConnectionContext = createContext<UnifiedConnection | null>(null);
 
@@ -9,7 +10,18 @@ interface ConnectionProviderProps {
   children: ReactNode;
 }
 
-export function ConnectionProvider({ connection, children }: ConnectionProviderProps) {
+export function ConnectionProvider({
+  connection,
+  children,
+}: ConnectionProviderProps) {
+  // Set module-level active connection so non-React code (api.ts) can access it
+  useEffect(() => {
+    setActiveConnection(connection);
+    return () => {
+      setActiveConnection(null);
+    };
+  }, [connection]);
+
   return (
     <ConnectionContext.Provider value={connection}>
       {children}
@@ -23,7 +35,8 @@ export function ConnectionProvider({ connection, children }: ConnectionProviderP
  */
 export function useConnection(): UnifiedConnection {
   const ctx = useContext(ConnectionContext);
-  if (!ctx) throw new Error('useConnection must be used within ConnectionProvider');
+  if (!ctx)
+    throw new Error('useConnection must be used within ConnectionProvider');
   return ctx;
 }
 

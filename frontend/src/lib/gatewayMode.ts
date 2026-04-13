@@ -1,53 +1,47 @@
+// frontend/src/lib/gatewayMode.ts
 /**
- * Gateway mode detection and connection singleton.
- *
- * Provides runtime detection of whether the frontend is running on an
- * E2EE gateway (vs a local vibe-board server), and a module-level
- * accessor for the E2EE connection (usable outside React).
+ * Module-level connection accessor for non-React code (api.ts, utils).
+ * Set by ConnectionProvider when a tab's connection becomes active.
  */
-import type { E2EEConnection } from '@/lib/e2ee';
+import type { UnifiedConnection } from '@/lib/connections/types';
+import type { RemoteWs } from '@/lib/e2ee/remoteWs';
 
-let gatewayMode: boolean | null = null;
-let detectPromise: Promise<boolean> | null = null;
-let currentConnection: E2EEConnection | null = null;
+let activeConnection: UnifiedConnection | null = null;
 
-/**
- * Detect whether the frontend is served by an E2EE gateway.
- * Calls /api/gateway/info — if it returns { mode: "gateway" }, we're in gateway mode.
- * Result is cached after the first call.
- */
+/** Set the active connection (called by ConnectionProvider on mount/update) */
+export function setActiveConnection(conn: UnifiedConnection | null): void {
+  activeConnection = conn;
+}
+
+/** Get the active connection (used by makeRequest in api.ts) */
+export function getActiveConnection(): UnifiedConnection | null {
+  return activeConnection;
+}
+
+// Legacy compatibility — these are used by code that hasn't been migrated yet.
+// They delegate to the active connection.
+export function getGatewayConnection(): {
+  remoteFetch: UnifiedConnection['fetch'];
+  openWsStream: (path: string, query?: string) => RemoteWs;
+} | null {
+  if (!activeConnection || activeConnection.type !== 'gateway') return null;
+  const conn = activeConnection;
+  return {
+    remoteFetch: conn.fetch.bind(conn),
+    openWsStream: (path: string, query?: string): RemoteWs =>
+      conn.openWs(path, query) as unknown as RemoteWs,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function setGatewayConnection(_conn?: any): void {
+  // no-op — managed by setActiveConnection now
+}
+
 export async function detectGatewayMode(): Promise<boolean> {
-  if (gatewayMode !== null) return gatewayMode;
-  if (!detectPromise) {
-    detectPromise = (async () => {
-      try {
-        const resp = await fetch('/api/gateway/info');
-        if (resp.ok) {
-          const data = await resp.json();
-          gatewayMode = data.mode === 'gateway';
-        } else {
-          gatewayMode = false;
-        }
-      } catch {
-        gatewayMode = false;
-      }
-      return gatewayMode!;
-    })();
-  }
-  return detectPromise;
+  return activeConnection?.type === 'gateway';
 }
 
-/** Synchronous check — only valid after detectGatewayMode() has resolved. */
 export function isGatewayMode(): boolean {
-  return gatewayMode ?? false;
-}
-
-/** Set the active E2EE connection (called by GatewayProvider when connected). */
-export function setGatewayConnection(conn: E2EEConnection | null): void {
-  currentConnection = conn;
-}
-
-/** Get the active E2EE connection (used by makeRequest in api.ts). */
-export function getGatewayConnection(): E2EEConnection | null {
-  return currentConnection;
+  return activeConnection?.type === 'gateway';
 }

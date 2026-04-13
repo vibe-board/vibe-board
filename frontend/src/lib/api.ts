@@ -85,6 +85,7 @@ import {
 } from 'shared/types';
 import type { WorkspaceWithSession } from '@/types/attempt';
 import { createWorkspaceWithSession } from '@/types/attempt';
+import { getActiveConnection as _getActiveConnectionSync } from '@/lib/gatewayMode';
 
 // Paginated normalized entries types
 export type NormalizedEntryRecord = {
@@ -135,6 +136,12 @@ function getApiBaseUrl(): string {
  * - Tauri mode: converts backend URL from localStorage (http→ws, https→wss)
  */
 export function getWsBaseUrl(): string {
+  // If there's an active connection, derive WS URL from it
+  const conn = _getActiveConnectionSync();
+  if (conn) {
+    return conn.url.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
+  }
+
   if (typeof window !== 'undefined' && window.__TAURI__) {
     const backendUrl = localStorage.getItem('vb-backend-url') || '';
     if (backendUrl) {
@@ -156,13 +163,14 @@ const makeRequest = async (
     headers.set('Content-Type', 'application/json');
   }
 
-  // In gateway mode, route through E2EE connection to the remote daemon
-  const { getGatewayConnection } = await import('@/lib/gatewayMode');
-  const conn = getGatewayConnection();
+  // Use the active UnifiedConnection if available
+  const { getActiveConnection } = await import('@/lib/gatewayMode');
+  const conn = getActiveConnection();
   if (conn) {
-    return conn.remoteFetch(url, { ...options, headers }, extra);
+    return conn.fetch(url, { ...options, headers }, extra);
   }
 
+  // Fallback: direct fetch (browser mode without TabShell, or no active connection)
   const baseUrl = getApiBaseUrl();
   return fetch(baseUrl ? `${baseUrl}${url}` : url, {
     ...options,
@@ -1233,15 +1241,15 @@ export const configTransferApi = {
   },
 };
 
-/** Upload helper: routes FormData through E2EE in gateway mode */
+/** Upload helper: routes FormData through active connection if available */
 const uploadFormData = async (
   url: string,
   formData: FormData
 ): Promise<Response> => {
-  const { getGatewayConnection } = await import('@/lib/gatewayMode');
-  const conn = getGatewayConnection();
+  const { getActiveConnection } = await import('@/lib/gatewayMode');
+  const conn = getActiveConnection();
   if (conn) {
-    return conn.remoteFetch(url, { method: 'POST', body: formData });
+    return conn.fetch(url, { method: 'POST', body: formData });
   }
   return fetch(url, { method: 'POST', body: formData, credentials: 'include' });
 };
