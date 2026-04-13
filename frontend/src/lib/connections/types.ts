@@ -30,17 +30,23 @@ export interface UnifiedConnection {
   status: ConnectionStatus;
   error: string | null;
 
-  fetch(path: string, init?: RequestInit, extra?: { timeoutMs?: number }): Promise<Response>;
+  fetch(
+    path: string,
+    init?: RequestInit,
+    extra?: { timeoutMs?: number }
+  ): Promise<Response>;
   openWs(path: string, query?: string): WebSocketLike;
-  listProjects(): Promise<Project[]>;
+  listProjects(): Promise<ConnectionProject[]>;
   connect(): Promise<void>;
   disconnect(): void;
 
   /** Subscribe to status changes */
-  onStatusChange(cb: (status: ConnectionStatus, error: string | null) => void): () => void;
+  onStatusChange(
+    cb: (status: ConnectionStatus, error: string | null) => void
+  ): () => void;
 }
 
-export interface Project {
+export interface ConnectionProject {
   id: string;
   name: string;
   path?: string;
