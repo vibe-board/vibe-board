@@ -1,5 +1,5 @@
 // frontend/src/lib/connections/index.ts
 export * from './types';
-export { DirectConnection } from './direct-connection';
-export { GatewayMachineConnection } from './gateway-connection';
-export { GatewayNode } from './gateway-node';
+export { DirectConnection } from './directConnection';
+export { GatewayMachineConnection } from './gatewayConnection';
+export { GatewayNode } from './gatewayNode';

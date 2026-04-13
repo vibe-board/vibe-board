@@ -113,7 +113,10 @@ export const useJsonPatchWsStream = <T extends object>(
       let ws: WebSocketLike;
       if (activeConn) {
         const url = new URL(endpoint, window.location.origin);
-        ws = activeConn.openWs(url.pathname, url.search?.substring(1) || undefined);
+        ws = activeConn.openWs(
+          url.pathname,
+          url.search?.substring(1) || undefined
+        );
       } else {
         const wsBase = getWsBaseUrl();
         const wsEndpoint = endpoint.startsWith('/')

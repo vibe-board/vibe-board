@@ -1,7 +1,7 @@
 // frontend/src/stores/connection-store.ts
 import { create } from 'zustand';
-import { DirectConnection } from '@/lib/connections/direct-connection';
-import { GatewayNode } from '@/lib/connections/gateway-node';
+import { DirectConnection } from '@/lib/connections/directConnection';
+import { GatewayNode } from '@/lib/connections/gatewayNode';
 import type {
   ConnectionEntryPersisted,
   TabPersisted,

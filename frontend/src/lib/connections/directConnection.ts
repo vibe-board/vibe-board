@@ -1,4 +1,4 @@
-// frontend/src/lib/connections/direct-connection.ts
+// frontend/src/lib/connections/directConnection.ts
 import { QueryClient, QueryCache } from '@tanstack/react-query';
 import type {
   UnifiedConnection,

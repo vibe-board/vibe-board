@@ -1,8 +1,4 @@
-import {
-  Link,
-  useLocation,
-  useSearchParams,
-} from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { useCallback, useEffect } from 'react';
 import { siDiscord } from 'simple-icons';
 import { Button } from '@/components/ui/button';

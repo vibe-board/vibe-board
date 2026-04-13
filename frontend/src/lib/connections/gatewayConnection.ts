@@ -1,4 +1,4 @@
-// frontend/src/lib/connections/gateway-connection.ts
+// frontend/src/lib/connections/gatewayConnection.ts
 import { QueryClient, QueryCache } from '@tanstack/react-query';
 import { E2EEConnection } from '@/lib/e2ee';
 import type {

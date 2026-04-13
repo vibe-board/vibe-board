@@ -191,7 +191,10 @@ export function XTermInstance({
       let ws: WebSocketLike;
       if (activeConn) {
         const url = new URL(endpoint);
-        ws = activeConn.openWs(url.pathname, url.search?.substring(1) || undefined);
+        ws = activeConn.openWs(
+          url.pathname,
+          url.search?.substring(1) || undefined
+        );
       } else {
         ws = new WebSocket(endpoint);
       }

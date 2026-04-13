@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { useConnectionStore } from '@/stores/connection-store';
 import { AddConnectionForm } from './AddConnectionForm';
-import type { GatewayNode } from '@/lib/connections/gateway-node';
+import type { GatewayNode } from '@/lib/connections/gatewayNode';
 import type { MachineStatus } from '@/lib/e2ee';
 import type { ConnectionProject } from '@/lib/connections/types';
 

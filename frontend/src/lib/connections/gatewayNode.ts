@@ -1,6 +1,6 @@
-// frontend/src/lib/connections/gateway-node.ts
+// frontend/src/lib/connections/gatewayNode.ts
 import { E2EEManager, type MachineStatus } from '@/lib/e2ee';
-import { GatewayMachineConnection } from './gateway-connection';
+import { GatewayMachineConnection } from './gatewayConnection';
 import type { GatewaySession } from './types';
 
 export class GatewayNode {

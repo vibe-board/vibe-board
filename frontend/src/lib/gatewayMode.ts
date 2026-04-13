@@ -33,8 +33,7 @@ export function getGatewayConnection(): {
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function setGatewayConnection(_conn?: any): void {
+export function setGatewayConnection(_conn?: unknown): void {
   // no-op — managed by setActiveConnection now
 }
 
