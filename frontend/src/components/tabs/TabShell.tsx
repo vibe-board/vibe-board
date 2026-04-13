@@ -25,7 +25,9 @@ export function TabShell() {
       <TabBar />
       <div className="flex-1 overflow-hidden">
         {/* Home tab */}
-        <div className={`h-full overflow-auto ${activeTabId === 'home' ? '' : 'hidden'}`}>
+        <div
+          className={`h-full overflow-auto ${activeTabId === 'home' ? '' : 'hidden'}`}
+        >
           <HomeTab />
         </div>
 

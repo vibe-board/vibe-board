@@ -17,7 +17,9 @@ function loadConnections(): ConnectionEntryPersisted[] {
   try {
     const raw = localStorage.getItem('vb_connections');
     return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 function saveConnections(entries: ConnectionEntryPersisted[]): void {
@@ -28,7 +30,9 @@ function loadTabs(): TabPersisted[] {
   try {
     const raw = localStorage.getItem('vb_tabs');
     return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 function saveTabs(tabs: TabPersisted[]): void {
@@ -60,16 +64,37 @@ export interface ConnectionStoreState {
 
 export interface ConnectionStoreActions {
   init(): void;
-  addConnection(type: 'direct' | 'gateway', url: string, label?: string): string;
+  addConnection(
+    type: 'direct' | 'gateway',
+    url: string,
+    label?: string
+  ): string;
   removeConnection(id: string): void;
   updateConnectionUrl(id: string, url: string): void;
   loginConnection(id: string, email: string, password: string): Promise<void>;
-  signupConnection(id: string, email: string, password: string, name?: string): Promise<void>;
+  signupConnection(
+    id: string,
+    email: string,
+    password: string,
+    name?: string
+  ): Promise<void>;
   logoutConnection(id: string): void;
-  pairMachine(connectionId: string, machineId: string, base64Secret: string): void;
+  pairMachine(
+    connectionId: string,
+    machineId: string,
+    base64Secret: string
+  ): void;
   unpairMachine(connectionId: string, machineId: string): void;
-  getConnection(connectionId: string, machineId?: string): UnifiedConnection | null;
-  openProjectTab(connectionId: string, machineId: string | undefined, projectId: string, label: string): void;
+  getConnection(
+    connectionId: string,
+    machineId?: string
+  ): UnifiedConnection | null;
+  openProjectTab(
+    connectionId: string,
+    machineId: string | undefined,
+    projectId: string,
+    label: string
+  ): void;
   closeTab(tabId: string): void;
   setActiveTab(tabId: string): void;
   reorderTabs(fromIndex: number, toIndex: number): void;
@@ -94,7 +119,11 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     const entries = loadConnections();
     const nodes: ConnectionNode[] = entries.map((entry) => {
       if (entry.type === 'direct') {
-        const conn = new DirectConnection(entry.id, entry.url, entry.label || entry.url);
+        const conn = new DirectConnection(
+          entry.id,
+          entry.url,
+          entry.label || entry.url
+        );
         conn.connect().catch(() => {});
         return { entry, directConn: conn };
       } else {
@@ -148,7 +177,9 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
       saveConnections(nodes.map((n) => n.entry));
       saveTabs(tabs);
 
-      const activeTabId = tabs.find((t) => t.id === s.activeTabId) ? s.activeTabId : 'home';
+      const activeTabId = tabs.find((t) => t.id === s.activeTabId)
+        ? s.activeTabId
+        : 'home';
       saveActiveTab(activeTabId);
       return { nodes, tabs, activeTabId };
     });
@@ -199,7 +230,9 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     set((s) => {
       const tabs = s.tabs.filter((t) => t.connectionId !== id);
       saveTabs(tabs);
-      const activeTabId = tabs.find((t) => t.id === s.activeTabId) ? s.activeTabId : 'home';
+      const activeTabId = tabs.find((t) => t.id === s.activeTabId)
+        ? s.activeTabId
+        : 'home';
       saveActiveTab(activeTabId);
       return { nodes: [...s.nodes], tabs, activeTabId };
     });
@@ -232,9 +265,10 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
   openProjectTab(connectionId, machineId, projectId, label) {
     set((s) => {
       const existing = s.tabs.find(
-        (t) => t.connectionId === connectionId
-          && t.machineId === machineId
-          && t.projectId === projectId,
+        (t) =>
+          t.connectionId === connectionId &&
+          t.machineId === machineId &&
+          t.projectId === projectId
       );
       if (existing) {
         saveActiveTab(existing.id);

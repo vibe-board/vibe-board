@@ -32,7 +32,9 @@ export function ProjectTab({ tab }: { tab: TabPersisted }) {
       <div className="flex items-center justify-center h-full">
         <div className="text-center space-y-2">
           <p className="text-foreground/60 text-sm animate-pulse">
-            {conn.status === 'reconnecting' ? conn.error || 'Reconnecting...' : 'Connecting...'}
+            {conn.status === 'reconnecting'
+              ? conn.error || 'Reconnecting...'
+              : 'Connecting...'}
           </p>
         </div>
       </div>
@@ -43,7 +45,9 @@ export function ProjectTab({ tab }: { tab: TabPersisted }) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center space-y-2">
-          <p className="text-destructive text-sm">{conn.error || 'Connection error'}</p>
+          <p className="text-destructive text-sm">
+            {conn.error || 'Connection error'}
+          </p>
           <button
             className="px-3 py-1 text-xs bg-foreground text-background rounded hover:opacity-85"
             onClick={() => conn.connect().catch(() => {})}

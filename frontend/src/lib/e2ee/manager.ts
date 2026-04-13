@@ -7,7 +7,7 @@
 import { ContentKeyPair, deriveContentKeyPair } from './keys';
 import { unwrapDek as cryptoUnwrapDek } from './crypto';
 
-const MACHINE_SECRETS_KEY = 'vk_e2ee_machine_secrets';
+const MACHINE_SECRETS_KEY = 'vb_e2ee_machine_secrets';
 const OLD_STORAGE_KEY = 'vk_e2ee_secrets';
 
 export class E2EEManager {

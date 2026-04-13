@@ -34,7 +34,9 @@ export function HomeTab() {
         </button>
       </div>
 
-      {showAddForm && <AddConnectionForm onDone={() => setShowAddForm(false)} />}
+      {showAddForm && (
+        <AddConnectionForm onDone={() => setShowAddForm(false)} />
+      )}
 
       {nodes.length === 0 && !showAddForm && (
         <p className="text-sm text-foreground/50 text-center py-8">
@@ -48,7 +50,7 @@ export function HomeTab() {
             <DirectNodeView key={node.entry.id} node={node} />
           ) : (
             <GatewayNodeView key={node.entry.id} node={node} />
-          ),
+          )
         )}
       </div>
     </div>
@@ -447,7 +449,7 @@ function MachineNodeView({
                       connectionId,
                       machine.machine_id,
                       p.id,
-                      `${p.name} @ ${machineLabel}`,
+                      `${p.name} @ ${machineLabel}`
                     );
                   }}
                 >

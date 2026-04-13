@@ -14,17 +14,22 @@ export class DirectConnection implements UnifiedConnection {
   status: ConnectionStatus = 'disconnected';
   error: string | null = null;
 
-  private statusListeners = new Set<(status: ConnectionStatus, error: string | null) => void>();
+  private statusListeners = new Set<
+    (status: ConnectionStatus, error: string | null) => void
+  >();
 
   constructor(
     readonly id: string,
     readonly url: string,
-    readonly label: string,
+    readonly label: string
   ) {
     this.queryClient = new QueryClient({
       queryCache: new QueryCache({
         onError: (error, query) => {
-          console.error('[DirectConnection QueryError]', { queryKey: query.queryKey, error });
+          console.error('[DirectConnection QueryError]', {
+            queryKey: query.queryKey,
+            error,
+          });
         },
       }),
       defaultOptions: {
@@ -39,7 +44,9 @@ export class DirectConnection implements UnifiedConnection {
     this.statusListeners.forEach((cb) => cb(status, error));
   }
 
-  onStatusChange(cb: (status: ConnectionStatus, error: string | null) => void): () => void {
+  onStatusChange(
+    cb: (status: ConnectionStatus, error: string | null) => void
+  ): () => void {
     this.statusListeners.add(cb);
     return () => this.statusListeners.delete(cb);
   }
@@ -63,7 +70,11 @@ export class DirectConnection implements UnifiedConnection {
     this.setStatus('disconnected');
   }
 
-  async fetch(path: string, init?: RequestInit, _extra?: { timeoutMs?: number }): Promise<Response> {
+  async fetch(
+    path: string,
+    init?: RequestInit,
+    _extra?: { timeoutMs?: number }
+  ): Promise<Response> {
     const headers = new Headers(init?.headers ?? {});
     if (!headers.has('Content-Type')) {
       headers.set('Content-Type', 'application/json');
@@ -81,10 +92,12 @@ export class DirectConnection implements UnifiedConnection {
     const resp = await this.fetch('/api/projects');
     if (!resp.ok) throw new Error(`Failed to list projects: ${resp.status}`);
     const data = await resp.json();
-    return (data as Array<{ id: string; name: string; path?: string }>).map((p) => ({
-      id: String(p.id),
-      name: p.name,
-      path: p.path,
-    }));
+    return (data as Array<{ id: string; name: string; path?: string }>).map(
+      (p) => ({
+        id: String(p.id),
+        name: p.name,
+        path: p.path,
+      })
+    );
   }
 }

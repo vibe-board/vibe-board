@@ -17,7 +17,7 @@ export class GatewayNode {
 
   constructor(
     readonly connectionId: string,
-    readonly gatewayUrl: string,
+    readonly gatewayUrl: string
   ) {}
 
   /** Subscribe to any state change */
@@ -33,9 +33,13 @@ export class GatewayNode {
   /** Load session from localStorage */
   loadSession(): void {
     try {
-      const raw = localStorage.getItem(`vb_gateway_session_${this.connectionId}`);
+      const raw = localStorage.getItem(
+        `vb_gateway_session_${this.connectionId}`
+      );
       if (raw) this.session = JSON.parse(raw);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   /** Save session to localStorage */
@@ -43,7 +47,7 @@ export class GatewayNode {
     if (this.session) {
       localStorage.setItem(
         `vb_gateway_session_${this.connectionId}`,
-        JSON.stringify(this.session),
+        JSON.stringify(this.session)
       );
     }
   }
@@ -120,7 +124,9 @@ export class GatewayNode {
   /** Start listening for machine list updates via WebSocket */
   startMachineListWs(): void {
     if (!this.session || this.machineListWs) return;
-    const wsUrl = this.gatewayUrl.replace('http://', 'ws://').replace('https://', 'wss://');
+    const wsUrl = this.gatewayUrl
+      .replace('http://', 'ws://')
+      .replace('https://', 'wss://');
     const connectUrl = `${wsUrl}/ws/webui?token=${encodeURIComponent(this.session.sessionToken)}`;
     const ws = new WebSocket(connectUrl);
 
@@ -138,19 +144,26 @@ export class GatewayNode {
           this.notify();
         } else if (msg.type === 'machine_online') {
           if (!this.machines.find((m) => m.machine_id === msg.machine_id)) {
-            this.machines = [...this.machines, {
-              machine_id: msg.machine_id,
-              hostname: msg.hostname || '',
-              platform: msg.platform || '',
-              port: msg.port || 0,
-            }];
+            this.machines = [
+              ...this.machines,
+              {
+                machine_id: msg.machine_id,
+                hostname: msg.hostname || '',
+                platform: msg.platform || '',
+                port: msg.port || 0,
+              },
+            ];
             this.notify();
           }
         } else if (msg.type === 'machine_offline') {
-          this.machines = this.machines.filter((m) => m.machine_id !== msg.machine_id);
+          this.machines = this.machines.filter(
+            (m) => m.machine_id !== msg.machine_id
+          );
           this.notify();
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     };
 
     ws.onerror = () => {
@@ -176,7 +189,9 @@ export class GatewayNode {
   /** Fetch registration status from gateway */
   async fetchRegistrationStatus(): Promise<void> {
     try {
-      const resp = await fetch(`${this.gatewayUrl}/api/auth/registration-status`);
+      const resp = await fetch(
+        `${this.gatewayUrl}/api/auth/registration-status`
+      );
       const data = await resp.json();
       this.registrationOpen = data.open;
     } catch {
@@ -199,7 +214,7 @@ export class GatewayNode {
         machineLabel,
         this.gatewayUrl,
         this.session,
-        machineId,
+        machineId
       );
       this.machineConnections.set(machineId, conn);
     }

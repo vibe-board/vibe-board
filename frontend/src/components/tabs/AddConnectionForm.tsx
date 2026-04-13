@@ -8,7 +8,9 @@ export function AddConnectionForm({ onDone }: { onDone?: () => void }) {
   const addConnection = useConnectionStore((s) => s.addConnection);
   const [mode, setMode] = useState<ConnectionMode>('direct');
   const [url, setUrl] = useState('');
-  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [testStatus, setTestStatus] = useState<
+    'idle' | 'testing' | 'success' | 'error'
+  >('idle');
   const [testError, setTestError] = useState('');
 
   const testConnection = useCallback(async () => {
@@ -74,7 +76,11 @@ export function AddConnectionForm({ onDone }: { onDone?: () => void }) {
             setUrl(e.target.value);
             setTestStatus('idle');
           }}
-          placeholder={mode === 'direct' ? 'http://localhost:3001' : 'https://gateway.example.com'}
+          placeholder={
+            mode === 'direct'
+              ? 'http://localhost:3001'
+              : 'https://gateway.example.com'
+          }
         />
       </div>
 
