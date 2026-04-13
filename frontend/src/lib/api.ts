@@ -164,8 +164,7 @@ const makeRequest = async (
   }
 
   // Use the active UnifiedConnection if available
-  const { getActiveConnection } = await import('@/lib/gatewayMode');
-  const conn = getActiveConnection();
+  const conn = _getActiveConnectionSync();
   if (conn) {
     return conn.fetch(url, { ...options, headers }, extra);
   }
@@ -1246,8 +1245,7 @@ const uploadFormData = async (
   url: string,
   formData: FormData
 ): Promise<Response> => {
-  const { getActiveConnection } = await import('@/lib/gatewayMode');
-  const conn = getActiveConnection();
+  const conn = _getActiveConnectionSync();
   if (conn) {
     return conn.fetch(url, { method: 'POST', body: formData });
   }
