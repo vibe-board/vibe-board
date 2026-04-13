@@ -117,6 +117,35 @@ export class ApiError<E = unknown> extends Error {
   }
 }
 
+/**
+ * Returns the base URL to prepend to API requests.
+ * - Browser mode: empty string (relative paths, handled by same-origin or Vite proxy)
+ * - Tauri mode: reads backend URL from localStorage (set by connection setup dialog)
+ */
+function getApiBaseUrl(): string {
+  if (typeof window !== 'undefined' && window.__TAURI__) {
+    return localStorage.getItem('vb-backend-url') || '';
+  }
+  return '';
+}
+
+/**
+ * Returns the WebSocket base URL for Tauri mode, or builds one from window.location.
+ * - Browser mode: uses window.location.protocol/host (ws:// or wss://)
+ * - Tauri mode: converts backend URL from localStorage (http→ws, https→wss)
+ */
+export function getWsBaseUrl(): string {
+  if (typeof window !== 'undefined' && window.__TAURI__) {
+    const backendUrl = localStorage.getItem('vb-backend-url') || '';
+    if (backendUrl) {
+      return backendUrl.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
+    }
+    return '';
+  }
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}`;
+}
+
 const makeRequest = async (
   url: string,
   options: RequestInit = {},
@@ -134,7 +163,8 @@ const makeRequest = async (
     return conn.remoteFetch(url, { ...options, headers }, extra);
   }
 
-  return fetch(url, {
+  const baseUrl = getApiBaseUrl();
+  return fetch(baseUrl ? `${baseUrl}${url}` : url, {
     ...options,
     headers,
   });

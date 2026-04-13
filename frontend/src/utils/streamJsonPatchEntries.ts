@@ -2,6 +2,7 @@
 import type { Operation } from 'rfc6902';
 import { applyUpsertPatch } from '@/utils/jsonPatch';
 import { getGatewayConnection } from '@/lib/gatewayMode';
+import { getWsBaseUrl } from '@/lib/api';
 import type { RemoteWs } from '@/lib/e2ee/remoteWs';
 
 type PatchContainer<E = unknown> = { entries: E[] };
@@ -143,7 +144,10 @@ export function streamJsonPatchEntries<E = unknown>(
         parsed.search?.substring(1) || undefined
       );
     } else {
-      const wsUrl = connectUrl.replace(/^http/, 'ws');
+      const wsBase = getWsBaseUrl();
+      const wsUrl = connectUrl.startsWith('/')
+        ? `${wsBase}${connectUrl}`
+        : connectUrl.replace(/^http/, 'ws');
       ws = new WebSocket(wsUrl);
     }
 

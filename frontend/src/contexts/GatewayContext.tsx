@@ -15,6 +15,14 @@ import { E2EEManager, E2EEConnection, type MachineStatus } from '@/lib/e2ee';
 import { detectGatewayMode, setGatewayConnection } from '@/lib/gatewayMode';
 import { QueryClient, QueryCache } from '@tanstack/react-query';
 
+/** Resolve the gateway URL: from localStorage in Tauri, from origin in browser. */
+function getGatewayUrl(): string {
+  if (typeof window !== 'undefined' && window.__TAURI__) {
+    return localStorage.getItem('vb-gateway-url') || '';
+  }
+  return window.location.origin;
+}
+
 export type GatewayPhase =
   | 'detecting'
   | 'login'
@@ -157,6 +165,39 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
 
   // Step 1: Detect gateway mode
   useEffect(() => {
+    // In Tauri, determine mode from localStorage config instead of /api/gateway/info
+    if (typeof window !== 'undefined' && window.__TAURI__) {
+      const gwUrl = localStorage.getItem('vb-gateway-url');
+      const backendUrl = localStorage.getItem('vb-backend-url');
+      if (gwUrl) {
+        // Gateway mode — proceed with login/machine selection
+        const stored = loadSession();
+        if (stored) {
+          setSession(stored);
+          const savedMachine = loadSelectedMachine();
+          if (savedMachine && manager.isMachinePaired(savedMachine)) {
+            pendingAutoConnectRef.current = savedMachine;
+            setSelectedMachineId(savedMachine);
+          }
+          setPhase('machine_select');
+        } else {
+          setPhase('login');
+        }
+        fetch(`${gwUrl}/api/auth/registration-status`)
+          .then((r) => r.json())
+          .then((d) => setRegistrationOpen(d.open))
+          .catch(() => setRegistrationOpen(false));
+        return;
+      }
+      if (backendUrl) {
+        setPhase('local');
+        return;
+      }
+      // No config — set to local, connection dialog handles the rest
+      setPhase('local');
+      return;
+    }
+
     detectGatewayMode().then((isGateway) => {
       if (!isGateway) {
         setPhase('local');
@@ -178,7 +219,8 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
         setPhase('login');
       }
       // Check registration status
-      fetch('/api/auth/registration-status')
+      const regUrl = getGatewayUrl();
+      fetch(`${regUrl}/api/auth/registration-status`)
         .then((r) => r.json())
         .then((d) => setRegistrationOpen(d.open))
         .catch(() => setRegistrationOpen(false));
@@ -189,7 +231,7 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (phase !== 'machine_select' || !session) return;
 
-    const gatewayUrl = window.location.origin;
+    const gatewayUrl = getGatewayUrl();
     const wsUrl = gatewayUrl
       .replace('http://', 'ws://')
       .replace('https://', 'wss://');
@@ -233,7 +275,7 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
     };
 
     ws.onerror = () => {
-      setConnectionError('Failed to connect to gateway');
+      console.warn('[Gateway] WebSocket error on machine-list connection');
     };
 
     return () => {
@@ -247,7 +289,8 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
       setAuthLoading(true);
       setAuthError(null);
       try {
-        const resp = await fetch('/api/auth/signup', {
+        const gatewayUrl = getGatewayUrl();
+        const resp = await fetch(`${gatewayUrl}/api/auth/signup`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password, name }),
@@ -277,7 +320,8 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
     setAuthLoading(true);
     setAuthError(null);
     try {
-      const resp = await fetch('/api/auth/login', {
+      const gatewayUrl = getGatewayUrl();
+      const resp = await fetch(`${gatewayUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -367,7 +411,7 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
       setConnectionError(null);
 
       try {
-        const gatewayUrl = window.location.origin;
+        const gatewayUrl = getGatewayUrl();
         const conn = isReconnect ? new E2EEConnection() : connectionInstance;
         await conn.connect({
           gatewayUrl,

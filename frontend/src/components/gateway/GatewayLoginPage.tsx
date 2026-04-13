@@ -10,12 +10,17 @@ export function GatewayLoginPage() {
   const [name, setName] = useState('');
   const [isSignupMode, setIsSignupMode] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     if (isSignupMode) {
       await signup(email, password, name || undefined);
     } else {
       await login(email, password);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !authLoading) {
+      handleSubmit();
     }
   };
 
@@ -31,8 +36,8 @@ export function GatewayLoginPage() {
         </p>
       </div>
 
-      {/* Form */}
-      <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Fields (no <form> to avoid native validation in WKWebView) */}
+      <div className="space-y-4" onKeyDown={handleKeyDown}>
         {isSignupMode && (
           <div className="space-y-1">
             <label htmlFor="name" className="block text-sm font-medium">
@@ -55,9 +60,8 @@ export function GatewayLoginPage() {
           </label>
           <input
             id="email"
-            type="email"
-            autoComplete="email"
-            required
+            type="text"
+            autoComplete="off"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="gateway-input"
@@ -71,13 +75,13 @@ export function GatewayLoginPage() {
           </label>
           <input
             id="password"
-            type="password"
-            autoComplete="current-password"
-            required
+            type="text"
+            autoComplete="off"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="gateway-input"
             placeholder="Password"
+            style={{ WebkitTextSecurity: 'disc' } as React.CSSProperties}
           />
         </div>
 
@@ -88,13 +92,14 @@ export function GatewayLoginPage() {
         )}
 
         <button
-          type="submit"
+          type="button"
           disabled={authLoading}
+          onClick={handleSubmit}
           className="gateway-button-primary"
         >
           {authLoading ? 'Loading...' : isSignupMode ? 'Sign Up' : 'Sign In'}
         </button>
-      </form>
+      </div>
 
       {/* Toggle */}
       {registrationOpen !== false && (

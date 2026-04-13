@@ -7,6 +7,7 @@ import '@xterm/xterm/css/xterm.css';
 import { useTheme } from '@/components/ThemeProvider';
 import { getTerminalTheme } from '@/utils/terminalTheme';
 import { getGatewayConnection } from '@/lib/gatewayMode';
+import { getWsBaseUrl } from '@/lib/api';
 import type { RemoteWs } from '@/lib/e2ee/remoteWs';
 
 interface XTermInstanceProps {
@@ -95,9 +96,8 @@ export function XTermInstance({
   const { theme } = useTheme();
 
   const endpoint = useMemo(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    let url = `${protocol}//${host}${endpointUrl}&cols=${initialSizeRef.current.cols}&rows=${initialSizeRef.current.rows}`;
+    const wsBase = getWsBaseUrl();
+    let url = `${wsBase}${endpointUrl}&cols=${initialSizeRef.current.cols}&rows=${initialSizeRef.current.rows}`;
     if (sessionId) {
       url += `&session_id=${sessionId}`;
     }

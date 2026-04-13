@@ -1,11 +1,10 @@
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use anyhow::{self, Error as AnyhowError};
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use clap::{Parser, Subcommand};
-use fs2::FileExt;
 use deployment::{Deployment, DeploymentError};
+use fs2::FileExt;
 use server::{DeploymentImpl, e2ee_config, e2ee_crypto, e2ee_manager, routes};
 use services::services::container::ContainerService;
 use sqlx::Error as SqlxError;
@@ -70,15 +69,17 @@ pub enum VibeBoardError {
 /// Returns the file handle (holds lock until dropped).
 fn acquire_instance_lock(data_dir: &std::path::Path) -> Result<std::fs::File, VibeBoardError> {
     let lock_path = data_dir.join(".lock");
-    let file = std::fs::File::create(&lock_path)
-        .map_err(|e| anyhow::anyhow!("Failed to create lock file {}: {}", lock_path.display(), e))?;
-    file.try_lock_exclusive()
-        .map_err(|_| anyhow::anyhow!(
+    let file = std::fs::File::create(&lock_path).map_err(|e| {
+        anyhow::anyhow!("Failed to create lock file {}: {}", lock_path.display(), e)
+    })?;
+    file.try_lock_exclusive().map_err(|_| {
+        anyhow::anyhow!(
             "Another vibe-board instance is already using data directory: {}\n\
              If you are sure no other instance is running, delete {}",
             data_dir.display(),
             lock_path.display()
-        ))?;
+        )
+    })?;
     Ok(file)
 }
 
@@ -87,8 +88,7 @@ async fn main() -> Result<(), VibeBoardError> {
     let cli = Cli::parse();
 
     if let Some(ref data_dir) = cli.data_dir {
-        let data_dir = std::fs::canonicalize(data_dir)
-            .unwrap_or_else(|_| data_dir.clone());
+        let data_dir = std::fs::canonicalize(data_dir).unwrap_or_else(|_| data_dir.clone());
         utils::assets::set_data_dir(data_dir);
     }
 

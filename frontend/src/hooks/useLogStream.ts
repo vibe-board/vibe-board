@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import type { PatchType } from 'shared/types';
 import { getGatewayConnection } from '@/lib/gatewayMode';
+import { getWsBaseUrl } from '@/lib/api';
 import type { RemoteWs } from '@/lib/e2ee/remoteWs';
 
 type LogEntry = Extract<PatchType, { type: 'STDOUT' } | { type: 'STDERR' }>;
@@ -44,10 +45,9 @@ export const useLogStream = (processId: string): UseLogStreamResult => {
           `/api/execution-processes/${processId}/raw-logs/ws`
         );
       } else {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.host;
+        const wsBase = getWsBaseUrl();
         ws = new WebSocket(
-          `${protocol}//${host}/api/execution-processes/${processId}/raw-logs/ws`
+          `${wsBase}/api/execution-processes/${processId}/raw-logs/ws`
         );
       }
       wsRef.current = ws;

@@ -4,6 +4,7 @@
  * In local mode, it renders children directly.
  */
 import type { ReactNode } from 'react';
+import { useState, useCallback } from 'react';
 import { useGateway } from '@/contexts/GatewayContext';
 import { GatewayLoginPage } from './GatewayLoginPage';
 import { GatewayMachineSelectPage } from './GatewayMachineSelectPage';
@@ -17,7 +18,15 @@ export function GatewayGate({ children }: { children: ReactNode }) {
 
   switch (phase) {
     case 'local':
-      // Not gateway mode — render the app directly
+      // Not gateway mode — render the app directly.
+      // In Tauri, block app rendering until a backend URL is configured.
+      if (
+        typeof window !== 'undefined' &&
+        window.__TAURI__ &&
+        !localStorage.getItem('vb-backend-url')
+      ) {
+        return <TauriConnectionSetup />;
+      }
       return <>{children}</>;
 
     case 'detecting':
@@ -66,6 +75,229 @@ export function GatewayGate({ children }: { children: ReactNode }) {
     default:
       return <>{children}</>;
   }
+}
+
+/**
+ * In Tauri with no backend URL configured, renders a full-screen connection
+ * setup UI that blocks the app from rendering until configured.
+ */
+function TauriConnectionSetup() {
+  return (
+    <GatewayShell>
+      <TauriConnectionSetupForm />
+    </GatewayShell>
+  );
+}
+
+type ConnectionMode = 'direct' | 'gateway';
+
+function TauriConnectionSetupForm() {
+  const [mode, setMode] = useState<ConnectionMode>('direct');
+  const [backendUrl, setBackendUrl] = useState('http://localhost:3001');
+  const [gatewayUrl, setGatewayUrl] = useState('');
+  const [testStatus, setTestStatus] = useState<
+    'idle' | 'testing' | 'success' | 'error'
+  >('idle');
+  const [testError, setTestError] = useState('');
+
+  const testConnection = useCallback(async () => {
+    setTestStatus('testing');
+    setTestError('');
+    try {
+      const resp = await fetch(`${backendUrl}/api/config/info`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (resp.ok) {
+        setTestStatus('success');
+      } else {
+        setTestStatus('error');
+        setTestError(`Server returned ${resp.status}`);
+      }
+    } catch (e) {
+      setTestStatus('error');
+      setTestError(e instanceof Error ? e.message : 'Could not reach backend');
+    }
+  }, [backendUrl]);
+
+  const handleSave = useCallback(() => {
+    if (mode === 'direct') {
+      localStorage.setItem('vb-backend-url', backendUrl);
+      localStorage.removeItem('vb-gateway-url');
+    } else {
+      localStorage.setItem('vb-gateway-url', gatewayUrl);
+      localStorage.removeItem('vb-backend-url');
+    }
+    window.location.reload();
+  }, [mode, backendUrl, gatewayUrl]);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+      <div>
+        <h2
+          style={{
+            fontSize: '1.125rem',
+            fontWeight: 600,
+            color: 'hsl(var(--foreground))',
+            marginBottom: '0.25rem',
+          }}
+        >
+          Connection Setup
+        </h2>
+        <p
+          style={{
+            fontSize: '0.8125rem',
+            color: 'hsl(var(--foreground) / 0.6)',
+          }}
+        >
+          Configure how Vibe Board connects to the backend server.
+        </p>
+      </div>
+
+      {/* Mode selector */}
+      <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <button
+          className={
+            mode === 'direct'
+              ? 'gateway-button-primary gateway-button-sm'
+              : 'gateway-button-secondary gateway-button-sm'
+          }
+          onClick={() => setMode('direct')}
+        >
+          Direct (Local)
+        </button>
+        <button
+          className={
+            mode === 'gateway'
+              ? 'gateway-button-primary gateway-button-sm'
+              : 'gateway-button-secondary gateway-button-sm'
+          }
+          onClick={() => setMode('gateway')}
+        >
+          E2EE Gateway
+        </button>
+      </div>
+
+      {mode === 'direct' ? (
+        <div
+          style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
+        >
+          <div>
+            <label
+              style={{
+                display: 'block',
+                fontSize: '0.8125rem',
+                color: 'hsl(var(--foreground) / 0.6)',
+                marginBottom: '0.25rem',
+              }}
+            >
+              Backend URL
+            </label>
+            <input
+              className="gateway-input"
+              type="text"
+              value={backendUrl}
+              onChange={(e) => {
+                setBackendUrl(e.target.value);
+                setTestStatus('idle');
+              }}
+              placeholder="http://localhost:3001"
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              className="gateway-button-secondary gateway-button-sm"
+              onClick={testConnection}
+              disabled={testStatus === 'testing' || !backendUrl}
+            >
+              {testStatus === 'testing' ? 'Testing...' : 'Test Connection'}
+            </button>
+          </div>
+
+          {testStatus === 'success' && (
+            <div
+              style={{
+                padding: '0.5rem 0.75rem',
+                fontSize: '0.8125rem',
+                borderRadius: 'var(--radius)',
+                background: 'hsl(142 76% 36% / 0.1)',
+                border: '1px solid hsl(142 76% 36% / 0.3)',
+                color: 'hsl(142 76% 36%)',
+              }}
+            >
+              Connection successful
+            </div>
+          )}
+          {testStatus === 'error' && (
+            <div className="gateway-error" style={{ fontSize: '0.8125rem' }}>
+              {testError}
+            </div>
+          )}
+
+          <p
+            style={{
+              fontSize: '0.75rem',
+              color: 'hsl(var(--foreground) / 0.5)',
+              lineHeight: '1.4',
+            }}
+          >
+            Start the backend with{' '}
+            <code
+              style={{
+                background: 'hsl(var(--foreground) / 0.1)',
+                padding: '0.125rem 0.375rem',
+                borderRadius: '3px',
+                fontSize: '0.75rem',
+              }}
+            >
+              npx vibe-board
+            </code>{' '}
+            then enter the URL above.
+          </p>
+        </div>
+      ) : (
+        <div
+          style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
+        >
+          <div>
+            <label
+              style={{
+                display: 'block',
+                fontSize: '0.8125rem',
+                color: 'hsl(var(--foreground) / 0.6)',
+                marginBottom: '0.25rem',
+              }}
+            >
+              Gateway URL
+            </label>
+            <input
+              className="gateway-input"
+              type="text"
+              value={gatewayUrl}
+              onChange={(e) => setGatewayUrl(e.target.value)}
+              placeholder="https://gateway.example.com"
+            />
+          </div>
+          <p
+            style={{
+              fontSize: '0.75rem',
+              color: 'hsl(var(--foreground) / 0.5)',
+            }}
+          >
+            You will be prompted to log in after connecting to the gateway.
+          </p>
+        </div>
+      )}
+
+      <button
+        className="gateway-button-primary"
+        onClick={handleSave}
+        disabled={mode === 'direct' ? !backendUrl : !gatewayUrl}
+      >
+        Save &amp; Connect
+      </button>
+    </div>
+  );
 }
 
 function GatewayShell({ children }: { children: ReactNode }) {

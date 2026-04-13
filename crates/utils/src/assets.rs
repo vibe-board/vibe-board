@@ -1,5 +1,4 @@
-use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::{path::PathBuf, sync::OnceLock};
 
 use directories::ProjectDirs;
 use rust_embed::RustEmbed;
