@@ -6,9 +6,9 @@ import '@xterm/xterm/css/xterm.css';
 
 import { useTheme } from '@/components/ThemeProvider';
 import { getTerminalTheme } from '@/utils/terminalTheme';
-import { getGatewayConnection } from '@/lib/gatewayMode';
+import { getActiveConnection } from '@/lib/gatewayMode';
 import { getWsBaseUrl } from '@/lib/api';
-import type { RemoteWs } from '@/lib/e2ee/remoteWs';
+import type { WebSocketLike } from '@/lib/connections/types';
 
 interface XTermInstanceProps {
   endpointUrl: string;
@@ -91,7 +91,7 @@ export function XTermInstance({
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const wsRef = useRef<WebSocket | RemoteWs | null>(null);
+  const wsRef = useRef<WebSocketLike | null>(null);
   const initialSizeRef = useRef({ cols: 80, rows: 24 });
   const { theme } = useTheme();
 
@@ -186,15 +186,12 @@ export function XTermInstance({
         }
       };
 
-      // Create WebSocket - route through E2EE gateway if connected
-      const conn = getGatewayConnection();
-      let ws: WebSocket | RemoteWs;
-      if (conn) {
+      // Create WebSocket - route through active connection if available
+      const activeConn = getActiveConnection();
+      let ws: WebSocketLike;
+      if (activeConn) {
         const url = new URL(endpoint);
-        ws = conn.openWsStream(
-          url.pathname,
-          url.search?.substring(1) || undefined
-        );
+        ws = activeConn.openWs(url.pathname, url.search?.substring(1) || undefined);
       } else {
         ws = new WebSocket(endpoint);
       }

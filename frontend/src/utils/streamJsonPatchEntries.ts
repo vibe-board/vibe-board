@@ -1,9 +1,9 @@
 // streamJsonPatchEntries.ts - WebSocket JSON patch streaming utility
 import type { Operation } from 'rfc6902';
 import { applyUpsertPatch } from '@/utils/jsonPatch';
-import { getGatewayConnection } from '@/lib/gatewayMode';
+import { getActiveConnection } from '@/lib/gatewayMode';
 import { getWsBaseUrl } from '@/lib/api';
-import type { RemoteWs } from '@/lib/e2ee/remoteWs';
+import type { WebSocketLike } from '@/lib/connections/types';
 
 type PatchContainer<E = unknown> = { entries: E[] };
 
@@ -53,7 +53,7 @@ export function streamJsonPatchEntries<E = unknown>(
   let reconnecting = false;
   let closed = false; // set by close() to stop reconnection
   let finished = false;
-  let ws: WebSocket | RemoteWs | null = null;
+  let ws: WebSocketLike | null = null;
   let retryAttempts = 0;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let maxEntryIndex = -1;
@@ -136,10 +136,10 @@ export function streamJsonPatchEntries<E = unknown>(
   }
 
   function openConnection(connectUrl: string) {
-    const conn = getGatewayConnection();
-    if (conn) {
+    const activeConn = getActiveConnection();
+    if (activeConn) {
       const parsed = new URL(connectUrl, window.location.origin);
-      ws = conn.openWsStream(
+      ws = activeConn.openWs(
         parsed.pathname,
         parsed.search?.substring(1) || undefined
       );

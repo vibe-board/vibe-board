@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import type { PatchType } from 'shared/types';
-import { getGatewayConnection } from '@/lib/gatewayMode';
+import { getActiveConnection } from '@/lib/gatewayMode';
 import { getWsBaseUrl } from '@/lib/api';
-import type { RemoteWs } from '@/lib/e2ee/remoteWs';
+import type { WebSocketLike } from '@/lib/connections/types';
 
 type LogEntry = Extract<PatchType, { type: 'STDOUT' } | { type: 'STDERR' }>;
 
@@ -14,7 +14,7 @@ interface UseLogStreamResult {
 export const useLogStream = (processId: string): UseLogStreamResult => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const wsRef = useRef<WebSocket | RemoteWs | null>(null);
+  const wsRef = useRef<WebSocketLike | null>(null);
   const retryCountRef = useRef<number>(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isIntentionallyClosed = useRef<boolean>(false);
@@ -37,19 +37,11 @@ export const useLogStream = (processId: string): UseLogStreamResult => {
       // Capture processId at the time of opening the WebSocket
       const capturedProcessId = processId;
 
-      // In gateway mode, use E2EE connection for remote WebSocket
-      const conn = getGatewayConnection();
-      let ws: WebSocket | RemoteWs;
-      if (conn) {
-        ws = conn.openWsStream(
-          `/api/execution-processes/${processId}/raw-logs/ws`
-        );
-      } else {
-        const wsBase = getWsBaseUrl();
-        ws = new WebSocket(
-          `${wsBase}/api/execution-processes/${processId}/raw-logs/ws`
-        );
-      }
+      const path = `/api/execution-processes/${processId}/raw-logs/ws`;
+      const activeConn = getActiveConnection();
+      const ws: WebSocketLike = activeConn
+        ? activeConn.openWs(path)
+        : new WebSocket(`${getWsBaseUrl()}${path}`);
       wsRef.current = ws;
       isIntentionallyClosed.current = false;
 
