@@ -16,6 +16,7 @@ import { useConnectionStore } from '@/stores/connection-store';
 import { AddConnectionForm } from './AddConnectionForm';
 import type { GatewayNode } from '@/lib/connections/gatewayNode';
 import type { MachineStatus } from '@/lib/e2ee';
+import { deriveAuthKeyPair } from '@/lib/e2ee';
 import type { ConnectionProject } from '@/lib/connections/types';
 
 export function HomeTab() {
@@ -355,13 +356,14 @@ function MachineNodeView({
   connectionId: string;
   gatewayNode: GatewayNode;
 }) {
-  const { openProjectTab, pairMachine } = useConnectionStore();
+  const { openProjectTab, pairMachine, unpairMachine } = useConnectionStore();
   const [expanded, setExpanded] = useState(false);
   const [projects, setProjects] = useState<ConnectionProject[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pairSecret, setPairSecret] = useState('');
   const [pairError, setPairError] = useState('');
+  const [pairLoading, setPairLoading] = useState(false);
   const isPaired = gatewayNode.isMachinePaired(machine.machine_id);
 
   useEffect(() => {
@@ -400,14 +402,71 @@ function MachineNodeView({
       });
   }, [expanded, isPaired, machine.machine_id, gatewayNode]);
 
-  const handlePair = () => {
+  const handlePair = async () => {
+    const secret = pairSecret.trim();
+    if (!secret) return;
+    setPairLoading(true);
+    setPairError('');
     try {
-      pairMachine(connectionId, machine.machine_id, pairSecret.trim());
+      // Step 1: Derive auth keypair from secret
+      const secretBytes = Uint8Array.from(atob(secret), (c) => c.charCodeAt(0));
+      const authKp = await deriveAuthKeyPair(secretBytes);
+      const pubKeyB64 = btoa(String.fromCharCode(...authKp.publicKey));
+
+      // Step 2: Register device with gateway
+      const session = gatewayNode.session;
+      if (!session) throw new Error('Not logged in');
+      const regResp = await fetch(
+        `${gatewayNode.gatewayUrl}/api/auth/device/register`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.sessionToken}`,
+          },
+          body: JSON.stringify({
+            public_key: pubKeyB64,
+            device_name: 'WebUI',
+          }),
+        }
+      );
+      if (!regResp.ok) {
+        const text = await regResp.text();
+        throw new Error(
+          `Device registration failed (${regResp.status}): ${text}`
+        );
+      }
+
+      // Step 3: Notify local backend of credentials
+      const credResp = await fetch('/api/e2ee/credentials', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          master_secret: secret,
+          gateway_url: gatewayNode.gatewayUrl,
+          session_token: session.sessionToken,
+          user_id: session.userId,
+        }),
+      });
+      if (!credResp.ok) {
+        const text = await credResp.text();
+        throw new Error(`Backend credentials failed (${credResp.status}): ${text}`);
+      }
+
+      // Step 4: Local pair (localStorage)
+      pairMachine(connectionId, machine.machine_id, secret);
       setPairSecret('');
-      setPairError('');
     } catch (e) {
-      setPairError(e instanceof Error ? e.message : 'Invalid secret');
+      setPairError(e instanceof Error ? e.message : 'Pairing failed');
+    } finally {
+      setPairLoading(false);
     }
+  };
+
+  const handleUnpair = () => {
+    unpairMachine(connectionId, machine.machine_id);
+    setLoadError(null);
+    setProjects([]);
   };
 
   return (
@@ -437,25 +496,41 @@ function MachineNodeView({
             <div className="space-y-1">
               <input
                 className="w-full px-2 py-1 text-xs bg-muted border border-border rounded"
-                placeholder="Paste master secret (base64)"
+                placeholder="Paste master secret from bridge terminal (base64)"
                 value={pairSecret}
                 onChange={(e) => setPairSecret(e.target.value)}
+                disabled={pairLoading}
               />
+              <p className="text-[10px] text-foreground/40">
+                Copy the master secret from the bridge terminal output.
+              </p>
               {pairError && (
                 <p className="text-[10px] text-destructive">{pairError}</p>
               )}
               <button
                 className="px-2 py-0.5 text-xs bg-foreground text-background rounded hover:opacity-85 disabled:opacity-50"
                 onClick={handlePair}
-                disabled={!pairSecret.trim()}
+                disabled={!pairSecret.trim() || pairLoading}
               >
-                Pair
+                {pairLoading ? 'Registering...' : 'Pair'}
               </button>
             </div>
           ) : loading ? (
             <p className="text-xs text-foreground/40">Loading projects...</p>
           ) : loadError ? (
-            <p className="text-xs text-destructive">{loadError}</p>
+            <div className="space-y-1">
+              <p className="text-xs text-destructive">{loadError}</p>
+              {(loadError.includes('timeout') ||
+                loadError.includes('unwrap') ||
+                loadError.includes('public key')) && (
+                <button
+                  className="px-2 py-0.5 text-xs border border-border rounded text-foreground/70 hover:text-foreground"
+                  onClick={handleUnpair}
+                >
+                  Re-pair
+                </button>
+              )}
+            </div>
           ) : (
             projects.map((p) => (
               <div
