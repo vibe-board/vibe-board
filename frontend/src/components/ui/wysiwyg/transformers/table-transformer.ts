@@ -27,10 +27,7 @@ function $createTableCell(textContent: string): TableCellNode {
 }
 
 function mapToTableCells(textContent: string): Array<TableCellNode> | null {
-  const cells = textContent
-    .split('|')
-    .map((c) => c.trim())
-    .filter((c) => c.length > 0);
+  const cells = textContent.split('|').map((c) => c.trim());
 
   if (cells.length === 0) return null;
   return cells.map($createTableCell);
