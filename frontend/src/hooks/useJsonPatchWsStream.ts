@@ -122,6 +122,16 @@ export const useJsonPatchWsStream = <T extends object>(
         const wsEndpoint = endpoint.startsWith('/')
           ? `${wsBase}${endpoint}`
           : endpoint.replace(/^http/, 'ws');
+        // Guard against invalid WebSocket schemes (e.g. tauri:// before
+        // the active connection is set by ConnectionProvider's useEffect).
+        if (
+          !wsEndpoint.startsWith('ws://') &&
+          !wsEndpoint.startsWith('wss://')
+        ) {
+          retryAttemptsRef.current += 1;
+          scheduleReconnect();
+          return;
+        }
         ws = new WebSocket(wsEndpoint);
       }
 

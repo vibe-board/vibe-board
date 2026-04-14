@@ -148,6 +148,12 @@ export function streamJsonPatchEntries<E = unknown>(
       const wsUrl = connectUrl.startsWith('/')
         ? `${wsBase}${connectUrl}`
         : connectUrl.replace(/^http/, 'ws');
+      // Guard against invalid WebSocket schemes (e.g. tauri://)
+      if (!wsUrl.startsWith('ws://') && !wsUrl.startsWith('wss://')) {
+        retryAttempts += 1;
+        scheduleReconnect();
+        return;
+      }
       ws = new WebSocket(wsUrl);
     }
 

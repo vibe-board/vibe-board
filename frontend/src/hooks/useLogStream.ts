@@ -39,9 +39,18 @@ export const useLogStream = (processId: string): UseLogStreamResult => {
 
       const path = `/api/execution-processes/${processId}/raw-logs/ws`;
       const activeConn = getActiveConnection();
-      const ws: WebSocketLike = activeConn
-        ? activeConn.openWs(path)
-        : new WebSocket(`${getWsBaseUrl()}${path}`);
+      let ws: WebSocketLike;
+      if (activeConn) {
+        ws = activeConn.openWs(path);
+      } else {
+        const wsUrl = `${getWsBaseUrl()}${path}`;
+        if (!wsUrl.startsWith('ws://') && !wsUrl.startsWith('wss://')) {
+          // Active connection not ready yet — retry shortly
+          retryTimerRef.current = window.setTimeout(open, 500);
+          return;
+        }
+        ws = new WebSocket(wsUrl);
+      }
       wsRef.current = ws;
       isIntentionallyClosed.current = false;
 
