@@ -137,10 +137,7 @@ export function streamJsonPatchEntries<E = unknown>(
 
   function openConnection(connectUrl: string) {
     const parsed = new URL(connectUrl, window.location.origin);
-    ws = conn.openWs(
-      parsed.pathname,
-      parsed.search?.substring(1) || undefined
-    );
+    ws = conn.openWs(parsed.pathname, parsed.search?.substring(1) || undefined);
 
     ws.onopen = () => {
       connected = true;

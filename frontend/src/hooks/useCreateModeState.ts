@@ -356,7 +356,13 @@ export function useCreateModeState({
       .catch((e) => {
         console.error('[useCreateModeState] Failed to fetch projects:', e);
       });
-  }, [state.phase, state.projectId, projectsById, projectsLoading, projectsApi]);
+  }, [
+    state.phase,
+    state.projectId,
+    projectsById,
+    projectsLoading,
+    projectsApi,
+  ]);
 
   // ============================================================================
   // Persistence to scratch (debounced)

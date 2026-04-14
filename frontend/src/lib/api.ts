@@ -255,10 +255,7 @@ export interface ConfigImportResult {
  * Factory that creates all API namespace objects using injected fetch helpers.
  * Used by per-connection API instances so each tab talks to its own backend.
  */
-export function createApi(
-  makeReq: MakeRequestFn,
-  uploadFd: UploadFormDataFn
-) {
+export function createApi(makeReq: MakeRequestFn, uploadFd: UploadFormDataFn) {
   const _attemptsApi = {
     getChildren: async (attemptId: string): Promise<TaskRelationships> => {
       const response = await makeReq(
@@ -320,12 +317,9 @@ export function createApi(
     },
 
     stop: async (attemptId: string): Promise<void> => {
-      const response = await makeReq(
-        `/api/task-attempts/${attemptId}/stop`,
-        {
-          method: 'POST',
-        }
-      );
+      const response = await makeReq(`/api/task-attempts/${attemptId}/stop`, {
+        method: 'POST',
+      });
       return handleApiResponse<void>(response);
     },
 
@@ -350,13 +344,10 @@ export function createApi(
       projectId: string,
       issueId: string
     ): Promise<void> => {
-      const response = await makeReq(
-        `/api/task-attempts/${workspaceId}/link`,
-        {
-          method: 'POST',
-          body: JSON.stringify({ project_id: projectId, issue_id: issueId }),
-        }
-      );
+      const response = await makeReq(`/api/task-attempts/${workspaceId}/link`, {
+        method: 'POST',
+        body: JSON.stringify({ project_id: projectId, issue_id: issueId }),
+      });
       return handleApiResponse<void>(response);
     },
 
@@ -396,27 +387,19 @@ export function createApi(
       return handleApiResponse<OpenEditorResponse>(response);
     },
 
-    getBranchStatus: async (
-      attemptId: string
-    ): Promise<RepoBranchStatus[]> => {
+    getBranchStatus: async (attemptId: string): Promise<RepoBranchStatus[]> => {
       const response = await makeReq(
         `/api/task-attempts/${attemptId}/branch-status`
       );
       return handleApiResponse<RepoBranchStatus[]>(response);
     },
 
-    getRepos: async (
-      attemptId: string
-    ): Promise<RepoWithTargetBranch[]> => {
-      const response = await makeReq(
-        `/api/task-attempts/${attemptId}/repos`
-      );
+    getRepos: async (attemptId: string): Promise<RepoWithTargetBranch[]> => {
+      const response = await makeReq(`/api/task-attempts/${attemptId}/repos`);
       return handleApiResponse<RepoWithTargetBranch[]>(response);
     },
 
-    getFirstUserMessage: async (
-      attemptId: string
-    ): Promise<string | null> => {
+    getFirstUserMessage: async (attemptId: string): Promise<string | null> => {
       const response = await makeReq(
         `/api/task-attempts/${attemptId}/first-message`
       );
@@ -442,13 +425,10 @@ export function createApi(
       attemptId: string,
       data: PushTaskAttemptRequest
     ): Promise<Result<void, PushError>> => {
-      const response = await makeReq(
-        `/api/task-attempts/${attemptId}/push`,
-        {
-          method: 'POST',
-          body: JSON.stringify(data),
-        }
-      );
+      const response = await makeReq(`/api/task-attempts/${attemptId}/push`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
       return handleApiResponseAsResult<void, PushError>(response);
     },
 
@@ -470,13 +450,10 @@ export function createApi(
       attemptId: string,
       data: RebaseTaskAttemptRequest
     ): Promise<Result<void, GitOperationError>> => {
-      const response = await makeReq(
-        `/api/task-attempts/${attemptId}/rebase`,
-        {
-          method: 'POST',
-          body: JSON.stringify(data),
-        }
-      );
+      const response = await makeReq(`/api/task-attempts/${attemptId}/rebase`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
       return handleApiResponseAsResult<void, GitOperationError>(response);
     },
 
@@ -543,19 +520,14 @@ export function createApi(
       attemptId: string,
       data: CreatePrApiRequest
     ): Promise<Result<string, PrError>> => {
-      const response = await makeReq(
-        `/api/task-attempts/${attemptId}/pr`,
-        {
-          method: 'POST',
-          body: JSON.stringify(data),
-        }
-      );
+      const response = await makeReq(`/api/task-attempts/${attemptId}/pr`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
       return handleApiResponseAsResult<string, PrError>(response);
     },
 
-    startDevServer: async (
-      attemptId: string
-    ): Promise<ExecutionProcess[]> => {
+    startDevServer: async (attemptId: string): Promise<ExecutionProcess[]> => {
       const response = await makeReq(
         `/api/task-attempts/${attemptId}/start-dev-server`,
         {
@@ -641,9 +613,7 @@ export function createApi(
     /** Create a workspace directly from a pull request */
     createFromPr: async (
       data: CreateWorkspaceFromPrBody
-    ): Promise<
-      Result<CreateWorkspaceFromPrResponse, CreateFromPrError>
-    > => {
+    ): Promise<Result<CreateWorkspaceFromPrResponse, CreateFromPrError>> => {
       const response = await makeReq('/api/task-attempts/from-pr', {
         method: 'POST',
         body: JSON.stringify(data),
@@ -735,13 +705,10 @@ export function createApi(
       sessionId: string,
       data: CreateFollowUpAttempt
     ): Promise<ExecutionProcess> => {
-      const response = await makeReq(
-        `/api/sessions/${sessionId}/follow-up`,
-        {
-          method: 'POST',
-          body: JSON.stringify(data),
-        }
-      );
+      const response = await makeReq(`/api/sessions/${sessionId}/follow-up`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
       return handleApiResponse<ExecutionProcess>(response);
     },
 
@@ -749,13 +716,10 @@ export function createApi(
       sessionId: string,
       data: StartReviewRequest
     ): Promise<ExecutionProcess> => {
-      const response = await makeReq(
-        `/api/sessions/${sessionId}/review`,
-        {
-          method: 'POST',
-          body: JSON.stringify(data),
-        }
-      );
+      const response = await makeReq(`/api/sessions/${sessionId}/review`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
       return handleApiResponse<ExecutionProcess, ReviewError>(response);
     },
 
@@ -763,13 +727,10 @@ export function createApi(
       sessionId: string,
       data: ResetProcessRequest
     ): Promise<void> => {
-      const response = await makeReq(
-        `/api/sessions/${sessionId}/reset`,
-        {
-          method: 'POST',
-          body: JSON.stringify(data),
-        }
-      );
+      const response = await makeReq(`/api/sessions/${sessionId}/reset`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
       return handleApiResponse<void>(response);
     },
   };
@@ -808,13 +769,10 @@ export function createApi(
         id: string,
         data: OpenEditorRequest
       ): Promise<OpenEditorResponse> => {
-        const response = await makeReq(
-          `/api/projects/${id}/open-editor`,
-          {
-            method: 'POST',
-            body: JSON.stringify(data),
-          }
-        );
+        const response = await makeReq(`/api/projects/${id}/open-editor`, {
+          method: 'POST',
+          body: JSON.stringify(data),
+        });
         return handleApiResponse<OpenEditorResponse>(response);
       },
 
@@ -933,9 +891,7 @@ export function createApi(
 
     executionProcessesApi: {
       getDetails: async (processId: string): Promise<ExecutionProcess> => {
-        const response = await makeReq(
-          `/api/execution-processes/${processId}`
-        );
+        const response = await makeReq(`/api/execution-processes/${processId}`);
         return handleApiResponse<ExecutionProcess>(response);
       },
 
@@ -976,9 +932,7 @@ export function createApi(
 
     fileSystemApi: {
       list: async (path?: string): Promise<DirectoryListResponse> => {
-        const queryParam = path
-          ? `?path=${encodeURIComponent(path)}`
-          : '';
+        const queryParam = path ? `?path=${encodeURIComponent(path)}` : '';
         const response = await makeReq(
           `/api/filesystem/directory${queryParam}`
         );
@@ -986,9 +940,7 @@ export function createApi(
       },
 
       listGitRepos: async (path?: string): Promise<DirectoryEntry[]> => {
-        const queryParam = path
-          ? `?path=${encodeURIComponent(path)}`
-          : '';
+        const queryParam = path ? `?path=${encodeURIComponent(path)}` : '';
         const response = await makeReq(
           `/api/filesystem/git-repos${queryParam}`
         );
@@ -1059,13 +1011,10 @@ export function createApi(
         repoId: string,
         data: OpenEditorRequest
       ): Promise<OpenEditorResponse> => {
-        const response = await makeReq(
-          `/api/repos/${repoId}/open-editor`,
-          {
-            method: 'POST',
-            body: JSON.stringify(data),
-          }
-        );
+        const response = await makeReq(`/api/repos/${repoId}/open-editor`, {
+          method: 'POST',
+          body: JSON.stringify(data),
+        });
         return handleApiResponse<OpenEditorResponse>(response);
       },
 
@@ -1075,9 +1024,7 @@ export function createApi(
         mode?: SearchMode,
         options?: RequestInit
       ): Promise<SearchResult[]> => {
-        const modeParam = mode
-          ? `&mode=${encodeURIComponent(mode)}`
-          : '';
+        const modeParam = mode ? `&mode=${encodeURIComponent(mode)}` : '';
         const response = await makeReq(
           `/api/repos/${repoId}/search?q=${encodeURIComponent(query)}${modeParam}`,
           options
@@ -1092,12 +1039,8 @@ export function createApi(
         const params = remoteName
           ? `?remote=${encodeURIComponent(remoteName)}`
           : '';
-        const response = await makeReq(
-          `/api/repos/${repoId}/prs${params}`
-        );
-        return handleApiResponseAsResult<OpenPrInfo[], ListPrsError>(
-          response
-        );
+        const response = await makeReq(`/api/repos/${repoId}/prs${params}`);
+        return handleApiResponseAsResult<OpenPrInfo[], ListPrsError>(response);
       },
 
       listRemotes: async (repoId: string): Promise<GitRemote[]> => {
@@ -1126,9 +1069,7 @@ export function createApi(
         const response = await makeReq(
           `/api/editors/check-availability?editor_type=${encodeURIComponent(editorType)}`
         );
-        return handleApiResponse<CheckEditorAvailabilityResponse>(
-          response
-        );
+        return handleApiResponse<CheckEditorAvailabilityResponse>(response);
       },
       checkAgentAvailability: async (
         agent: BaseCodingAgent
@@ -1174,13 +1115,9 @@ export function createApi(
     },
 
     mcpServersApi: {
-      load: async (
-        query: McpServerQuery
-      ): Promise<GetMcpServerResponse> => {
+      load: async (query: McpServerQuery): Promise<GetMcpServerResponse> => {
         const params = new URLSearchParams(query);
-        const response = await makeReq(
-          `/api/mcp-config?${params.toString()}`
-        );
+        const response = await makeReq(`/api/mcp-config?${params.toString()}`);
         return handleApiResponse<GetMcpServerResponse>(response);
       },
       save: async (
@@ -1188,13 +1125,10 @@ export function createApi(
         data: UpdateMcpServersBody
       ): Promise<void> => {
         const params = new URLSearchParams(query);
-        const response = await makeReq(
-          `/api/mcp-config?${params.toString()}`,
-          {
-            method: 'POST',
-            body: JSON.stringify(data),
-          }
-        );
+        const response = await makeReq(`/api/mcp-config?${params.toString()}`, {
+          method: 'POST',
+          body: JSON.stringify(data),
+        });
         if (!response.ok) {
           const errorData = await response.json();
           console.error('[API Error] Failed to save MCP servers', {
@@ -1215,9 +1149,7 @@ export function createApi(
     profilesApi: {
       load: async (): Promise<{ content: string; path: string }> => {
         const response = await makeReq('/api/profiles');
-        return handleApiResponse<{ content: string; path: string }>(
-          response
-        );
+        return handleApiResponse<{ content: string; path: string }>(response);
       },
       save: async (content: string): Promise<string> => {
         const response = await makeReq('/api/profiles', {
@@ -1334,9 +1266,7 @@ export function createApi(
         return handleApiResponse<void>(response);
       },
 
-      getTaskImages: async (
-        taskId: string
-      ): Promise<ImageResponse[]> => {
+      getTaskImages: async (taskId: string): Promise<ImageResponse[]> => {
         const response = await makeReq(`/api/images/task/${taskId}`);
         return handleApiResponse<ImageResponse[]>(response);
       },
@@ -1405,23 +1335,15 @@ export function createApi(
         id: string,
         data: CreateScratch
       ): Promise<Scratch> => {
-        const response = await makeReq(
-          `/api/scratch/${scratchType}/${id}`,
-          {
-            method: 'POST',
-            body: JSON.stringify(data),
-          }
-        );
+        const response = await makeReq(`/api/scratch/${scratchType}/${id}`, {
+          method: 'POST',
+          body: JSON.stringify(data),
+        });
         return handleApiResponse<Scratch>(response);
       },
 
-      get: async (
-        scratchType: ScratchType,
-        id: string
-      ): Promise<Scratch> => {
-        const response = await makeReq(
-          `/api/scratch/${scratchType}/${id}`
-        );
+      get: async (scratchType: ScratchType, id: string): Promise<Scratch> => {
+        const response = await makeReq(`/api/scratch/${scratchType}/${id}`);
         return handleApiResponse<Scratch>(response);
       },
 
@@ -1430,26 +1352,17 @@ export function createApi(
         id: string,
         data: UpdateScratch
       ): Promise<void> => {
-        const response = await makeReq(
-          `/api/scratch/${scratchType}/${id}`,
-          {
-            method: 'PUT',
-            body: JSON.stringify(data),
-          }
-        );
+        const response = await makeReq(`/api/scratch/${scratchType}/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify(data),
+        });
         return handleApiResponse<void>(response);
       },
 
-      delete: async (
-        scratchType: ScratchType,
-        id: string
-      ): Promise<void> => {
-        const response = await makeReq(
-          `/api/scratch/${scratchType}/${id}`,
-          {
-            method: 'DELETE',
-          }
-        );
+      delete: async (scratchType: ScratchType, id: string): Promise<void> => {
+        const response = await makeReq(`/api/scratch/${scratchType}/${id}`, {
+          method: 'DELETE',
+        });
         return handleApiResponse<void>(response);
       },
 
@@ -1464,8 +1377,7 @@ export function createApi(
       ): string => {
         const params = new URLSearchParams();
         params.set('executor', agent);
-        if (opts?.workspaceId)
-          params.set('workspace_id', opts.workspaceId);
+        if (opts?.workspaceId) params.set('workspace_id', opts.workspaceId);
         if (opts?.repoId) params.set('repo_id', opts.repoId);
 
         return `/api/agents/slash-commands/ws?${params.toString()}`;
@@ -1483,13 +1395,10 @@ export function createApi(
           executor_profile_id: ExecutorProfileId;
         }
       ): Promise<QueueStatus> => {
-        const response = await makeReq(
-          `/api/sessions/${sessionId}/queue`,
-          {
-            method: 'POST',
-            body: JSON.stringify(data),
-          }
-        );
+        const response = await makeReq(`/api/sessions/${sessionId}/queue`, {
+          method: 'POST',
+          body: JSON.stringify(data),
+        });
         return handleApiResponse<QueueStatus>(response);
       },
 
@@ -1497,12 +1406,9 @@ export function createApi(
        * Cancel a queued follow-up message
        */
       cancel: async (sessionId: string): Promise<QueueStatus> => {
-        const response = await makeReq(
-          `/api/sessions/${sessionId}/queue`,
-          {
-            method: 'DELETE',
-          }
-        );
+        const response = await makeReq(`/api/sessions/${sessionId}/queue`, {
+          method: 'DELETE',
+        });
         return handleApiResponse<QueueStatus>(response);
       },
 
@@ -1510,9 +1416,7 @@ export function createApi(
        * Get the current queue status for a session
        */
       getStatus: async (sessionId: string): Promise<QueueStatus> => {
-        const response = await makeReq(
-          `/api/sessions/${sessionId}/queue`
-        );
+        const response = await makeReq(`/api/sessions/${sessionId}/queue`);
         return handleApiResponse<QueueStatus>(response);
       },
     },
@@ -1525,9 +1429,7 @@ export function createApi(
         options?: RequestInit
       ): Promise<SearchResult[]> => {
         const repoIdsParam = repoIds.join(',');
-        const modeParam = mode
-          ? `&mode=${encodeURIComponent(mode)}`
-          : '';
+        const modeParam = mode ? `&mode=${encodeURIComponent(mode)}` : '';
         const response = await makeReq(
           `/api/search?q=${encodeURIComponent(query)}&repo_ids=${encodeURIComponent(repoIdsParam)}${modeParam}`,
           options

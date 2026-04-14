@@ -53,21 +53,18 @@ export const useScratch = (
     [scratchApi, scratchType, id]
   );
 
-  const deleteScratch = useCallback(
-    async () => {
-      try {
-        await scratchApi.delete(scratchType, id);
-      } catch (e: unknown) {
-        // Scratch may already be deleted server-side (e.g. follow-up handler),
-        // so "not found" is not an error.
-        if (e instanceof Error && e.message.includes('Scratch not found')) {
-          return;
-        }
-        throw e;
+  const deleteScratch = useCallback(async () => {
+    try {
+      await scratchApi.delete(scratchType, id);
+    } catch (e: unknown) {
+      // Scratch may already be deleted server-side (e.g. follow-up handler),
+      // so "not found" is not an error.
+      if (e instanceof Error && e.message.includes('Scratch not found')) {
+        return;
       }
-    },
-    [scratchApi, scratchType, id]
-  );
+      throw e;
+    }
+  }, [scratchApi, scratchType, id]);
 
   const isLoading = !isInitialized && !error;
 
