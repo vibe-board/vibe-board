@@ -65,7 +65,7 @@ export function TabShell() {
             key={tab.id}
             className={`h-full overflow-hidden ${activeTabId === tab.id ? '' : 'hidden'}`}
           >
-            <ProjectTab tab={tab} active={activeTabId === tab.id} />
+            <ProjectTab tab={tab} />
           </div>
         ))}
       </div>

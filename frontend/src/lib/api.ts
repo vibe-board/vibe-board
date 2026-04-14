@@ -170,7 +170,7 @@ const handleApiResponseAsResult = async <T, E>(
   return { success: true, data: result.data as T };
 };
 
-export const handleApiResponse = async <T, E = T>(
+const handleApiResponse = async <T, E = T>(
   response: Response
 ): Promise<T> => {
   if (!response.ok) {

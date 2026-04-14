@@ -224,7 +224,7 @@ export const useConversationHistoryOld = ({
         minEntryIndex,
       };
     },
-    [attempt.id]
+    [attempt.id, executionProcessesApi]
   );
   loadEntriesRef.current = loadEntriesForHistoricExecutionProcess;
 
@@ -746,7 +746,7 @@ export const useConversationHistoryOld = ({
         });
       });
     },
-    [emitState]
+    [emitState, conn]
   );
 
   // Sometimes it can take a few seconds for the stream to start, wrap the loadRunningAndEmit method
@@ -1179,7 +1179,7 @@ export const useConversationHistoryOld = ({
       isLoadingMoreRef.current = false;
       setIsLoadingMore(false);
     }
-  }, [flattenProcessForPrepend, recomputeHasMore]);
+  }, [flattenProcessForPrepend, recomputeHasMore, executionProcessesApi]);
 
   const ensureProcessVisible = useCallback((p: ExecutionProcess) => {
     mergeIntoDisplayed((state) => {

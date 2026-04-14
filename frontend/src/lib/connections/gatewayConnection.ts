@@ -191,8 +191,4 @@ export class GatewayMachineConnection implements UnifiedConnection {
     this.session = session;
   }
 
-  /** Expose the raw E2EE connection for edge cases */
-  get rawConnection(): E2EEConnection | null {
-    return this.e2eeConn;
-  }
 }

@@ -300,7 +300,7 @@ export function XTermInstance({
     requestAnimationFrame(openTerminal);
 
     return true;
-  }, [endpoint, onClose, onSessionId]);
+  }, [endpoint, onClose, onSessionId, conn]);
 
   // Initialize terminal: try immediately, or wait for container to have dimensions via ResizeObserver
   useEffect(() => {

@@ -18,7 +18,7 @@ export function useSlashCommands(
   const endpoint = useMemo(() => {
     if (!agent) return undefined;
     return agentsApi.getSlashCommandsStreamUrl(agent, { workspaceId, repoId });
-  }, [agent, workspaceId, repoId]);
+  }, [agent, workspaceId, repoId, agentsApi]);
 
   const initialData = useCallback(
     (): SlashCommandsStreamState => ({
