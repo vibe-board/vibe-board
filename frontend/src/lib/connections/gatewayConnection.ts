@@ -173,14 +173,17 @@ export class GatewayMachineConnection implements UnifiedConnection {
   async listProjects(): Promise<ConnectionProject[]> {
     const resp = await this.fetch('/api/projects');
     if (!resp.ok) throw new Error(`Failed to list projects: ${resp.status}`);
-    const data = await resp.json();
-    return (data as Array<{ id: string; name: string; path?: string }>).map(
-      (p) => ({
-        id: String(p.id),
-        name: p.name,
-        path: p.path,
-      })
-    );
+    const envelope = await resp.json();
+    const items = (envelope.data ?? envelope) as Array<{
+      id: string;
+      name: string;
+      path?: string;
+    }>;
+    return items.map((p) => ({
+      id: String(p.id),
+      name: p.name,
+      path: p.path,
+    }));
   }
 
   /** Update session token (e.g. after re-login) */
