@@ -359,6 +359,7 @@ function MachineNodeView({
   const [expanded, setExpanded] = useState(false);
   const [projects, setProjects] = useState<ConnectionProject[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [pairSecret, setPairSecret] = useState('');
   const [pairError, setPairError] = useState('');
   const isPaired = gatewayNode.isMachinePaired(machine.machine_id);
@@ -366,10 +367,12 @@ function MachineNodeView({
   useEffect(() => {
     if (!expanded || !isPaired) return;
     setLoading(true);
+    setLoadError(null);
 
     const conn = gatewayNode.getMachineConnection(machine.machine_id);
     if (!conn) {
       setLoading(false);
+      setLoadError('Could not create machine connection');
       return;
     }
 
@@ -378,7 +381,12 @@ function MachineNodeView({
       .connect()
       .then(() => conn.listProjects())
       .then(setProjects)
-      .catch(() => setProjects([]))
+      .catch((e: unknown) => {
+        setProjects([]);
+        setLoadError(
+          e instanceof Error ? e.message : 'Failed to load projects'
+        );
+      })
       .finally(() => {
         setLoading(false);
         conn.removeRef();
@@ -439,6 +447,8 @@ function MachineNodeView({
             </div>
           ) : loading ? (
             <p className="text-xs text-foreground/40">Loading projects...</p>
+          ) : loadError ? (
+            <p className="text-xs text-destructive">{loadError}</p>
           ) : (
             projects.map((p) => (
               <div
