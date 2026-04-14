@@ -190,5 +190,4 @@ export class GatewayMachineConnection implements UnifiedConnection {
   updateSession(session: GatewaySession): void {
     this.session = session;
   }
-
 }

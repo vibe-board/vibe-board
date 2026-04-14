@@ -170,9 +170,7 @@ const handleApiResponseAsResult = async <T, E>(
   return { success: true, data: result.data as T };
 };
 
-const handleApiResponse = async <T, E = T>(
-  response: Response
-): Promise<T> => {
+const handleApiResponse = async <T, E = T>(response: Response): Promise<T> => {
   if (!response.ok) {
     let errorMessage = `Request failed with status ${response.status}`;
 
