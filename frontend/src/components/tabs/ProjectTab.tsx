@@ -6,7 +6,13 @@ import { useConnectionStore } from '@/stores/connection-store';
 import type { TabPersisted } from '@/lib/connections/types';
 import App from '@/App';
 
-export function ProjectTab({ tab }: { tab: TabPersisted }) {
+export function ProjectTab({
+  tab,
+  active,
+}: {
+  tab: TabPersisted;
+  active: boolean;
+}) {
   const getConnection = useConnectionStore((s) => s.getConnection);
   const conn = tab.connectionId
     ? getConnection(tab.connectionId, tab.machineId)
@@ -68,7 +74,7 @@ export function ProjectTab({ tab }: { tab: TabPersisted }) {
   }
 
   return (
-    <ConnectionProvider connection={conn}>
+    <ConnectionProvider connection={conn} active={active}>
       <QueryClientProvider client={conn.queryClient}>
         <App />
       </QueryClientProvider>

@@ -8,9 +8,19 @@ import type { RemoteWs } from '@/lib/e2ee/remoteWs';
 
 let activeConnection: UnifiedConnection | null = null;
 
-/** Set the active connection (called by ConnectionProvider on mount/update) */
-export function setActiveConnection(conn: UnifiedConnection | null): void {
-  activeConnection = conn;
+/** Set the active connection (called by ConnectionProvider on mount/update).
+ *  Accepts a value or a callback that receives the current connection. */
+export function setActiveConnection(
+  conn:
+    | UnifiedConnection
+    | null
+    | ((prev: UnifiedConnection | null) => UnifiedConnection | null)
+): void {
+  if (typeof conn === 'function') {
+    activeConnection = conn(activeConnection);
+  } else {
+    activeConnection = conn;
+  }
 }
 
 /** Get the active connection (used by makeRequest in api.ts) */

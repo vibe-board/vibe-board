@@ -7,24 +7,35 @@ const ConnectionContext = createContext<UnifiedConnection | null>(null);
 
 interface ConnectionProviderProps {
   connection: UnifiedConnection;
+  /** When true this tab is visible — its connection becomes the global active one */
+  active?: boolean;
   children: ReactNode;
 }
 
 export function ConnectionProvider({
   connection,
+  active = true,
   children,
 }: ConnectionProviderProps) {
   // Set module-level active connection synchronously so child components
   // see it on their very first render/effect (useEffect runs child-first,
   // which would cause children to see null if we set it in a parent effect).
-  setActiveConnection(connection);
+  // Only the visible (active) tab should claim the global singleton.
+  if (active) {
+    setActiveConnection(connection);
+  }
 
-  // Clean up on unmount or when connection changes
+  // When this tab becomes active, claim the global connection
   useEffect(() => {
+    if (active) {
+      setActiveConnection(connection);
+    }
     return () => {
-      setActiveConnection(null);
+      // Only clear if we're still the active connection (avoid clearing
+      // another tab's connection when this tab unmounts)
+      setActiveConnection((prev) => (prev === connection ? null : prev));
     };
-  }, [connection]);
+  }, [connection, active]);
 
   return (
     <ConnectionContext.Provider value={connection}>
