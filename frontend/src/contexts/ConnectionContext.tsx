@@ -14,9 +14,13 @@ export function ConnectionProvider({
   connection,
   children,
 }: ConnectionProviderProps) {
-  // Set module-level active connection so non-React code (api.ts) can access it
+  // Set module-level active connection synchronously so child components
+  // see it on their very first render/effect (useEffect runs child-first,
+  // which would cause children to see null if we set it in a parent effect).
+  setActiveConnection(connection);
+
+  // Clean up on unmount or when connection changes
   useEffect(() => {
-    setActiveConnection(connection);
     return () => {
       setActiveConnection(null);
     };
