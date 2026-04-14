@@ -133,9 +133,7 @@ function DirectNodeView({
           {loading && (
             <p className="text-xs text-foreground/40">Loading projects...</p>
           )}
-          {error && (
-            <p className="text-xs text-destructive">{error}</p>
-          )}
+          {error && <p className="text-xs text-destructive">{error}</p>}
           {projects.map((p) => (
             <div key={p.id} className="flex items-center gap-2 py-1 text-sm">
               <span className="flex-1 truncate">{p.name}</span>
