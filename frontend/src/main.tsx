@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 // CSS is now imported by design scope components (LegacyDesignScope, NewDesignScope)
 import { ClickToComponent } from 'click-to-react-component';
 import { TabShell } from '@/components/tabs/TabShell';
+import { LegacyDesignScope } from '@/components/legacy-design/LegacyDesignScope';
 import {
   QueryClient,
   QueryClientProvider,
@@ -84,7 +85,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           showDialog
         >
           <ClickToComponent />
-          <TabShell />
+          <LegacyDesignScope>
+            <TabShell />
+          </LegacyDesignScope>
           {/*<TanStackDevtools plugins={[FormDevtoolsPlugin()]} />*/}
           {/* <ReactQueryDevtools initialIsOpen={false} /> */}
         </Sentry.ErrorBoundary>
