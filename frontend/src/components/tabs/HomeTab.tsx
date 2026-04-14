@@ -450,7 +450,9 @@ function MachineNodeView({
       });
       if (!credResp.ok) {
         const text = await credResp.text();
-        throw new Error(`Backend credentials failed (${credResp.status}): ${text}`);
+        throw new Error(
+          `Backend credentials failed (${credResp.status}): ${text}`
+        );
       }
 
       // Step 4: Local pair (localStorage)
