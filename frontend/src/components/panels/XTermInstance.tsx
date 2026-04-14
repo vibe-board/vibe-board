@@ -196,10 +196,7 @@ export function XTermInstance({
           url.search?.substring(1) || undefined
         );
       } else {
-        if (
-          !endpoint.startsWith('ws://') &&
-          !endpoint.startsWith('wss://')
-        ) {
+        if (!endpoint.startsWith('ws://') && !endpoint.startsWith('wss://')) {
           // Active connection not ready yet — retry on next render
           return;
         }
