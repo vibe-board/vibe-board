@@ -430,7 +430,7 @@ function MachineNodeView({
           }),
         }
       );
-      if (!regResp.ok) {
+      if (!regResp.ok && regResp.status !== 409) {
         const text = await regResp.text();
         throw new Error(
           `Device registration failed (${regResp.status}): ${text}`
