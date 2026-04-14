@@ -75,11 +75,10 @@ export class DirectConnection implements UnifiedConnection {
     init?: RequestInit,
     _extra?: { timeoutMs?: number }
   ): Promise<Response> {
-    const headers = new Headers(init?.headers ?? {});
-    if (!headers.has('Content-Type')) {
-      headers.set('Content-Type', 'application/json');
-    }
-    return window.fetch(`${this.url}${path}`, { ...init, headers });
+    return window.fetch(`${this.url}${path}`, {
+      ...init,
+      credentials: 'include',
+    });
   }
 
   openWs(path: string, query?: string): WebSocketLike {

@@ -74,14 +74,19 @@ function DirectNodeView({
   const [showMenu, setShowMenu] = useState(false);
 
   const conn = useConnectionStore((s) => s.getConnection(node.entry.id));
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!expanded || !conn) return;
     setLoading(true);
+    setError(null);
     conn
       .listProjects()
       .then(setProjects)
-      .catch(() => setProjects([]))
+      .catch((e: unknown) => {
+        setProjects([]);
+        setError(e instanceof Error ? e.message : 'Failed to load projects');
+      })
       .finally(() => setLoading(false));
   }, [expanded, conn]);
 
@@ -127,6 +132,9 @@ function DirectNodeView({
         <div className="px-3 pb-2 pl-8 space-y-1">
           {loading && (
             <p className="text-xs text-foreground/40">Loading projects...</p>
+          )}
+          {error && (
+            <p className="text-xs text-destructive">{error}</p>
           )}
           {projects.map((p) => (
             <div key={p.id} className="flex items-center gap-2 py-1 text-sm">
