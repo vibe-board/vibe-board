@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { tasksApi, attemptsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { taskKeys } from './useTask';
 import { taskRelationshipsKeys } from './useTaskRelationships';
 import { workspaceSummaryKeys } from '@/hooks/queryKeys';
@@ -19,6 +19,7 @@ interface UseCreateWorkspaceOptions {
 }
 
 export function useCreateWorkspace(options: UseCreateWorkspaceOptions = {}) {
+  const { tasksApi, attemptsApi } = useApi();
   const { onWorkspaceCreated } = options;
   const queryClient = useQueryClient();
   const navigate = useNavigate();

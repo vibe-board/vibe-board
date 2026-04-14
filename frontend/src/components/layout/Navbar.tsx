@@ -40,7 +40,7 @@ import {
 } from '@/components/ui/tooltip';
 import { OAuthDialog } from '@/components/dialogs/global/OAuthDialog';
 import { useUserSystem } from '@/components/ConfigProvider';
-import { oauthApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { useOptionalConnection } from '@/contexts/ConnectionContext';
 import { cn } from '@/lib/utils';
 import { useTerminalDrawer } from '@/contexts/TerminalDrawerContext';
@@ -79,6 +79,7 @@ function NavDivider() {
 }
 
 export function Navbar() {
+  const { oauthApi } = useApi();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { projectId, project } = useProject();

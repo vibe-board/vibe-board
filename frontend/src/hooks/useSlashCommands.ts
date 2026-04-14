@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import type { BaseCodingAgent, SlashCommandDescription } from 'shared/types';
 import { useJsonPatchWsStream } from '@/hooks/useJsonPatchWsStream';
-import { agentsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 
 type SlashCommandsStreamState = {
   commands: SlashCommandDescription[];
@@ -13,6 +13,7 @@ export function useSlashCommands(
   agent: BaseCodingAgent | null | undefined,
   opts?: { workspaceId?: string; repoId?: string }
 ) {
+  const { agentsApi } = useApi();
   const { workspaceId, repoId } = opts ?? {};
   const endpoint = useMemo(() => {
     if (!agent) return undefined;

@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { imagesApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type { LocalImageMetadata } from '@/components/ui/wysiwyg/context/task-attempt-context';
 import type { ImageResponse } from 'shared/types';
 
@@ -11,6 +11,7 @@ import type { ImageResponse } from 'shared/types';
 export function useCreateAttachments(
   onInsertMarkdown: (markdown: string) => void
 ) {
+  const { imagesApi } = useApi();
   const [uploadedImages, setUploadedImages] = useState<ImageResponse[]>([]);
 
   const uploadFiles = useCallback(

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { attemptsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type { PrCommentsResponse } from 'shared/types';
 
 export const prCommentsKeys = {
@@ -17,6 +17,7 @@ export function usePrComments(
   repoId?: string,
   opts?: Options
 ) {
+  const { attemptsApi } = useApi();
   const enabled = (opts?.enabled ?? true) && !!attemptId && !!repoId;
 
   return useQuery<PrCommentsResponse>({

@@ -1,12 +1,13 @@
 import { useMemo, useCallback } from 'react';
 import { useQueries } from '@tanstack/react-query';
-import { attemptsApi, executionProcessesApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { useTaskStopping } from '@/stores/useTaskDetailsUiStore';
 import { useExecutionProcessesContext } from '@/contexts/ExecutionProcessesContext';
 import type { AttemptData } from '@/lib/types';
 import type { ExecutionProcess } from 'shared/types';
 
 export function useAttemptExecution(attemptId?: string, taskId?: string) {
+  const { attemptsApi, executionProcessesApi } = useApi();
   const { isStopping, setIsStopping } = useTaskStopping(taskId || '');
 
   const {

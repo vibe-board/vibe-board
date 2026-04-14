@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { attemptsApi, executionProcessesApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { useAttemptExecution } from '@/hooks/useAttemptExecution';
 import { workspaceSummaryKeys } from '@/hooks/queryKeys';
 import {
@@ -20,6 +20,7 @@ export function useDevServer(
   attemptId: string | undefined,
   options?: UseDevServerOptions
 ) {
+  const { attemptsApi, executionProcessesApi } = useApi();
   const queryClient = useQueryClient();
   const { attemptData } = useAttemptExecution(attemptId);
 

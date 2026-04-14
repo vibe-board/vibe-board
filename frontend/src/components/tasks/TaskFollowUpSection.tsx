@@ -62,8 +62,7 @@ import { useTranslation } from 'react-i18next';
 import { useScratch } from '@/hooks/useScratch';
 import { useDebouncedCallback } from '@/hooks/useDebouncedCallback';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { queueApi } from '@/lib/api';
-import { imagesApi, attemptsApi, tasksApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { PrCommentsDialog } from '@/components/dialogs/tasks/PrCommentsDialog';
 import type { NormalizedComment } from '@/components/ui/wysiwyg/nodes/pr-comment-node';
 import type { Session } from 'shared/types';
@@ -80,6 +79,7 @@ export function TaskFollowUpSection({
   task,
   session,
 }: TaskFollowUpSectionProps) {
+  const { tasksApi, attemptsApi, imagesApi, queueApi } = useApi();
   const { t } = useTranslation('tasks');
   const { projectId } = useProject();
   const navigate = useNavigateWithSearch();

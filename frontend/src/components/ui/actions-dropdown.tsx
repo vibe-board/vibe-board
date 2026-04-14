@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { profilesApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -31,6 +31,7 @@ interface ActionsDropdownProps {
 }
 
 export function ActionsDropdown({ task, attempt }: ActionsDropdownProps) {
+  const { profilesApi } = useApi();
   const { t } = useTranslation('tasks');
   const { projectId } = useProject();
   const openInEditor = useOpenInEditor(attempt?.id);

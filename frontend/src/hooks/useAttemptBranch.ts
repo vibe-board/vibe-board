@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { attemptsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 
 export function useAttemptBranch(attemptId?: string) {
+  const { attemptsApi } = useApi();
   const query = useQuery({
     queryKey: ['attemptBranch', attemptId],
     queryFn: async () => {

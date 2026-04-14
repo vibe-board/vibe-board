@@ -20,7 +20,7 @@ import {
   Loader2,
   Search,
 } from 'lucide-react';
-import { fileSystemApi, repoApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { DirectoryEntry, Repo } from 'shared/types';
 import NiceModal, { useModal } from '@ebay/nice-modal-react';
 import { defineModal } from '@/lib/modals';
@@ -39,6 +39,7 @@ const RepoPickerDialogImpl = NiceModal.create<RepoPickerDialogProps>(
     title = 'Select Repository',
     description = 'Choose or create a git repository',
   }) => {
+    const { fileSystemApi, repoApi } = useApi();
     const { t } = useTranslation('projects');
     const modal = useModal();
     const [stage, setStage] = useState<Stage>('options');

@@ -13,7 +13,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Loader2 } from 'lucide-react';
-import { tagsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type { Tag, CreateTag, UpdateTag } from 'shared/types';
 import NiceModal, { useModal } from '@ebay/nice-modal-react';
 import { defineModal, getErrorMessage } from '@/lib/modals';
@@ -25,6 +25,7 @@ export interface TagEditDialogProps {
 export type TagEditResult = 'saved' | 'canceled';
 
 const TagEditDialogImpl = NiceModal.create<TagEditDialogProps>(({ tag }) => {
+  const { tagsApi } = useApi();
   const modal = useModal();
   const { t } = useTranslation('settings');
   const [formData, setFormData] = useState({

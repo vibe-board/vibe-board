@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { projectsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { ProjectEditorSelectionDialog } from '@/components/dialogs/projects/ProjectEditorSelectionDialog';
 import type { EditorType, Project } from 'shared/types';
 
@@ -7,6 +7,7 @@ export function useOpenProjectInEditor(
   project: Project | null,
   onShowEditorDialog?: () => void
 ) {
+  const { projectsApi } = useApi();
   return useCallback(
     async (editorType?: EditorType) => {
       if (!project) return;
@@ -34,6 +35,6 @@ export function useOpenProjectInEditor(
         }
       }
     },
-    [project, onShowEditorDialog]
+    [project, onShowEditorDialog, projectsApi]
   );
 }

@@ -14,7 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { Loader } from '@/components/ui/loader';
-import { tasksApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type { RepoBranchStatus, Workspace } from 'shared/types';
 import { openTaskForm } from '@/lib/openTaskForm';
 import { FeatureShowcaseDialog } from '@/components/dialogs/global/FeatureShowcaseDialog';
@@ -165,6 +165,7 @@ function DiffsPanelContainer({
 }
 
 export function ProjectTasks() {
+  const { tasksApi } = useApi();
   const { t } = useTranslation(['tasks', 'common']);
   const { taskId, attemptId } = useParams<{
     projectId: string;

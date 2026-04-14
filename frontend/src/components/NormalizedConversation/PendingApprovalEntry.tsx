@@ -15,7 +15,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { approvalsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { Check, X } from 'lucide-react';
 import WYSIWYGEditor from '@/components/ui/wysiwyg';
 
@@ -174,6 +174,7 @@ const PendingApprovalEntry = ({
   executionProcessId,
   children,
 }: PendingApprovalEntryProps) => {
+  const { approvalsApi } = useApi();
   const [isResponding, setIsResponding] = useState(false);
   const [hasResponded, setHasResponded] = useState(false);
   const [error, setError] = useState<string | null>(null);

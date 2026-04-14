@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigateWithSearch } from '@/hooks';
-import { tasksApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { paths } from '@/lib/paths';
 import { taskRelationshipsKeys } from '@/hooks/useTaskRelationships';
 import { workspaceSummaryKeys } from '@/hooks/queryKeys';
@@ -13,6 +13,7 @@ import type {
 import { taskKeys } from './useTask';
 
 export function useTaskMutations(projectId?: string) {
+  const { tasksApi } = useApi();
   const queryClient = useQueryClient();
   const navigate = useNavigateWithSearch();
 

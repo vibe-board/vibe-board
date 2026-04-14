@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { AlertTriangle, FileUp, Loader2, Upload } from 'lucide-react';
 
 import { defineModal } from '@/lib/modals';
-import { configTransferApi, type ConfigExportEnvelope } from '@/lib/api';
+import { type ConfigExportEnvelope } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import {
   Dialog,
   DialogContent,
@@ -35,6 +36,7 @@ export type ImportConfigResult =
   | { action: 'canceled' };
 
 const ImportConfigDialogImpl = NiceModal.create<Record<string, never>>(() => {
+  const { configTransferApi } = useApi();
   const modal = useModal();
   const { t } = useTranslation('settings');
   const { reloadSystem } = useUserSystem();

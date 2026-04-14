@@ -9,7 +9,7 @@ import {
   Cog,
   ArrowLeft,
 } from 'lucide-react';
-import { executionProcessesApi } from '@/lib/api.ts';
+import { useApi } from '@/hooks/useApi';
 import { ProfileVariantBadge } from '@/components/common/ProfileVariantBadge.tsx';
 import { useExecutionProcesses } from '@/hooks/useExecutionProcesses';
 import { useLogStream } from '@/hooks/useLogStream';
@@ -33,6 +33,7 @@ interface ProcessesTabProps {
 }
 
 function ProcessesTab({ sessionId }: ProcessesTabProps) {
+  const { executionProcessesApi } = useApi();
   const { t } = useTranslation('tasks');
   const {
     executionProcesses,

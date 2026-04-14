@@ -1,8 +1,7 @@
 // streamJsonPatchEntries.ts - WebSocket JSON patch streaming utility
 import type { Operation } from 'rfc6902';
 import { applyUpsertPatch } from '@/utils/jsonPatch';
-import { getActiveConnection } from '@/lib/gatewayMode';
-import { getWsBaseUrl } from '@/lib/api';
+import type { UnifiedConnection } from '@/lib/connections/types';
 import type { WebSocketLike } from '@/lib/connections/types';
 
 type PatchContainer<E = unknown> = { entries: E[] };
@@ -47,6 +46,7 @@ interface StreamController<E = unknown> {
  */
 export function streamJsonPatchEntries<E = unknown>(
   url: string,
+  conn: UnifiedConnection,
   opts: StreamOptions<E> = {}
 ): StreamController<E> {
   let connected = false;
@@ -136,26 +136,11 @@ export function streamJsonPatchEntries<E = unknown>(
   }
 
   function openConnection(connectUrl: string) {
-    const activeConn = getActiveConnection();
-    if (activeConn) {
-      const parsed = new URL(connectUrl, window.location.origin);
-      ws = activeConn.openWs(
-        parsed.pathname,
-        parsed.search?.substring(1) || undefined
-      );
-    } else {
-      const wsBase = getWsBaseUrl();
-      const wsUrl = connectUrl.startsWith('/')
-        ? `${wsBase}${connectUrl}`
-        : connectUrl.replace(/^http/, 'ws');
-      // Guard against invalid WebSocket schemes (e.g. tauri://)
-      if (!wsUrl.startsWith('ws://') && !wsUrl.startsWith('wss://')) {
-        retryAttempts += 1;
-        scheduleReconnect();
-        return;
-      }
-      ws = new WebSocket(wsUrl);
-    }
+    const parsed = new URL(connectUrl, window.location.origin);
+    ws = conn.openWs(
+      parsed.pathname,
+      parsed.search?.substring(1) || undefined
+    );
 
     ws.onopen = () => {
       connected = true;

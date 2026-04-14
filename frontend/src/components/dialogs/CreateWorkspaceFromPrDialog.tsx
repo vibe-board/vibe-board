@@ -23,13 +23,14 @@ import {
 import { useNavigateWithSearch } from '@/hooks';
 import NiceModal, { useModal } from '@ebay/nice-modal-react';
 import { defineModal } from '@/lib/modals';
-import { attemptsApi, repoApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type { OpenPrInfo, GitRemote } from 'shared/types';
 
 export interface CreateWorkspaceFromPrDialogProps {}
 
 const CreateWorkspaceFromPrDialogImpl =
   NiceModal.create<CreateWorkspaceFromPrDialogProps>(() => {
+    const { attemptsApi, repoApi } = useApi();
     const modal = useModal();
     const navigate = useNavigateWithSearch();
     const { t } = useTranslation('tasks');

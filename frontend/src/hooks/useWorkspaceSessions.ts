@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import { sessionsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type { Session } from 'shared/types';
 
 interface UseWorkspaceSessionsOptions {
@@ -34,6 +34,7 @@ export function useWorkspaceSessions(
   workspaceId: string | undefined,
   options: UseWorkspaceSessionsOptions = {}
 ): UseWorkspaceSessionsResult {
+  const { sessionsApi } = useApi();
   const { enabled = true } = options;
   const [selection, setSelection] = useState<SessionSelection | undefined>(
     undefined

@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { attemptsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type { WorkspaceWithSession } from '@/types/attempt';
 
 export function useTaskAttempt(attemptId?: string) {
+  const { attemptsApi } = useApi();
   return useQuery({
     queryKey: ['taskAttempt', attemptId],
     queryFn: () => attemptsApi.get(attemptId!),
@@ -15,6 +16,7 @@ export function useTaskAttempt(attemptId?: string) {
  * Fetches workspace with executor from latest session.
  */
 export function useTaskAttemptWithSession(attemptId?: string) {
+  const { attemptsApi } = useApi();
   return useQuery<WorkspaceWithSession>({
     queryKey: ['taskAttemptWithSession', attemptId],
     queryFn: () => attemptsApi.getWithSession(attemptId!),

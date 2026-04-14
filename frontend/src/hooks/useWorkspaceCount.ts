@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { attemptsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 
 export const workspaceCountKeys = {
   count: ['workspaceCount'] as const,
@@ -10,6 +10,7 @@ type Options = {
 };
 
 export function useWorkspaceCount(opts?: Options) {
+  const { attemptsApi } = useApi();
   const enabled = opts?.enabled ?? true;
 
   return useQuery<number>({

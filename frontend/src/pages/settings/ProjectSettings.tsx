@@ -25,7 +25,7 @@ import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { useProjects } from '@/hooks/useProjects';
 import { useProjectMutations } from '@/hooks/useProjectMutations';
 import { RepoPickerDialog } from '@/components/dialogs/shared/RepoPickerDialog';
-import { projectsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { repoBranchKeys } from '@/hooks/useRepoBranches';
 import type { Project, Repo, UpdateProject } from 'shared/types';
 
@@ -40,6 +40,7 @@ function projectToFormState(project: Project): ProjectFormState {
 }
 
 export function ProjectSettings() {
+  const { projectsApi } = useApi();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const projectIdParam = searchParams.get('projectId') ?? '';

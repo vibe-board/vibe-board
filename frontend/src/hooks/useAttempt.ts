@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { attemptsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type { Workspace } from 'shared/types';
 
 export const attemptKeys = {
@@ -11,6 +11,7 @@ type Options = {
 };
 
 export function useAttempt(attemptId?: string, opts?: Options) {
+  const { attemptsApi } = useApi();
   const enabled = (opts?.enabled ?? true) && !!attemptId;
 
   return useQuery<Workspace>({

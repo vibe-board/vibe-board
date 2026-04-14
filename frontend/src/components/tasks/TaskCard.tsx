@@ -12,7 +12,7 @@ import { ActionsDropdown } from '@/components/ui/actions-dropdown';
 import { Button } from '@/components/ui/button';
 import { useNavigateWithSearch } from '@/hooks';
 import { paths } from '@/lib/paths';
-import { attemptsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { TaskCardHeader } from './TaskCardHeader';
 import { AgentIcon, getAgentName } from '@/components/agents/AgentIcon';
 import { useTranslation } from 'react-i18next';
@@ -36,6 +36,7 @@ export const TaskCard = memo(
     isOpen,
     projectId,
   }: TaskCardProps) {
+    const { attemptsApi } = useApi();
     const { t } = useTranslation('tasks');
     const navigate = useNavigateWithSearch();
     const { hasTerminalForTask } = useTerminal();

@@ -20,7 +20,7 @@ import {
   Home,
   Search,
 } from 'lucide-react';
-import { fileSystemApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { DirectoryEntry, DirectoryListResponse } from 'shared/types';
 import NiceModal, { useModal } from '@ebay/nice-modal-react';
 import { defineModal } from '@/lib/modals';
@@ -37,6 +37,7 @@ const FolderPickerDialogImpl = NiceModal.create<FolderPickerDialogProps>(
     title = 'Select Folder',
     description = 'Choose a folder for your project',
   }) => {
+    const { fileSystemApi } = useApi();
     const modal = useModal();
     const { t } = useTranslation('common');
     const [currentPath, setCurrentPath] = useState<string>('');

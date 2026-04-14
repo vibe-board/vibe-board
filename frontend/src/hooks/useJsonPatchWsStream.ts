@@ -2,8 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { produce } from 'immer';
 import type { Operation } from 'rfc6902';
 import { applyUpsertPatch } from '@/utils/jsonPatch';
-import { getActiveConnection } from '@/lib/gatewayMode';
-import { getWsBaseUrl } from '@/lib/api';
+import { useConnection } from '@/contexts/ConnectionContext';
 import type { WebSocketLike } from '@/lib/connections/types';
 
 type WsJsonPatchMsg = { JsonPatch: Operation[] };
@@ -38,6 +37,7 @@ export const useJsonPatchWsStream = <T extends object>(
   initialData: () => T,
   options?: UseJsonPatchStreamOptions<T>
 ): UseJsonPatchStreamResult<T> => {
+  const conn = useConnection();
   const [data, setData] = useState<T | undefined>(undefined);
   const [isConnected, setIsConnected] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -109,31 +109,11 @@ export const useJsonPatchWsStream = <T extends object>(
       // Reset finished flag for new connection
       finishedRef.current = false;
 
-      const activeConn = getActiveConnection();
-      let ws: WebSocketLike;
-      if (activeConn) {
-        const url = new URL(endpoint, window.location.origin);
-        ws = activeConn.openWs(
-          url.pathname,
-          url.search?.substring(1) || undefined
-        );
-      } else {
-        const wsBase = getWsBaseUrl();
-        const wsEndpoint = endpoint.startsWith('/')
-          ? `${wsBase}${endpoint}`
-          : endpoint.replace(/^http/, 'ws');
-        // Guard against invalid WebSocket schemes (e.g. tauri:// before
-        // the active connection is set by ConnectionProvider's useEffect).
-        if (
-          !wsEndpoint.startsWith('ws://') &&
-          !wsEndpoint.startsWith('wss://')
-        ) {
-          retryAttemptsRef.current += 1;
-          scheduleReconnect();
-          return;
-        }
-        ws = new WebSocket(wsEndpoint);
-      }
+      const url = new URL(endpoint, window.location.origin);
+      const ws: WebSocketLike = conn.openWs(
+        url.pathname,
+        url.search?.substring(1) || undefined
+      );
 
       ws.onopen = () => {
         setError(null);
@@ -238,7 +218,7 @@ export const useJsonPatchWsStream = <T extends object>(
       setData(undefined);
       setIsInitialized(false);
     };
-  }, [endpoint, enabled, retryNonce]);
+  }, [endpoint, enabled, retryNonce, conn]);
 
   return { data, isConnected, isInitialized, error };
 };

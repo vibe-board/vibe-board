@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import type { PatchType } from 'shared/types';
-import { getActiveConnection } from '@/lib/gatewayMode';
-import { getWsBaseUrl } from '@/lib/api';
+import { useConnection } from '@/contexts/ConnectionContext';
 import type { WebSocketLike } from '@/lib/connections/types';
 
 type LogEntry = Extract<PatchType, { type: 'STDOUT' } | { type: 'STDERR' }>;
@@ -12,6 +11,7 @@ interface UseLogStreamResult {
 }
 
 export const useLogStream = (processId: string): UseLogStreamResult => {
+  const conn = useConnection();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const wsRef = useRef<WebSocketLike | null>(null);
@@ -38,19 +38,7 @@ export const useLogStream = (processId: string): UseLogStreamResult => {
       const capturedProcessId = processId;
 
       const path = `/api/execution-processes/${processId}/raw-logs/ws`;
-      const activeConn = getActiveConnection();
-      let ws: WebSocketLike;
-      if (activeConn) {
-        ws = activeConn.openWs(path);
-      } else {
-        const wsUrl = `${getWsBaseUrl()}${path}`;
-        if (!wsUrl.startsWith('ws://') && !wsUrl.startsWith('wss://')) {
-          // Active connection not ready yet — retry shortly
-          retryTimerRef.current = window.setTimeout(open, 500);
-          return;
-        }
-        ws = new WebSocket(wsUrl);
-      }
+      const ws: WebSocketLike = conn.openWs(path);
       wsRef.current = ws;
       isIntentionallyClosed.current = false;
 
@@ -143,7 +131,7 @@ export const useLogStream = (processId: string): UseLogStreamResult => {
         retryTimerRef.current = null;
       }
     };
-  }, [processId]);
+  }, [processId, conn]);
 
   return { logs, error };
 };

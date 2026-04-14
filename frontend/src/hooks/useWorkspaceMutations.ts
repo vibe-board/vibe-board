@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { attemptsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { attemptKeys } from '@/hooks/useAttempt';
 import { workspaceSummaryKeys } from '@/hooks/queryKeys';
 
@@ -25,6 +25,7 @@ interface UseWorkspaceMutationsOptions {
 }
 
 export function useWorkspaceMutations(options?: UseWorkspaceMutationsOptions) {
+  const { attemptsApi } = useApi();
   const queryClient = useQueryClient();
 
   const invalidateQueries = (workspaceId: string) => {

@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { Download, Loader2 } from 'lucide-react';
 
 import { defineModal, type NoProps } from '@/lib/modals';
-import { configTransferApi, type ConfigExportEnvelope } from '@/lib/api';
+import { type ConfigExportEnvelope } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import {
   Dialog,
   DialogContent,
@@ -58,6 +59,7 @@ function getUiPreferencesData(): Record<string, unknown> {
 }
 
 const ExportConfigDialogImpl = NiceModal.create<NoProps>(() => {
+  const { configTransferApi } = useApi();
   const modal = useModal();
   const { t } = useTranslation('settings');
   const [backendData, setBackendData] = useState<ConfigExportEnvelope | null>(

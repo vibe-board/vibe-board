@@ -11,7 +11,8 @@ import { useScratch } from '@/hooks/useScratch';
 import { useDebouncedCallback } from '@/hooks/useDebouncedCallback';
 import { useProjects } from '@/hooks/useProjects';
 import { useUserSystem } from '@/components/ConfigProvider';
-import { projectsApi, repoApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
+import type { ApiNamespaces } from '@/lib/api';
 
 // ============================================================================
 // Types
@@ -210,6 +211,7 @@ export function useCreateModeState({
   initialState,
   draftId,
 }: UseCreateModeStateParams): UseCreateModeStateResult {
+  const { projectsApi, repoApi } = useApi();
   const location = useLocation();
   const navigate = useNavigate();
   const { projectsById, isLoading: projectsLoading } = useProjects();
@@ -287,6 +289,7 @@ export function useCreateModeState({
       profiles,
       isValidProfile,
       dispatch,
+      repoApi,
     });
   }, [
     scratchLoading,
@@ -301,6 +304,7 @@ export function useCreateModeState({
     navigate,
     location.pathname,
     location.search,
+    repoApi,
   ]);
 
   // ============================================================================
@@ -352,7 +356,7 @@ export function useCreateModeState({
       .catch((e) => {
         console.error('[useCreateModeState] Failed to fetch projects:', e);
       });
-  }, [state.phase, state.projectId, projectsById, projectsLoading]);
+  }, [state.phase, state.projectId, projectsById, projectsLoading, projectsApi]);
 
   // ============================================================================
   // Persistence to scratch (debounced)
@@ -507,6 +511,7 @@ interface InitializeParams {
   profiles: Record<string, Record<string, unknown>>;
   isValidProfile: (profile: ExecutorProfileId | null) => boolean;
   dispatch: React.Dispatch<DraftAction>;
+  repoApi: ApiNamespaces['repoApi'];
 }
 
 async function initializeState({
@@ -517,6 +522,7 @@ async function initializeState({
   projectsById,
   isValidProfile,
   dispatch,
+  repoApi,
 }: InitializeParams): Promise<void> {
   try {
     // Priority 1: Navigation state (preferredRepos, initialPrompt, and/or linkedIssue)

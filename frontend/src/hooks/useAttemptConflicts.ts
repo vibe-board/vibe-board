@@ -1,8 +1,9 @@
 import { useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { attemptsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 
 export function useAttemptConflicts(attemptId?: string, repoId?: string) {
+  const { attemptsApi } = useApi();
   const queryClient = useQueryClient();
 
   const abortConflicts = useCallback(async () => {

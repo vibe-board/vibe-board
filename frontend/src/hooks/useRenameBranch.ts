@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { attemptsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type { Workspace } from 'shared/types';
 
 interface RenameBranchContext {
@@ -11,6 +11,7 @@ export function useRenameBranch(
   onSuccess?: (newBranchName: string) => void,
   onError?: (err: unknown) => void
 ) {
+  const { attemptsApi } = useApi();
   const queryClient = useQueryClient();
 
   return useMutation<{ branch: string }, unknown, string, RenameBranchContext>({

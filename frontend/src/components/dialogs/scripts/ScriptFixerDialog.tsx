@@ -23,7 +23,7 @@ import { AutoExpandingTextarea } from '@/components/ui/auto-expanding-textarea';
 import { VirtualizedProcessLogs } from '@/components/common/VirtualizedProcessLogs';
 import { RunningDots } from '@/components/common/RunningDots';
 import { defineModal } from '@/lib/modals';
-import { repoApi, attemptsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { useLogStream } from '@/hooks/useLogStream';
 import { useExecutionProcesses } from '@/hooks/useExecutionProcesses';
 import type { RepoWithTargetBranch, PatchType, UpdateRepo } from 'shared/types';
@@ -46,6 +46,7 @@ type LogEntry = Extract<PatchType, { type: 'STDOUT' } | { type: 'STDERR' }>;
 
 const ScriptFixerDialogImpl = NiceModal.create<ScriptFixerDialogProps>(
   ({ scriptType, repos, workspaceId, sessionId, initialRepoId }) => {
+    const { attemptsApi, repoApi } = useApi();
     const modal = useModal();
     const { t } = useTranslation(['tasks', 'common']);
     const queryClient = useQueryClient();

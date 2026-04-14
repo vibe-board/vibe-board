@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { projectsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 
 export function useHasDevServerScript(projectId?: string) {
+  const { projectsApi } = useApi();
   return useQuery({
     queryKey: ['hasDevServerScript', projectId],
     queryFn: async () => {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { tasksApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type { Task } from 'shared/types';
 
 interface UseTaskHistoryResult {
@@ -12,6 +12,7 @@ interface UseTaskHistoryResult {
 }
 
 export const useTaskHistory = (projectId: string): UseTaskHistoryResult => {
+  const { tasksApi } = useApi();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasMore, setHasMore] = useState(false);

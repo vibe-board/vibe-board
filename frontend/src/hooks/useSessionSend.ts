@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import type { BaseCodingAgent } from 'shared/types';
-import { sessionsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { useCreateSession } from './useCreateSession';
 
 interface UseSessionSendOptions {
@@ -43,6 +43,7 @@ export function useSessionSend({
   effectiveExecutor,
   onSelectSession,
 }: UseSessionSendOptions): UseSessionSendResult {
+  const { sessionsApi } = useApi();
   const { mutateAsync: createSession, isPending: isCreatingSession } =
     useCreateSession();
   const [isSendingFollowUp, setIsSendingFollowUp] = useState(false);

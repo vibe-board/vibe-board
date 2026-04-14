@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
-import { tasksApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type { Task } from 'shared/types';
 import NiceModal, { useModal } from '@ebay/nice-modal-react';
 import { defineModal } from '@/lib/modals';
@@ -21,6 +21,7 @@ export interface DeleteTaskConfirmationDialogProps {
 
 const DeleteTaskConfirmationDialogImpl =
   NiceModal.create<DeleteTaskConfirmationDialogProps>(({ task }) => {
+    const { tasksApi } = useApi();
     const modal = useModal();
     const [isDeleting, setIsDeleting] = useState(false);
     const [error, setError] = useState<string | null>(null);

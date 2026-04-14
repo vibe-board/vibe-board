@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { attemptsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type {
   ChangeTargetBranchRequest,
   ChangeTargetBranchResponse,
@@ -17,6 +17,7 @@ export function useChangeTargetBranch(
   onSuccess?: (data: ChangeTargetBranchResponse) => void,
   onError?: (err: unknown) => void
 ) {
+  const { attemptsApi } = useApi();
   const queryClient = useQueryClient();
 
   return useMutation<

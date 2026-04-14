@@ -6,8 +6,7 @@ import '@xterm/xterm/css/xterm.css';
 
 import { useTheme } from '@/components/ThemeProvider';
 import { getTerminalTheme } from '@/utils/terminalTheme';
-import { getActiveConnection } from '@/lib/gatewayMode';
-import { getWsBaseUrl } from '@/lib/api';
+import { useConnection } from '@/contexts/ConnectionContext';
 import type { WebSocketLike } from '@/lib/connections/types';
 
 interface XTermInstanceProps {
@@ -94,10 +93,10 @@ export function XTermInstance({
   const wsRef = useRef<WebSocketLike | null>(null);
   const initialSizeRef = useRef({ cols: 80, rows: 24 });
   const { theme } = useTheme();
+  const conn = useConnection();
 
   const endpoint = useMemo(() => {
-    const wsBase = getWsBaseUrl();
-    let url = `${wsBase}${endpointUrl}&cols=${initialSizeRef.current.cols}&rows=${initialSizeRef.current.rows}`;
+    let url = `${endpointUrl}&cols=${initialSizeRef.current.cols}&rows=${initialSizeRef.current.rows}`;
     if (sessionId) {
       url += `&session_id=${sessionId}`;
     }
@@ -186,22 +185,12 @@ export function XTermInstance({
         }
       };
 
-      // Create WebSocket - route through active connection if available
-      const activeConn = getActiveConnection();
-      let ws: WebSocketLike;
-      if (activeConn) {
-        const url = new URL(endpoint);
-        ws = activeConn.openWs(
-          url.pathname,
-          url.search?.substring(1) || undefined
-        );
-      } else {
-        if (!endpoint.startsWith('ws://') && !endpoint.startsWith('wss://')) {
-          // Active connection not ready yet — retry on next render
-          return;
-        }
-        ws = new WebSocket(endpoint);
-      }
+      // Create WebSocket via the tab's connection
+      const parsed = new URL(endpoint, window.location.origin);
+      const ws: WebSocketLike = conn.openWs(
+        parsed.pathname,
+        parsed.search?.substring(1) || undefined
+      );
       wsRef.current = ws;
 
       ws.onmessage = (event) => {
