@@ -162,11 +162,7 @@ export class GatewayMachineConnection implements UnifiedConnection {
     extra?: { timeoutMs?: number }
   ): Promise<Response> {
     if (!this.e2eeConn) throw new Error('Not connected');
-    const headers = new Headers(init?.headers ?? {});
-    if (!headers.has('Content-Type')) {
-      headers.set('Content-Type', 'application/json');
-    }
-    return this.e2eeConn.remoteFetch(path, { ...init, headers }, extra);
+    return this.e2eeConn.remoteFetch(path, { ...init }, extra);
   }
 
   openWs(path: string, query?: string): WebSocketLike {

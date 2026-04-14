@@ -379,9 +379,16 @@ function MachineNodeView({
     conn.addRef();
     conn
       .connect()
-      .then(() => conn.listProjects())
-      .then(setProjects)
+      .then(() => {
+        console.log('[MachineNodeView] Connected, loading projects...');
+        return conn.listProjects();
+      })
+      .then((p) => {
+        console.log('[MachineNodeView] Projects loaded:', p.length);
+        setProjects(p);
+      })
       .catch((e: unknown) => {
+        console.error('[MachineNodeView] Error:', e);
         setProjects([]);
         setLoadError(
           e instanceof Error ? e.message : 'Failed to load projects'
