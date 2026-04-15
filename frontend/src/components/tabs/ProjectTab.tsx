@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ConnectionProvider } from '@/contexts/ConnectionContext';
 import { useConnectionStore } from '@/stores/connection-store';
+import { GatewayMachineConnection } from '@/lib/connections/gatewayConnection';
 import type { TabPersisted } from '@/lib/connections/types';
 import App from '@/App';
 
@@ -19,14 +20,20 @@ export function ProjectTab({ tab }: { tab: TabPersisted }) {
     return conn.onStatusChange(() => setTick((t) => t + 1));
   }, [conn]);
 
-  // Auto-connect gateway connections that aren't connected yet
-  // (e.g. on page reload with persisted tabs, or after disconnect timer)
+  // Manage ref counting — keeps the connection alive while the tab is mounted
+  useEffect(() => {
+    if (!conn || !(conn instanceof GatewayMachineConnection)) return;
+    conn.addRef();
+    return () => conn.removeRef();
+  }, [conn]);
+
+  // Auto-connect when disconnected or after error (e.g. page reload, reconnect failure)
   useEffect(() => {
     if (!conn) return;
-    if (conn.status === 'disconnected') {
+    if (conn.status === 'disconnected' || conn.status === 'error') {
       conn.connect().catch(() => {});
     }
-  }, [conn]);
+  }, [conn, conn?.status]);
 
   if (!conn) {
     return (
