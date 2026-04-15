@@ -290,7 +290,12 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
       const node = s.nodes.find((n) => n.entry.id === connectionId);
       if (node?.gatewayNode && machineId) {
         const conn = node.gatewayNode.getMachineConnection(machineId);
-        conn?.addRef();
+        if (conn) {
+          conn.addRef();
+          if (conn.status === 'disconnected') {
+            conn.connect().catch(() => {});
+          }
+        }
       }
 
       return { tabs, activeTabId: tab.id };

@@ -19,6 +19,15 @@ export function ProjectTab({ tab }: { tab: TabPersisted }) {
     return conn.onStatusChange(() => setTick((t) => t + 1));
   }, [conn]);
 
+  // Auto-connect gateway connections that aren't connected yet
+  // (e.g. on page reload with persisted tabs, or after disconnect timer)
+  useEffect(() => {
+    if (!conn) return;
+    if (conn.status === 'disconnected') {
+      conn.connect().catch(() => {});
+    }
+  }, [conn]);
+
   if (!conn) {
     return (
       <div className="flex items-center justify-center h-full text-foreground/50 text-sm">
