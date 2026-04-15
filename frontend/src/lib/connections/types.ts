@@ -66,7 +66,7 @@ export interface ConnectionEntryPersisted {
 
 export interface TabPersisted {
   id: string;
-  type: 'home' | 'project';
+  type: 'home' | 'project' | 'machine-projects';
   connectionId?: string;
   machineId?: string;
   projectId?: string;

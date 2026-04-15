@@ -1,3 +1,19 @@
+# Tauri Tree View Redesign — Part 2 (Tasks 3–4)
+
+Continues from `2026-04-15-tauri-tree-view-redesign.md`.
+
+---
+
+## Task 3: Simplify HomeTab — remove inline projects, scale up, add scroll
+
+**Files:**
+- Modify: `frontend/src/components/tabs/HomeTab.tsx`
+
+- [ ] **Step 1: Rewrite HomeTab.tsx**
+
+Replace the full content of `frontend/src/components/tabs/HomeTab.tsx`:
+
+```typescript
 // frontend/src/components/tabs/HomeTab.tsx
 import { useState, useCallback, useEffect } from 'react';
 import {
@@ -321,14 +337,16 @@ function MachineNodeView({
   connectionId: string;
   gatewayNode: GatewayNode;
 }) {
-  const { openMachineProjectsTab, pairMachine } = useConnectionStore();
+  const { openMachineProjectsTab, pairMachine, unpairMachine } =
+    useConnectionStore();
   const [showPairing, setShowPairing] = useState(false);
   const [pairSecret, setPairSecret] = useState('');
   const [pairError, setPairError] = useState('');
   const [pairLoading, setPairLoading] = useState(false);
   const isPaired = gatewayNode.isMachinePaired(machine.machine_id);
 
-  const machineLabel = machine.hostname || machine.machine_id.slice(0, 8);
+  const machineLabel =
+    machine.hostname || machine.machine_id.slice(0, 8);
 
   const handleClick = () => {
     if (isPaired) {
@@ -344,7 +362,9 @@ function MachineNodeView({
     setPairLoading(true);
     setPairError('');
     try {
-      const secretBytes = Uint8Array.from(atob(secret), (c) => c.charCodeAt(0));
+      const secretBytes = Uint8Array.from(atob(secret), (c) =>
+        c.charCodeAt(0)
+      );
       const authKp = await deriveAuthKeyPair(secretBytes);
       const pubKeyB64 = btoa(String.fromCharCode(...authKp.publicKey));
 
@@ -433,7 +453,9 @@ function MachineNodeView({
           <p className="text-xs text-foreground/40">
             Copy the master secret from the bridge terminal output.
           </p>
-          {pairError && <p className="text-sm text-destructive">{pairError}</p>}
+          {pairError && (
+            <p className="text-sm text-destructive">{pairError}</p>
+          )}
           <button
             className="px-3 py-1 text-sm bg-foreground text-background rounded hover:opacity-85 disabled:opacity-50"
             onClick={handlePair}
@@ -446,3 +468,162 @@ function MachineNodeView({
     </div>
   );
 }
+```
+
+Key changes from original:
+- **DirectNodeView**: No longer expands/loads projects. Click opens `openMachineProjectsTab`.
+- **GatewayNodeView**: Machine list gets `max-h-[400px] overflow-y-auto`.
+- **MachineNodeView**: Click on paired machine opens `openMachineProjectsTab`. Click on unpaired toggles pairing UI. No more inline project list.
+- **All sizes scaled up**: `text-xs` → `text-sm`, `text-sm` → `text-base`, icons `12-14px` → `16px`, padding `px-2/px-3 py-1/py-2` → `px-3/px-4 py-2/py-2.5`.
+
+- [ ] **Step 2: Verify types compile**
+
+Run: `cd frontend && npx tsc --noEmit`
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add frontend/src/components/tabs/HomeTab.tsx
+git commit -m "feat(tabs): simplify HomeTab, scale up UI, add scroll"
+```
+
+---
+
+## Task 4: Scale up AddConnectionForm
+
+**Files:**
+- Modify: `frontend/src/components/tabs/AddConnectionForm.tsx`
+
+- [ ] **Step 1: Update AddConnectionForm sizes**
+
+Replace the full content of `frontend/src/components/tabs/AddConnectionForm.tsx`:
+
+```typescript
+// frontend/src/components/tabs/AddConnectionForm.tsx
+import { useState, useCallback } from 'react';
+import { useConnectionStore } from '@/stores/connection-store';
+
+type ConnectionMode = 'direct' | 'gateway';
+
+export function AddConnectionForm({ onDone }: { onDone?: () => void }) {
+  const addConnection = useConnectionStore((s) => s.addConnection);
+  const [mode, setMode] = useState<ConnectionMode>('direct');
+  const [url, setUrl] = useState('');
+  const [testStatus, setTestStatus] = useState<
+    'idle' | 'testing' | 'success' | 'error'
+  >('idle');
+  const [testError, setTestError] = useState('');
+
+  const testConnection = useCallback(async () => {
+    setTestStatus('testing');
+    setTestError('');
+    try {
+      const resp = await fetch(`${url}/api/config/info`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (resp.ok) setTestStatus('success');
+      else {
+        setTestStatus('error');
+        setTestError(`Server returned ${resp.status}`);
+      }
+    } catch (e) {
+      setTestStatus('error');
+      setTestError(e instanceof Error ? e.message : 'Could not reach backend');
+    }
+  }, [url]);
+
+  const handleAdd = useCallback(() => {
+    if (!url.trim()) return;
+    addConnection(mode, url.trim());
+    setUrl('');
+    setTestStatus('idle');
+    onDone?.();
+  }, [mode, url, addConnection, onDone]);
+
+  return (
+    <div className="border border-border rounded-md p-4 bg-background space-y-3">
+      <div className="flex gap-2">
+        <button
+          className={`px-3 py-1.5 text-sm rounded border ${
+            mode === 'direct'
+              ? 'bg-foreground text-background border-foreground'
+              : 'border-border text-foreground/70 hover:text-foreground'
+          }`}
+          onClick={() => setMode('direct')}
+        >
+          Direct (Local)
+        </button>
+        <button
+          className={`px-3 py-1.5 text-sm rounded border ${
+            mode === 'gateway'
+              ? 'bg-foreground text-background border-foreground'
+              : 'border-border text-foreground/70 hover:text-foreground'
+          }`}
+          onClick={() => setMode('gateway')}
+        >
+          E2EE Gateway
+        </button>
+      </div>
+
+      <div>
+        <label className="text-sm text-foreground/60 block mb-1">
+          {mode === 'direct' ? 'Backend URL' : 'Gateway URL'}
+        </label>
+        <input
+          className="w-full px-3 py-2 text-sm bg-muted border border-border rounded focus:outline-none focus:ring-1 focus:ring-ring"
+          type="text"
+          value={url}
+          onChange={(e) => {
+            setUrl(e.target.value);
+            setTestStatus('idle');
+          }}
+          placeholder={
+            mode === 'direct'
+              ? 'http://localhost:3001'
+              : 'https://gateway.example.com'
+          }
+        />
+      </div>
+
+      {mode === 'direct' && (
+        <div className="flex gap-2 items-center">
+          <button
+            className="px-3 py-1.5 text-sm border border-border rounded text-foreground/70 hover:text-foreground"
+            onClick={testConnection}
+            disabled={testStatus === 'testing' || !url}
+          >
+            {testStatus === 'testing' ? 'Testing...' : 'Test Connection'}
+          </button>
+          {testStatus === 'success' && (
+            <span className="text-sm text-green-500">Connected</span>
+          )}
+          {testStatus === 'error' && (
+            <span className="text-sm text-destructive">{testError}</span>
+          )}
+        </div>
+      )}
+
+      <button
+        className="w-full px-4 py-2 text-sm font-medium bg-foreground text-background rounded hover:opacity-85 disabled:opacity-50"
+        onClick={handleAdd}
+        disabled={!url.trim()}
+      >
+        Add Connection
+      </button>
+    </div>
+  );
+}
+```
+
+Key changes: `text-xs` → `text-sm`, `px-2 py-1` → `px-3 py-1.5`, `p-3` → `p-4`, input `py-1.5` → `py-2`.
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add frontend/src/components/tabs/AddConnectionForm.tsx
+git commit -m "feat(tabs): scale up AddConnectionForm for desktop"
+```
+
+---
+
+Continued in `2026-04-15-tauri-tree-view-redesign-part3.md`.

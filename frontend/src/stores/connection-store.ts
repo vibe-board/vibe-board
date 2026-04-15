@@ -95,6 +95,11 @@ export interface ConnectionStoreActions {
     projectId: string,
     label: string
   ): void;
+  openMachineProjectsTab(
+    connectionId: string,
+    machineId: string | undefined,
+    label: string
+  ): void;
   closeTab(tabId: string): void;
   setActiveTab(tabId: string): void;
   reorderTabs(fromIndex: number, toIndex: number): void;
@@ -287,6 +292,47 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
       saveTabs(tabs);
       saveActiveTab(tab.id);
 
+      const node = s.nodes.find((n) => n.entry.id === connectionId);
+      if (node?.gatewayNode && machineId) {
+        const conn = node.gatewayNode.getMachineConnection(machineId);
+        if (conn) {
+          conn.addRef();
+          if (conn.status === 'disconnected') {
+            conn.connect().catch(() => {});
+          }
+        }
+      }
+
+      return { tabs, activeTabId: tab.id };
+    });
+  },
+
+  openMachineProjectsTab(connectionId, machineId, label) {
+    set((s) => {
+      // Reuse existing tab if one matches
+      const existing = s.tabs.find(
+        (t) =>
+          t.type === 'machine-projects' &&
+          t.connectionId === connectionId &&
+          t.machineId === machineId
+      );
+      if (existing) {
+        saveActiveTab(existing.id);
+        return { activeTabId: existing.id };
+      }
+
+      const tab: TabPersisted = {
+        id: crypto.randomUUID(),
+        type: 'machine-projects',
+        connectionId,
+        machineId,
+        label,
+      };
+      const tabs = [...s.tabs, tab];
+      saveTabs(tabs);
+      saveActiveTab(tab.id);
+
+      // For gateway machines, add ref to keep connection alive
       const node = s.nodes.find((n) => n.entry.id === connectionId);
       if (node?.gatewayNode && machineId) {
         const conn = node.gatewayNode.getMachineConnection(machineId);

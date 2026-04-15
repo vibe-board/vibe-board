@@ -4,6 +4,7 @@ import { useConnectionStore } from '@/stores/connection-store';
 import { TabBar } from './TabBar';
 import { HomeTab } from './HomeTab';
 import { ProjectTab } from './ProjectTab';
+import { MachineProjectsTab } from './MachineProjectsTab';
 
 export function TabShell() {
   const { initialized, init, tabs, activeTabId, closeTab, setActiveTab } =
@@ -22,7 +23,7 @@ export function TabShell() {
         if (idx === 0) {
           setActiveTab('home');
         } else {
-          const tab = tabs[idx - 1]; // tabs array is 0-indexed, Ctrl+2 = first project tab
+          const tab = tabs[idx - 1];
           if (tab) setActiveTab(tab.id);
         }
       }
@@ -59,13 +60,17 @@ export function TabShell() {
           <HomeTab />
         </div>
 
-        {/* Project tabs — keep mounted to preserve state, hide inactive */}
+        {/* All tabs — keep mounted to preserve state, hide inactive */}
         {tabs.map((tab) => (
           <div
             key={tab.id}
             className={`h-full overflow-hidden ${activeTabId === tab.id ? '' : 'hidden'}`}
           >
-            <ProjectTab tab={tab} />
+            {tab.type === 'machine-projects' ? (
+              <MachineProjectsTab tab={tab} />
+            ) : (
+              <ProjectTab tab={tab} />
+            )}
           </div>
         ))}
       </div>

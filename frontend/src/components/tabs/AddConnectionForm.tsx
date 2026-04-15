@@ -40,10 +40,10 @@ export function AddConnectionForm({ onDone }: { onDone?: () => void }) {
   }, [mode, url, addConnection, onDone]);
 
   return (
-    <div className="border border-border rounded-md p-3 bg-background space-y-3">
+    <div className="border border-border rounded-md p-4 bg-background space-y-3">
       <div className="flex gap-2">
         <button
-          className={`px-2 py-1 text-xs rounded border ${
+          className={`px-3 py-1.5 text-sm rounded border ${
             mode === 'direct'
               ? 'bg-foreground text-background border-foreground'
               : 'border-border text-foreground/70 hover:text-foreground'
@@ -53,7 +53,7 @@ export function AddConnectionForm({ onDone }: { onDone?: () => void }) {
           Direct (Local)
         </button>
         <button
-          className={`px-2 py-1 text-xs rounded border ${
+          className={`px-3 py-1.5 text-sm rounded border ${
             mode === 'gateway'
               ? 'bg-foreground text-background border-foreground'
               : 'border-border text-foreground/70 hover:text-foreground'
@@ -65,11 +65,11 @@ export function AddConnectionForm({ onDone }: { onDone?: () => void }) {
       </div>
 
       <div>
-        <label className="text-xs text-foreground/60 block mb-1">
+        <label className="text-sm text-foreground/60 block mb-1">
           {mode === 'direct' ? 'Backend URL' : 'Gateway URL'}
         </label>
         <input
-          className="w-full px-2 py-1.5 text-sm bg-muted border border-border rounded focus:outline-none focus:ring-1 focus:ring-ring"
+          className="w-full px-3 py-2 text-sm bg-muted border border-border rounded focus:outline-none focus:ring-1 focus:ring-ring"
           type="text"
           value={url}
           onChange={(e) => {
@@ -87,23 +87,23 @@ export function AddConnectionForm({ onDone }: { onDone?: () => void }) {
       {mode === 'direct' && (
         <div className="flex gap-2 items-center">
           <button
-            className="px-2 py-1 text-xs border border-border rounded text-foreground/70 hover:text-foreground"
+            className="px-3 py-1.5 text-sm border border-border rounded text-foreground/70 hover:text-foreground"
             onClick={testConnection}
             disabled={testStatus === 'testing' || !url}
           >
             {testStatus === 'testing' ? 'Testing...' : 'Test Connection'}
           </button>
           {testStatus === 'success' && (
-            <span className="text-xs text-green-500">Connected</span>
+            <span className="text-sm text-green-500">Connected</span>
           )}
           {testStatus === 'error' && (
-            <span className="text-xs text-destructive">{testError}</span>
+            <span className="text-sm text-destructive">{testError}</span>
           )}
         </div>
       )}
 
       <button
-        className="w-full px-3 py-1.5 text-sm font-medium bg-foreground text-background rounded hover:opacity-85 disabled:opacity-50"
+        className="w-full px-4 py-2 text-sm font-medium bg-foreground text-background rounded hover:opacity-85 disabled:opacity-50"
         onClick={handleAdd}
         disabled={!url.trim()}
       >
