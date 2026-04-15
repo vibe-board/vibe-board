@@ -24,8 +24,6 @@ import { SearchProvider } from '@/contexts/SearchContext';
 import { TerminalProvider } from '@/contexts/TerminalContext';
 import { TerminalDrawerProvider } from '@/contexts/TerminalDrawerContext';
 
-import { HotkeysProvider } from 'react-hotkeys-hook';
-
 import { ProjectProvider } from '@/contexts/ProjectContext';
 import { ThemeMode } from 'shared/types';
 import * as Sentry from '@sentry/react';
@@ -34,9 +32,6 @@ import { DisclaimerDialog } from '@/components/dialogs/global/DisclaimerDialog';
 import { OnboardingDialog } from '@/components/dialogs/global/OnboardingDialog';
 
 import { ClickedElementsProvider } from './contexts/ClickedElementsProvider';
-
-// Design scope components
-import { LegacyDesignScope } from '@/components/legacy-design/LegacyDesignScope';
 
 const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
 
@@ -109,20 +104,10 @@ function AppContent() {
                 {/* VS Code full-page logs route (outside NormalLayout for minimal UI) */}
                 <Route
                   path="/local-projects/:projectId/tasks/:taskId/attempts/:attemptId/full"
-                  element={
-                    <LegacyDesignScope>
-                      <FullAttemptLogsPage />
-                    </LegacyDesignScope>
-                  }
+                  element={<FullAttemptLogsPage />}
                 />
 
-                <Route
-                  element={
-                    <LegacyDesignScope>
-                      <NormalLayout />
-                    </LegacyDesignScope>
-                  }
-                >
+                <Route element={<NormalLayout />}>
                   <Route path="/" element={<Projects />} />
                   <Route path="/local-projects" element={<Projects />} />
                   <Route
@@ -169,9 +154,7 @@ function App() {
       <UserSystemProvider>
         <ClickedElementsProvider>
           <ProjectProvider>
-            <HotkeysProvider initiallyActiveScopes={['global', 'projects']}>
-              <AppContent />
-            </HotkeysProvider>
+            <AppContent />
           </ProjectProvider>
         </ClickedElementsProvider>
       </UserSystemProvider>

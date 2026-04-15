@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom/client';
 import { ClickToComponent } from 'click-to-react-component';
 import { TabShell } from '@/components/tabs/TabShell';
 import { LegacyDesignScope } from '@/components/legacy-design/LegacyDesignScope';
+import { HotkeysProvider } from 'react-hotkeys-hook';
 import {
   QueryClient,
   QueryClientProvider,
@@ -85,9 +86,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           showDialog
         >
           <ClickToComponent />
-          <LegacyDesignScope>
-            <TabShell />
-          </LegacyDesignScope>
+          <HotkeysProvider initiallyActiveScopes={['global', 'projects']}>
+            <LegacyDesignScope>
+              <TabShell />
+            </LegacyDesignScope>
+          </HotkeysProvider>
           {/*<TanStackDevtools plugins={[FormDevtoolsPlugin()]} />*/}
           {/* <ReactQueryDevtools initialIsOpen={false} /> */}
         </Sentry.ErrorBoundary>
