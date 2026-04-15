@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { attemptsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { EditorSelectionDialog } from '@/components/dialogs/tasks/EditorSelectionDialog';
 import type { EditorType } from 'shared/types';
 
@@ -12,6 +12,7 @@ export function useOpenInEditor(
   attemptId?: string,
   onShowEditorDialog?: () => void
 ) {
+  const { attemptsApi } = useApi();
   return useCallback(
     async (options?: OpenEditorOptions): Promise<void> => {
       if (!attemptId) return;
@@ -42,6 +43,6 @@ export function useOpenInEditor(
         }
       }
     },
-    [attemptId, onShowEditorDialog]
+    [attemptId, onShowEditorDialog, attemptsApi]
   );
 }

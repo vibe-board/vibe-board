@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { systemApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 
 export function useHomeDir() {
+  const { systemApi } = useApi();
   return useQuery({
     queryKey: ['system', 'homeDir'],
     queryFn: () => systemApi.getHomeDir(),

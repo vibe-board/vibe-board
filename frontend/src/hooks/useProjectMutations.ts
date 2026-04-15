@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { projectsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type { CreateProject, UpdateProject, Project } from 'shared/types';
 
 interface UseProjectMutationsOptions {
@@ -10,6 +10,7 @@ interface UseProjectMutationsOptions {
 }
 
 export function useProjectMutations(options?: UseProjectMutationsOptions) {
+  const { projectsApi } = useApi();
   const queryClient = useQueryClient();
 
   const createProject = useMutation({

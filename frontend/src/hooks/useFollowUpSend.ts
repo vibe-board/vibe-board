@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { sessionsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type { BaseCodingAgent, CreateFollowUpAttempt } from 'shared/types';
 import { buildAgentPrompt } from '@/utils/promptMessage';
 
@@ -32,6 +32,7 @@ export function useFollowUpSend({
   onBeforeSend,
   onAfterSendCleanup,
 }: Args) {
+  const { sessionsApi } = useApi();
   const [isSendingFollowUp, setIsSendingFollowUp] = useState(false);
   const [followUpError, setFollowUpError] = useState<string | null>(null);
 
@@ -73,6 +74,7 @@ export function useFollowUpSend({
       setIsSendingFollowUp(false);
     }
   }, [
+    sessionsApi,
     sessionId,
     message,
     conflictMarkdown,

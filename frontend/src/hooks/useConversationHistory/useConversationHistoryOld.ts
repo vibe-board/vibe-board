@@ -11,7 +11,8 @@ import { useExecutionProcessesContext } from '@/contexts/ExecutionProcessesConte
 import { useEntries } from '@/contexts/EntriesContext';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { streamJsonPatchEntries } from '@/utils/streamJsonPatchEntries';
-import { executionProcessesApi } from '@/lib/api';
+import { useConnection } from '@/contexts/ConnectionContext';
+import { useApi } from '@/hooks/useApi';
 import {
   getCachedProcessEntries,
   setCachedProcessEntries,
@@ -50,6 +51,8 @@ function parseEntryJson(entryJson: string): PatchType | null {
 export const useConversationHistoryOld = ({
   attempt,
 }: UseConversationHistoryParams): UseConversationHistoryResult => {
+  const { executionProcessesApi } = useApi();
+  const conn = useConnection();
   const { executionProcessesVisible: executionProcessesRaw } =
     useExecutionProcessesContext();
   const { setTokenUsageInfo } = useEntries();
@@ -221,7 +224,7 @@ export const useConversationHistoryOld = ({
         minEntryIndex,
       };
     },
-    [attempt.id]
+    [attempt.id, executionProcessesApi]
   );
   loadEntriesRef.current = loadEntriesForHistoricExecutionProcess;
 
@@ -664,7 +667,7 @@ export const useConversationHistoryOld = ({
       if (executionProcess.executor_action.typ.type === 'ScriptRequest') {
         const url = `/api/execution-processes/${executionProcess.id}/raw-logs/ws`;
         return new Promise((resolve, reject) => {
-          const controller = streamJsonPatchEntries<PatchType>(url, {
+          const controller = streamJsonPatchEntries<PatchType>(url, conn, {
             onEntries(entries) {
               const patchesWithKey = entries.map((entry, index) =>
                 patchWithKey(entry, executionProcess.id, index)
@@ -694,7 +697,7 @@ export const useConversationHistoryOld = ({
       const url = `/api/execution-processes/${executionProcess.id}/normalized-logs/ws`;
 
       return new Promise<void>((resolve) => {
-        const controller = streamJsonPatchEntries<PatchType>(url, {
+        const controller = streamJsonPatchEntries<PatchType>(url, conn, {
           reconnect: {
             maxRetries: 10,
             getReconnectUrl: (maxIndex) =>
@@ -743,7 +746,7 @@ export const useConversationHistoryOld = ({
         });
       });
     },
-    [emitState]
+    [emitState, conn]
   );
 
   // Sometimes it can take a few seconds for the stream to start, wrap the loadRunningAndEmit method
@@ -1176,7 +1179,7 @@ export const useConversationHistoryOld = ({
       isLoadingMoreRef.current = false;
       setIsLoadingMore(false);
     }
-  }, [flattenProcessForPrepend, recomputeHasMore]);
+  }, [flattenProcessForPrepend, recomputeHasMore, executionProcessesApi]);
 
   const ensureProcessVisible = useCallback((p: ExecutionProcess) => {
     mergeIntoDisplayed((state) => {

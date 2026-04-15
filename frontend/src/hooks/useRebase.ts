@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { attemptsApi, Result } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
+import type { Result } from '@/lib/api';
 import type { RebaseTaskAttemptRequest } from 'shared/types';
 import type { GitOperationError } from 'shared/types';
 import { repoBranchKeys } from './useRepoBranches';
@@ -10,6 +11,7 @@ export function useRebase(
   onSuccess?: () => void,
   onError?: (err: Result<void, GitOperationError>) => void
 ) {
+  const { attemptsApi } = useApi();
   const queryClient = useQueryClient();
 
   type RebaseMutationArgs = {

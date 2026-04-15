@@ -26,7 +26,6 @@ import {
   Volume2,
   RotateCcw,
   AlertTriangle,
-  Shield,
   Download,
   Upload,
 } from 'lucide-react';
@@ -49,7 +48,6 @@ import { useTheme } from '@/components/ThemeProvider';
 import { useUserSystem } from '@/components/ConfigProvider';
 import { TagManager } from '@/components/TagManager';
 import { FolderPickerDialog } from '@/components/dialogs/shared/FolderPickerDialog';
-import { E2EESettingsDialog } from '@/components/dialogs/E2EESettingsDialog';
 import { ExportConfigDialog } from '@/components/dialogs/settings/ExportConfigDialog';
 import { ImportConfigDialog } from '@/components/dialogs/settings/ImportConfigDialog';
 import ExecutorProfileSelector from '@/components/settings/ExecutorProfileSelector';
@@ -904,32 +902,6 @@ export function GeneralSettings() {
                 {t('settings.general.privacy.telemetry.helper')}
               </p>
             </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('settings.general.e2ee.cardTitle')}</CardTitle>
-          <CardDescription>
-            {t('settings.general.e2ee.cardDescription')}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Shield className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">
-                {t('settings.general.e2ee.cardHelper')}
-              </span>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => E2EESettingsDialog.show()}
-            >
-              {t('settings.general.e2ee.configure')}
-            </Button>
           </div>
         </CardContent>
       </Card>

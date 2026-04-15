@@ -17,7 +17,7 @@ import { AgentSelector } from '@/components/tasks/AgentSelector';
 import { ConfigSelector } from '@/components/tasks/ConfigSelector';
 import { useUserSystem } from '@/components/ConfigProvider';
 import { useWorkspaceSessions } from '@/hooks/useWorkspaceSessions';
-import { sessionsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { useQueryClient } from '@tanstack/react-query';
 import NiceModal, { useModal } from '@ebay/nice-modal-react';
 import { defineModal } from '@/lib/modals';
@@ -33,6 +33,7 @@ export interface StartReviewDialogProps {
 
 const StartReviewDialogImpl = NiceModal.create<StartReviewDialogProps>(
   ({ sessionId, workspaceId, reviewMarkdown, defaultProfile, onSuccess }) => {
+    const { sessionsApi } = useApi();
     const modal = useModal();
     const queryClient = useQueryClient();
     const { profiles, config } = useUserSystem();

@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query';
-import { sessionsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import {
   RestoreLogsDialog,
   type RestoreLogsDialogResult,
@@ -32,6 +32,7 @@ export function useRetryProcess(
   onSuccess?: () => void,
   onError?: (err: unknown) => void
 ) {
+  const { sessionsApi } = useApi();
   return useMutation({
     mutationFn: async ({
       message,

@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/tooltip';
 import type { Diff, DiffChangeKind } from 'shared/types';
 import type { Workspace } from 'shared/types';
-import { attemptsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import GitOperations, {
   type GitOperationsInputs,
 } from '@/components/tasks/Toolbar/GitOperations.tsx';
@@ -60,6 +60,7 @@ export function DiffsPanel({
   repoId,
   gitOps,
 }: DiffsPanelProps) {
+  const { attemptsApi } = useApi();
   const { t } = useTranslation('tasks');
   const isMobile = useMediaQuery('(max-width: 768px)');
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());

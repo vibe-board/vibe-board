@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo } from 'react';
-import { attemptsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type { RepoWithTargetBranch } from 'shared/types';
 
 interface UseAttemptRepoOptions {
@@ -11,6 +11,7 @@ export function useAttemptRepo(
   attemptId?: string,
   options: UseAttemptRepoOptions = {}
 ) {
+  const { attemptsApi } = useApi();
   const { enabled = true } = options;
   const queryClient = useQueryClient();
 

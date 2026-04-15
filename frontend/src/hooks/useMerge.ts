@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ExecutorProfileId } from 'shared/types';
-import { attemptsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { repoBranchKeys } from './useRepoBranches';
 import { taskKeys } from './useTask';
 
@@ -23,6 +23,7 @@ export function useMerge(
   onSuccess?: () => void,
   onError?: (err: unknown) => void
 ) {
+  const { attemptsApi } = useApi();
   const queryClient = useQueryClient();
 
   return useMutation<void, unknown, MergeParams>({

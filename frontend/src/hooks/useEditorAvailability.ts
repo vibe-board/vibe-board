@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { EditorType } from 'shared/types';
-import { configApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 
 export type EditorAvailabilityState =
   | 'checking'
@@ -16,6 +16,7 @@ export type EditorAvailabilityState =
 export function useEditorAvailability(
   editorType: EditorType | null | undefined
 ): EditorAvailabilityState {
+  const { configApi } = useApi();
   const [availability, setAvailability] =
     useState<EditorAvailabilityState>(null);
 

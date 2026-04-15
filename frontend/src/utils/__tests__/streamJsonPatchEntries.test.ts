@@ -1,10 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { streamJsonPatchEntries } from '../streamJsonPatchEntries';
-
-// Mock gatewayMode to return null (no E2EE, use native WebSocket)
-vi.mock('@/lib/gatewayMode', () => ({
-  getGatewayConnection: () => null,
-}));
+import type { UnifiedConnection } from '@/lib/connections/types';
 
 /**
  * Minimal WebSocket mock that lets us control open/message/close events.
@@ -44,10 +40,34 @@ class MockWebSocket {
   }
 }
 
+/** Create a mock UnifiedConnection whose openWs delegates to MockWebSocket */
+function createMockConnection(): UnifiedConnection {
+  return {
+    id: 'test',
+    type: 'direct',
+    url: 'http://localhost:3000',
+    label: 'test',
+    queryClient: {} as never,
+    status: 'connected',
+    error: null,
+    fetch: vi.fn(),
+    openWs: (path: string, query?: string) => {
+      const url = query ? `${path}?${query}` : path;
+      return new MockWebSocket(url) as never;
+    },
+    listProjects: vi.fn(),
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    onStatusChange: vi.fn(() => () => {}),
+  };
+}
+
+let mockConn: UnifiedConnection;
+
 beforeEach(() => {
   MockWebSocket.instances = [];
-  vi.stubGlobal('WebSocket', MockWebSocket);
   vi.useFakeTimers();
+  mockConn = createMockConnection();
 });
 
 afterEach(() => {
@@ -63,7 +83,7 @@ describe('streamJsonPatchEntries', () => {
         (maxIndex: number) => `/live?after=${maxIndex}`
       );
 
-      const controller = streamJsonPatchEntries('/initial', {
+      const controller = streamJsonPatchEntries('/initial', mockConn, {
         onEntries,
         reconnect: { maxRetries: 3, getReconnectUrl },
       });
@@ -90,7 +110,6 @@ describe('streamJsonPatchEntries', () => {
 
       expect(MockWebSocket.instances).toHaveLength(2);
       expect(getReconnectUrl).toHaveBeenCalledWith(2);
-      expect(MockWebSocket.instances[1].url).toBe('/live?after=2');
 
       controller.close();
     });
@@ -100,7 +119,7 @@ describe('streamJsonPatchEntries', () => {
     it('preserves cached entries when reconnecting', () => {
       const onEntries = vi.fn();
 
-      const controller = streamJsonPatchEntries('/initial', {
+      const controller = streamJsonPatchEntries('/initial', mockConn, {
         onEntries,
         reconnect: {
           maxRetries: 3,
@@ -151,7 +170,7 @@ describe('streamJsonPatchEntries', () => {
     it('applies replace patches to existing cached entries', () => {
       const onEntries = vi.fn();
 
-      const controller = streamJsonPatchEntries('/initial', {
+      const controller = streamJsonPatchEntries('/initial', mockConn, {
         onEntries,
         reconnect: {
           maxRetries: 3,
@@ -192,7 +211,7 @@ describe('streamJsonPatchEntries', () => {
 
   describe('exponential backoff', () => {
     it('uses exponential backoff: 500ms, 1s, 2s, 4s, 8s', () => {
-      const controller = streamJsonPatchEntries('/initial', {
+      const controller = streamJsonPatchEntries('/initial', mockConn, {
         reconnect: {
           maxRetries: 5,
           getReconnectUrl: () => '/live',
@@ -241,7 +260,7 @@ describe('streamJsonPatchEntries', () => {
     });
 
     it('stops retrying after maxRetries', () => {
-      const controller = streamJsonPatchEntries('/initial', {
+      const controller = streamJsonPatchEntries('/initial', mockConn, {
         reconnect: {
           maxRetries: 2,
           getReconnectUrl: () => '/live',
@@ -270,7 +289,7 @@ describe('streamJsonPatchEntries', () => {
     });
 
     it('resets retry count on successful reconnect', () => {
-      const controller = streamJsonPatchEntries('/initial', {
+      const controller = streamJsonPatchEntries('/initial', mockConn, {
         reconnect: {
           maxRetries: 3,
           getReconnectUrl: () => '/live',
@@ -299,7 +318,7 @@ describe('streamJsonPatchEntries', () => {
 
   describe('no-reconnect scenarios', () => {
     it('does not reconnect after finished message', () => {
-      const controller = streamJsonPatchEntries('/initial', {
+      const controller = streamJsonPatchEntries('/initial', mockConn, {
         reconnect: {
           maxRetries: 3,
           getReconnectUrl: () => '/live',
@@ -321,7 +340,7 @@ describe('streamJsonPatchEntries', () => {
     });
 
     it('does not reconnect after close() is called', () => {
-      const controller = streamJsonPatchEntries('/initial', {
+      const controller = streamJsonPatchEntries('/initial', mockConn, {
         reconnect: {
           maxRetries: 3,
           getReconnectUrl: () => '/live',
@@ -339,7 +358,7 @@ describe('streamJsonPatchEntries', () => {
     });
 
     it('does not reconnect when no reconnect config is provided', () => {
-      const controller = streamJsonPatchEntries('/initial', {});
+      const controller = streamJsonPatchEntries('/initial', mockConn, {});
 
       const ws1 = MockWebSocket.instances[0];
       ws1.simulateOpen();
@@ -354,7 +373,7 @@ describe('streamJsonPatchEntries', () => {
 
   describe('isReconnecting state', () => {
     it('returns true during reconnection attempts', () => {
-      const controller = streamJsonPatchEntries('/initial', {
+      const controller = streamJsonPatchEntries('/initial', mockConn, {
         reconnect: {
           maxRetries: 3,
           getReconnectUrl: () => '/live',

@@ -25,7 +25,7 @@ import { useUserSystem } from '@/components/ConfigProvider';
 import { getIdeName } from '@/components/ide/IdeIcon';
 import { useProject } from '@/contexts/ProjectContext';
 import { useQuery } from '@tanstack/react-query';
-import { attemptsApi, sessionsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import {
   BaseAgentCapability,
   type BaseCodingAgent,
@@ -57,6 +57,7 @@ export function NextActionCard({
   task,
   needsSetup,
 }: NextActionCardProps) {
+  const { attemptsApi, sessionsApi } = useApi();
   const { t } = useTranslation('tasks');
   const { config } = useUserSystem();
   const { projectId } = useProject();

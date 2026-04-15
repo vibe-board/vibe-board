@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { queueApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type { ExecutorProfileId, QueueStatus } from 'shared/types';
 
 interface UseSessionQueueInteractionOptions {
@@ -35,6 +35,7 @@ const QUEUE_STATUS_KEY = 'queue-status';
 export function useSessionQueueInteraction({
   sessionId,
 }: UseSessionQueueInteractionOptions): UseSessionQueueInteractionResult {
+  const { queueApi } = useApi();
   const queryClient = useQueryClient();
 
   // Query for queue status

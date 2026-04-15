@@ -2,7 +2,7 @@ import { KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AutoExpandingTextarea } from '@/components/ui/auto-expanding-textarea';
 import { usePortalContainer } from '@/contexts/PortalContainerContext';
-import { projectsApi, repoApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 
 import type { SearchResult } from 'shared/types';
 
@@ -37,6 +37,7 @@ export function MultiFileSearchTextarea({
   onKeyDown,
   maxRows = 10,
 }: MultiFileSearchTextareaProps) {
+  const { projectsApi, repoApi } = useApi();
   // Require at least one of projectId or repoId
   const searchId = projectId || repoId;
   const searchType = projectId ? 'project' : 'repo';

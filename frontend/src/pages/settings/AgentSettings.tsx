@@ -46,7 +46,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 
 import { cn } from '@/lib/utils';
-import { profilesApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { ExecutorConfigForm } from '@/components/ExecutorConfigForm';
 import { useProfiles } from '@/hooks/useProfiles';
 import { useUserSystem } from '@/components/ConfigProvider';
@@ -66,6 +66,7 @@ import { getSortedAgents } from '@/utils/executor';
 type ExecutorsMap = Record<string, Record<string, Record<string, unknown>>>;
 
 export function AgentSettings() {
+  const { profilesApi } = useApi();
   const { t } = useTranslation(['settings', 'common']);
   // Use profiles hook for server state
   const {

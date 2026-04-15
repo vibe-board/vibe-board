@@ -1,4 +1,4 @@
-import { projectsApi, searchApi, tagsApi } from '@/lib/api';
+import type { ApiNamespaces } from '@/lib/api';
 import type { SearchResult, Tag } from 'shared/types';
 
 interface FileSearchResult extends SearchResult {
@@ -18,12 +18,13 @@ export interface SearchOptions {
 
 export async function searchTagsAndFiles(
   query: string,
+  api: Pick<ApiNamespaces, 'projectsApi' | 'searchApi' | 'tagsApi'>,
   options?: SearchOptions
 ): Promise<SearchResultItem[]> {
   const results: SearchResultItem[] = [];
 
   // Fetch all tags and filter client-side
-  const tags = await tagsApi.list();
+  const tags = await api.tagsApi.list();
   const filteredTags = tags.filter((tag) =>
     tag.tag_name.toLowerCase().includes(query.toLowerCase())
   );
@@ -33,9 +34,9 @@ export async function searchTagsAndFiles(
   if (query.length > 0) {
     let fileResults: SearchResult[] = [];
     if (options?.repoIds && options.repoIds.length > 0) {
-      fileResults = await searchApi.searchFiles(options.repoIds, query);
+      fileResults = await api.searchApi.searchFiles(options.repoIds, query);
     } else if (options?.projectId) {
-      fileResults = await projectsApi.searchFiles(options.projectId, query);
+      fileResults = await api.projectsApi.searchFiles(options.projectId, query);
     }
 
     if (fileResults.length > 0) {

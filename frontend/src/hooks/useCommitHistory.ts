@@ -1,5 +1,5 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { attemptsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type { CommitInfo } from 'shared/types';
 
 const PAGE_SIZE = 50;
@@ -8,6 +8,7 @@ export function useCommitHistory(
   attemptId: string | null,
   repoId: string | null
 ) {
+  const { attemptsApi } = useApi();
   const query = useInfiniteQuery({
     queryKey: ['commitHistory', attemptId, repoId],
     queryFn: ({ pageParam = 0 }) =>

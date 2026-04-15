@@ -1,6 +1,6 @@
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import { repoApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type { GitBranch } from 'shared/types';
 
 export const repoBranchKeys = {
@@ -13,6 +13,7 @@ type Options = {
 };
 
 export function useRepoBranches(repoId?: string | null, opts?: Options) {
+  const { repoApi } = useApi();
   const enabled = (opts?.enabled ?? true) && !!repoId;
 
   return useQuery<GitBranch[]>({
@@ -33,6 +34,7 @@ interface UseMultiRepoBranchesResult {
 export function useMultiRepoBranches(
   repoIds: string[]
 ): UseMultiRepoBranchesResult {
+  const { repoApi } = useApi();
   const queries = useQueries({
     queries: repoIds.map((repoId) => ({
       queryKey: repoBranchKeys.byRepo(repoId),

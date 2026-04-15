@@ -257,10 +257,16 @@ pub async fn create_task_attempt(
     };
 
     let attempt_id = Uuid::new_v4();
-    let git_branch_name = deployment
-        .container()
-        .git_branch_from_workspace(&attempt_id, &task.title)
-        .await;
+    let git_branch_name = if workspace_mode == WorkspaceMode::Direct {
+        // Direct mode works on the existing branch — use the first repo's target branch
+        // instead of generating a new branch name that would never be created.
+        payload.repos[0].target_branch.clone()
+    } else {
+        deployment
+            .container()
+            .git_branch_from_workspace(&attempt_id, &task.title)
+            .await
+    };
 
     let workspace = Workspace::create(
         pool,
@@ -1086,6 +1092,14 @@ pub async fn get_task_attempt_branch_status(
 
         let has_uncommitted_changes = uncommitted_count.map(|c| c > 0);
 
+        // In direct mode, use target_branch as the workspace branch — the stored
+        // workspace.branch may be a generated name (vb/xxxx-...) that doesn't exist.
+        let effective_branch = if workspace.mode == WorkspaceMode::Direct {
+            &target_branch
+        } else {
+            &workspace.branch
+        };
+
         let target_branch_type = deployment
             .git()
             .find_branch_type(&repo.path, &target_branch)?;
@@ -1094,7 +1108,7 @@ pub async fn get_task_attempt_branch_status(
             BranchType::Local => {
                 let (a, b) = deployment.git().get_branch_status(
                     &repo.path,
-                    &workspace.branch,
+                    effective_branch,
                     &target_branch,
                 )?;
                 (Some(a), Some(b))
@@ -1102,7 +1116,7 @@ pub async fn get_task_attempt_branch_status(
             BranchType::Remote => {
                 let (ahead, behind) = deployment.git().get_remote_branch_status(
                     &repo.path,
-                    &workspace.branch,
+                    effective_branch,
                     Some(&target_branch),
                 )?;
                 (Some(ahead), Some(behind))

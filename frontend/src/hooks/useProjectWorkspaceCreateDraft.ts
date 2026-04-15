@@ -1,10 +1,11 @@
 import { useCallback } from 'react';
 import { ScratchType, type DraftWorkspaceData } from 'shared/types';
 import { useKanbanNavigation } from '@/hooks/useKanbanNavigation';
-import { scratchApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type { CreateModeInitialState } from '@/hooks/useCreateModeState';
 
 export function useProjectWorkspaceCreateDraft() {
+  const { scratchApi } = useApi();
   const { projectId, openWorkspaceCreate } = useKanbanNavigation();
 
   const openWorkspaceCreateFromState = useCallback(
@@ -53,7 +54,7 @@ export function useProjectWorkspaceCreateDraft() {
 
       return draftId;
     },
-    [projectId, openWorkspaceCreate]
+    [projectId, openWorkspaceCreate, scratchApi]
   );
 
   return {

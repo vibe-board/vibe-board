@@ -1,9 +1,4 @@
-import {
-  Link,
-  useLocation,
-  useNavigate,
-  useSearchParams,
-} from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { useCallback, useEffect } from 'react';
 import { siDiscord } from 'simple-icons';
 import { Button } from '@/components/ui/button';
@@ -24,8 +19,6 @@ import {
   Plus,
   LogOut,
   LogIn,
-  Monitor,
-  ArrowLeftRight,
   SquareTerminal,
 } from 'lucide-react';
 import { Logo } from '@/components/Logo';
@@ -47,8 +40,8 @@ import {
 } from '@/components/ui/tooltip';
 import { OAuthDialog } from '@/components/dialogs/global/OAuthDialog';
 import { useUserSystem } from '@/components/ConfigProvider';
-import { oauthApi } from '@/lib/api';
-import { useGateway } from '@/contexts/GatewayContext';
+import { useApi } from '@/hooks/useApi';
+import { useOptionalConnection } from '@/contexts/ConnectionContext';
 import { cn } from '@/lib/utils';
 import { useTerminalDrawer } from '@/contexts/TerminalDrawerContext';
 import { useHomeDir } from '@/hooks/useHomeDir';
@@ -86,6 +79,7 @@ function NavDivider() {
 }
 
 export function Navbar() {
+  const { oauthApi } = useApi();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { projectId, project } = useProject();
@@ -93,21 +87,7 @@ export function Navbar() {
   const handleOpenInEditor = useOpenProjectInEditor(project || null);
   const { data: onlineCount } = useDiscordOnlineCount();
   const { loginStatus, reloadSystem } = useUserSystem();
-  const {
-    phase: gwPhase,
-    selectedMachineId,
-    machines,
-    disconnectMachine,
-  } = useGateway();
-  const navigate = useNavigate();
-  const isGatewayReady = gwPhase === 'ready';
-  const selectedMachine = isGatewayReady
-    ? machines.find((m) => m.machine_id === selectedMachineId)
-    : null;
-  const handleSwitchMachine = useCallback(() => {
-    disconnectMachine();
-    navigate('/');
-  }, [disconnectMachine, navigate]);
+  const connection = useOptionalConnection();
 
   const { data: repos } = useProjectRepos(projectId);
   const isSingleRepoProject = repos?.length === 1;
@@ -224,29 +204,12 @@ export function Navbar() {
                   : 'online'}
               </span>
             </a>
-            {selectedMachine && (
+            {connection && (
               <>
                 <NavDivider />
-                <div className="flex items-center gap-1.5 text-xs">
-                  <Monitor className="h-3.5 w-3.5 opacity-60" />
-                  <span className="font-medium">
-                    {selectedMachine.hostname || selectedMachine.machine_id}
-                    {selectedMachine.port > 0 && (
-                      <span className="opacity-50">
-                        :{selectedMachine.port}
-                      </span>
-                    )}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
-                    onClick={handleSwitchMachine}
-                    aria-label="Switch machine"
-                  >
-                    <ArrowLeftRight className="h-3 w-3" />
-                  </Button>
-                </div>
+                <span className="text-xs text-foreground/50 truncate max-w-[200px]">
+                  {connection.label}
+                </span>
               </>
             )}
           </div>

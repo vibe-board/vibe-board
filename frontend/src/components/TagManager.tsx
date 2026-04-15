@@ -2,12 +2,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PlusIcon, PencilSimpleIcon, TrashIcon } from '@phosphor-icons/react';
 import { SpinnerGap } from '@phosphor-icons/react';
-import { tagsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { TagEditDialog } from '@/components/dialogs/tasks/TagEditDialog';
 import { Button } from '@/components/ui/button';
 import type { Tag } from 'shared/types';
 
 export function TagManager() {
+  const { tagsApi } = useApi();
   const { t } = useTranslation('settings');
   const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);

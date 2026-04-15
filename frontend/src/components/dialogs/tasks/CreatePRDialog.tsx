@@ -14,7 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import BranchSelector from '@/components/tasks/BranchSelector';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { attemptsApi } from '@/lib/api.ts';
+import { useApi } from '@/hooks/useApi';
 import { useTranslation } from 'react-i18next';
 
 import { Task, Workspace } from 'shared/types';
@@ -48,6 +48,7 @@ export type CreatePRDialogResult = {
 
 const CreatePRDialogImpl = NiceModal.create<CreatePRDialogProps>(
   ({ attempt, task, repoId, targetBranch }) => {
+    const { attemptsApi } = useApi();
     const modal = useModal();
     const { t } = useTranslation('tasks');
     const { isLoaded } = useAuth();

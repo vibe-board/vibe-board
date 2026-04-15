@@ -6,9 +6,8 @@ import '@xterm/xterm/css/xterm.css';
 
 import { useTheme } from '@/components/ThemeProvider';
 import { getTerminalTheme } from '@/utils/terminalTheme';
-import { getGatewayConnection } from '@/lib/gatewayMode';
-import { getWsBaseUrl } from '@/lib/api';
-import type { RemoteWs } from '@/lib/e2ee/remoteWs';
+import { useConnection } from '@/contexts/ConnectionContext';
+import type { WebSocketLike } from '@/lib/connections/types';
 
 interface XTermInstanceProps {
   endpointUrl: string;
@@ -91,13 +90,13 @@ export function XTermInstance({
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const wsRef = useRef<WebSocket | RemoteWs | null>(null);
+  const wsRef = useRef<WebSocketLike | null>(null);
   const initialSizeRef = useRef({ cols: 80, rows: 24 });
   const { theme } = useTheme();
+  const conn = useConnection();
 
   const endpoint = useMemo(() => {
-    const wsBase = getWsBaseUrl();
-    let url = `${wsBase}${endpointUrl}&cols=${initialSizeRef.current.cols}&rows=${initialSizeRef.current.rows}`;
+    let url = `${endpointUrl}&cols=${initialSizeRef.current.cols}&rows=${initialSizeRef.current.rows}`;
     if (sessionId) {
       url += `&session_id=${sessionId}`;
     }
@@ -186,18 +185,12 @@ export function XTermInstance({
         }
       };
 
-      // Create WebSocket - route through E2EE gateway if connected
-      const conn = getGatewayConnection();
-      let ws: WebSocket | RemoteWs;
-      if (conn) {
-        const url = new URL(endpoint);
-        ws = conn.openWsStream(
-          url.pathname,
-          url.search?.substring(1) || undefined
-        );
-      } else {
-        ws = new WebSocket(endpoint);
-      }
+      // Create WebSocket via the tab's connection
+      const parsed = new URL(endpoint, window.location.origin);
+      const ws: WebSocketLike = conn.openWs(
+        parsed.pathname,
+        parsed.search?.substring(1) || undefined
+      );
       wsRef.current = ws;
 
       ws.onmessage = (event) => {
@@ -307,7 +300,7 @@ export function XTermInstance({
     requestAnimationFrame(openTerminal);
 
     return true;
-  }, [endpoint, onClose, onSessionId]);
+  }, [endpoint, onClose, onSessionId, conn]);
 
   // Initialize terminal: try immediately, or wait for container to have dimensions via ResizeObserver
   useEffect(() => {

@@ -29,11 +29,12 @@ import { Loader2 } from 'lucide-react';
 import type { BaseCodingAgent, ExecutorConfig } from 'shared/types';
 import { McpConfig } from 'shared/types';
 import { useUserSystem } from '@/components/ConfigProvider';
-import { mcpServersApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { McpConfigStrategyGeneral } from '@/lib/mcpStrategies';
 import { getSortedAgents } from '@/utils/executor';
 
 export function McpSettings() {
+  const { mcpServersApi } = useApi();
   const { t } = useTranslation('settings');
   const { config, profiles } = useUserSystem();
   const [mcpServers, setMcpServers] = useState('{}');

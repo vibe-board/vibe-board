@@ -16,7 +16,7 @@ import { useTranslation } from 'react-i18next';
 import type { Repo } from 'shared/types';
 import { usePortalContainer } from '@/contexts/PortalContainerContext';
 import { useTypeaheadOpen } from '@/components/ui/wysiwyg/context/typeahead-open-context';
-import { repoApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import {
   searchTagsAndFiles,
   type SearchResultItem,
@@ -78,6 +78,8 @@ function getRepoDisplayName(repo: Repo): string {
 }
 
 export function FileTagTypeaheadPlugin({ repoIds }: { repoIds?: string[] }) {
+  const api = useApi();
+  const { repoApi } = api;
   const [editor] = useLexicalComposerContext();
   const [options, setOptions] = useState<FileTagOption[]>([]);
   const [recentRepoCatalog, setRecentRepoCatalog] = useState<Repo[] | null>(
@@ -140,7 +142,7 @@ export function FileTagTypeaheadPlugin({ repoIds }: { repoIds?: string[] }) {
 
       try {
         // Here query is a string, including possible empty string ''
-        const serverResults = await searchTagsAndFiles(query, {
+        const serverResults = await searchTagsAndFiles(query, api, {
           repoIds: scopedRepoIds,
         });
 

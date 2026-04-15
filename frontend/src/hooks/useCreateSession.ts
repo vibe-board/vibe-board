@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { sessionsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type {
   Session,
   CreateFollowUpAttempt,
@@ -18,6 +18,7 @@ interface CreateSessionParams {
  * Uses TanStack Query mutation for proper cache management.
  */
 export function useCreateSession() {
+  const { sessionsApi } = useApi();
   const queryClient = useQueryClient();
 
   return useMutation({

@@ -2,9 +2,8 @@ import { useEffect, useState, useRef } from 'react';
 import { produce } from 'immer';
 import type { Operation } from 'rfc6902';
 import { applyUpsertPatch } from '@/utils/jsonPatch';
-import { getGatewayConnection } from '@/lib/gatewayMode';
-import { getWsBaseUrl } from '@/lib/api';
-import type { RemoteWs } from '@/lib/e2ee/remoteWs';
+import { useConnection } from '@/contexts/ConnectionContext';
+import type { WebSocketLike } from '@/lib/connections/types';
 
 type WsJsonPatchMsg = { JsonPatch: Operation[] };
 type WsReadyMsg = { Ready: true };
@@ -38,11 +37,12 @@ export const useJsonPatchWsStream = <T extends object>(
   initialData: () => T,
   options?: UseJsonPatchStreamOptions<T>
 ): UseJsonPatchStreamResult<T> => {
+  const conn = useConnection();
   const [data, setData] = useState<T | undefined>(undefined);
   const [isConnected, setIsConnected] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const wsRef = useRef<WebSocket | RemoteWs | null>(null);
+  const wsRef = useRef<WebSocketLike | null>(null);
   const dataRef = useRef<T | undefined>(undefined);
   const retryTimerRef = useRef<number | null>(null);
   const retryAttemptsRef = useRef<number>(0);
@@ -109,22 +109,11 @@ export const useJsonPatchWsStream = <T extends object>(
       // Reset finished flag for new connection
       finishedRef.current = false;
 
-      // In gateway mode, use E2EE connection for remote WebSocket
-      const conn = getGatewayConnection();
-      let ws: WebSocket | RemoteWs;
-      if (conn) {
-        const url = new URL(endpoint, window.location.origin);
-        ws = conn.openWsStream(
-          url.pathname,
-          url.search?.substring(1) || undefined
-        );
-      } else {
-        const wsBase = getWsBaseUrl();
-        const wsEndpoint = endpoint.startsWith('/')
-          ? `${wsBase}${endpoint}`
-          : endpoint.replace(/^http/, 'ws');
-        ws = new WebSocket(wsEndpoint);
-      }
+      const url = new URL(endpoint, window.location.origin);
+      const ws: WebSocketLike = conn.openWs(
+        url.pathname,
+        url.search?.substring(1) || undefined
+      );
 
       ws.onopen = () => {
         setError(null);
@@ -169,7 +158,7 @@ export const useJsonPatchWsStream = <T extends object>(
           // Treat finished as terminal - do NOT reconnect
           if ('finished' in msg) {
             finishedRef.current = true;
-            ws.close(1000, 'finished');
+            ws.close();
             wsRef.current = null;
             setIsConnected(false);
           }
@@ -229,7 +218,7 @@ export const useJsonPatchWsStream = <T extends object>(
       setData(undefined);
       setIsInitialized(false);
     };
-  }, [endpoint, enabled, retryNonce]);
+  }, [endpoint, enabled, retryNonce, conn]);
 
   return { data, isConnected, isInitialized, error };
 };

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { attemptsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type { TaskRelationships } from 'shared/types';
 
 export const taskRelationshipsKeys = {
@@ -16,6 +16,7 @@ type Options = {
 };
 
 export function useTaskRelationships(attemptId?: string, opts?: Options) {
+  const { attemptsApi } = useApi();
   const enabled = (opts?.enabled ?? true) && !!attemptId;
 
   return useQuery<TaskRelationships>({

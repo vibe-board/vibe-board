@@ -8,7 +8,7 @@ import {
 import { Button } from '@/components/ui/button';
 import NiceModal, { useModal } from '@ebay/nice-modal-react';
 import { defineModal, getErrorMessage } from '@/lib/modals';
-import { attemptsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type { GhCliSetupError } from 'shared/types';
 import { useRef, useState } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -122,6 +122,7 @@ export const GhCliHelpInstructions = ({
 
 const GhCliSetupDialogImpl = NiceModal.create<GhCliSetupDialogProps>(
   ({ attemptId }) => {
+    const { attemptsApi } = useApi();
     const modal = useModal();
     const { t } = useTranslation();
     const [isRunning, setIsRunning] = useState(false);

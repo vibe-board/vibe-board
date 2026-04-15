@@ -13,7 +13,7 @@ import NiceModal, { useModal } from '@ebay/nice-modal-react';
 import { defineModal } from '@/lib/modals';
 import { useKeySubmitTask } from '@/keyboard/hooks';
 import { Scope } from '@/keyboard/registry';
-import { executionProcessesApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import {
   isCodingAgent,
   PROCESS_RUN_REASONS,
@@ -49,6 +49,7 @@ const RestoreLogsDialogImpl = NiceModal.create<RestoreLogsDialogProps>(
     initialForceReset = false,
     mode = 'retry',
   }) => {
+    const { executionProcessesApi } = useApi();
     const modal = useModal();
     const { t } = useTranslation(['tasks', 'common']);
     const [isLoading, setIsLoading] = useState(true);

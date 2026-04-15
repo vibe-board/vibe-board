@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import type { Diff } from 'shared/types';
-import { attemptsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 
 export interface UseDiffStreamOptions {
   repoId?: string | null;
@@ -17,6 +17,7 @@ export const useDiffStream = (
   enabled: boolean,
   options?: UseDiffStreamOptions
 ): UseDiffStreamResult => {
+  const { attemptsApi } = useApi();
   const repoId = options?.repoId;
 
   const {

@@ -25,7 +25,7 @@ import { Loader2 } from 'lucide-react';
 import { useScriptPlaceholders } from '@/hooks/useScriptPlaceholders';
 import { AutoExpandingTextarea } from '@/components/ui/auto-expanding-textarea';
 import { MultiFileSearchTextarea } from '@/components/ui/multi-file-search-textarea';
-import { repoApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Repo, UpdateRepo } from 'shared/types';
 
@@ -50,6 +50,7 @@ function repoToFormState(repo: Repo): RepoScriptsFormState {
 }
 
 export function ReposSettings() {
+  const { repoApi } = useApi();
   const [searchParams, setSearchParams] = useSearchParams();
   const repoIdParam = searchParams.get('repoId') ?? '';
   const { t } = useTranslation('settings');

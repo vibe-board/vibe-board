@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query';
-import { approvalsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type { QuestionAnswer } from 'shared/types';
 
 interface ApproveParams {
@@ -16,6 +16,7 @@ interface AnswerParams extends ApproveParams {
 }
 
 export function useApprovalMutation() {
+  const { approvalsApi } = useApi();
   const approveMutation = useMutation({
     mutationFn: ({ approvalId, executionProcessId }: ApproveParams) =>
       approvalsApi.respond(approvalId, {

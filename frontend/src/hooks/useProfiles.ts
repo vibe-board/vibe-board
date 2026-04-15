@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { profilesApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type { JsonValue } from 'shared/types';
 
 export type UseProfilesReturn = {
@@ -22,6 +22,7 @@ export type UseProfilesReturn = {
 };
 
 export function useProfiles(): UseProfilesReturn {
+  const { profilesApi } = useApi();
   const queryClient = useQueryClient();
 
   const { data, isLoading, isError, error, refetch } = useQuery({

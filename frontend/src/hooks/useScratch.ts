@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useJsonPatchWsStream } from './useJsonPatchWsStream';
-import { scratchApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { ScratchType, type Scratch, type UpdateScratch } from 'shared/types';
 
 type ScratchState = {
@@ -30,6 +30,7 @@ export const useScratch = (
   id: string,
   options?: UseScratchOptions
 ): UseScratchResult => {
+  const { scratchApi } = useApi();
   // Skip connection when disabled or no ID
   const enabled = (options?.enabled ?? true) && id.length > 0;
   const endpoint = enabled
@@ -49,7 +50,7 @@ export const useScratch = (
     async (update: UpdateScratch) => {
       await scratchApi.update(scratchType, id, update);
     },
-    [scratchType, id]
+    [scratchApi, scratchType, id]
   );
 
   const deleteScratch = useCallback(async () => {
@@ -63,7 +64,7 @@ export const useScratch = (
       }
       throw e;
     }
-  }, [scratchType, id]);
+  }, [scratchApi, scratchType, id]);
 
   const isLoading = !isInitialized && !error;
 

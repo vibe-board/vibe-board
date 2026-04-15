@@ -21,7 +21,7 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import '@/styles/diff-style-overrides.css';
-import { attemptsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type { Workspace } from 'shared/types';
 import {
   useReview,
@@ -81,6 +81,7 @@ export default function DiffCard({
   onToggle,
   selectedAttempt,
 }: Props) {
+  const { attemptsApi } = useApi();
   const { config } = useUserSystem();
   const theme = getActualTheme(config?.theme);
   const { comments, drafts, setDraft } = useReview();

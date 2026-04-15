@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { attemptsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { workspaceSummaryKeys } from '@/hooks/queryKeys';
 import type {
   ExecutorProfileId,
@@ -21,6 +21,7 @@ export function useAttemptCreation({
   taskId,
   onSuccess,
 }: UseAttemptCreationArgs) {
+  const { attemptsApi } = useApi();
   const queryClient = useQueryClient();
 
   const mutation = useMutation({

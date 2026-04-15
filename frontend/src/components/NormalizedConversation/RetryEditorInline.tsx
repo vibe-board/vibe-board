@@ -8,7 +8,7 @@ import { AgentSelector } from '@/components/tasks/AgentSelector';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle, Loader2, Paperclip, Send, X } from 'lucide-react';
-import { imagesApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import type { WorkspaceWithSession } from '@/types/attempt';
 import type { BaseCodingAgent } from 'shared/types';
 import { useAttemptExecution } from '@/hooks/useAttemptExecution';
@@ -29,6 +29,7 @@ export function RetryEditorInline({
   initialContent: string;
   onCancelled?: () => void;
 }) {
+  const { imagesApi } = useApi();
   const { t } = useTranslation(['common']);
   const attemptId = attempt.id;
   const { isAttemptRunning, attemptData } = useAttemptExecution(attemptId);

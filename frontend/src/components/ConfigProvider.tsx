@@ -15,7 +15,7 @@ import {
   type LoginStatus,
 } from 'shared/types';
 import type { ExecutorConfig } from 'shared/types';
-import { configApi } from '../lib/api';
+import { useApi } from '@/hooks/useApi';
 import { updateLanguageFromConfig } from '../i18n/config';
 
 interface UserSystemState {
@@ -63,6 +63,7 @@ interface UserSystemProviderProps {
 }
 
 export function UserSystemProvider({ children }: UserSystemProviderProps) {
+  const { configApi } = useApi();
   const queryClient = useQueryClient();
 
   const { data: userSystemInfo, isLoading } = useQuery({

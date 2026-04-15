@@ -1,8 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import type { PatchType } from 'shared/types';
-import { getGatewayConnection } from '@/lib/gatewayMode';
-import { getWsBaseUrl } from '@/lib/api';
-import type { RemoteWs } from '@/lib/e2ee/remoteWs';
+import { useConnection } from '@/contexts/ConnectionContext';
+import type { WebSocketLike } from '@/lib/connections/types';
 
 type LogEntry = Extract<PatchType, { type: 'STDOUT' } | { type: 'STDERR' }>;
 
@@ -12,9 +11,10 @@ interface UseLogStreamResult {
 }
 
 export const useLogStream = (processId: string): UseLogStreamResult => {
+  const conn = useConnection();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const wsRef = useRef<WebSocket | RemoteWs | null>(null);
+  const wsRef = useRef<WebSocketLike | null>(null);
   const retryCountRef = useRef<number>(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isIntentionallyClosed = useRef<boolean>(false);
@@ -37,19 +37,8 @@ export const useLogStream = (processId: string): UseLogStreamResult => {
       // Capture processId at the time of opening the WebSocket
       const capturedProcessId = processId;
 
-      // In gateway mode, use E2EE connection for remote WebSocket
-      const conn = getGatewayConnection();
-      let ws: WebSocket | RemoteWs;
-      if (conn) {
-        ws = conn.openWsStream(
-          `/api/execution-processes/${processId}/raw-logs/ws`
-        );
-      } else {
-        const wsBase = getWsBaseUrl();
-        ws = new WebSocket(
-          `${wsBase}/api/execution-processes/${processId}/raw-logs/ws`
-        );
-      }
+      const path = `/api/execution-processes/${processId}/raw-logs/ws`;
+      const ws: WebSocketLike = conn.openWs(path);
       wsRef.current = ws;
       isIntentionallyClosed.current = false;
 
@@ -142,7 +131,7 @@ export const useLogStream = (processId: string): UseLogStreamResult => {
         retryTimerRef.current = null;
       }
     };
-  }, [processId]);
+  }, [processId, conn]);
 
   return { logs, error };
 };

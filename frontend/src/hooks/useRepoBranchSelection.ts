@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useQueries } from '@tanstack/react-query';
-import { repoApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { repoBranchKeys } from './useRepoBranches';
 import type { GitBranch, Repo } from 'shared/types';
 
@@ -33,6 +33,7 @@ export function useRepoBranchSelection({
   initialBranch,
   enabled = true,
 }: UseRepoBranchSelectionOptions): UseRepoBranchSelectionReturn {
+  const { repoApi } = useApi();
   const [userOverrides, setUserOverrides] = useState<
     Record<string, string | null>
   >({});

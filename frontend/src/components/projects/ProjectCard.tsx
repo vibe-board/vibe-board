@@ -23,7 +23,7 @@ import { Project } from 'shared/types';
 import { useEffect, useRef } from 'react';
 import { useOpenProjectInEditor } from '@/hooks/useOpenProjectInEditor';
 import { useNavigateWithSearch, useProjectRepos } from '@/hooks';
-import { projectsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { useTranslation } from 'react-i18next';
 
 type Props = {
@@ -34,6 +34,7 @@ type Props = {
 };
 
 function ProjectCard({ project, isFocused, setError, onEdit }: Props) {
+  const { projectsApi } = useApi();
   const navigate = useNavigateWithSearch();
   const ref = useRef<HTMLDivElement>(null);
   const handleOpenInEditor = useOpenProjectInEditor(project);

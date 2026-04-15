@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { projectsApi } from '@/lib/api';
+import { useApi } from '@/hooks/useApi';
 import { useProjects } from '@/hooks/useProjects';
 import {
   AlertCircle,
@@ -30,6 +30,7 @@ interface ProjectDetailProps {
 }
 
 export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
+  const { projectsApi } = useApi();
   const { t } = useTranslation('projects');
   const navigate = useNavigateWithSearch();
   const { projectsById, isLoading, error: projectsError } = useProjects();
