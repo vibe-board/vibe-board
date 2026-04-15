@@ -76,10 +76,6 @@ impl TerminalBuffer {
         history.push_back(data);
     }
 
-    fn get_history(&self) -> Vec<Vec<u8>> {
-        self.history.read().unwrap().iter().cloned().collect()
-    }
-
     fn subscribe(&self) -> broadcast::Receiver<Vec<u8>> {
         self.sender.subscribe()
     }
@@ -91,6 +87,7 @@ struct PtySession {
     _output_handle: thread::JoinHandle<()>,
     closed: bool,
     buffer: Arc<TerminalBuffer>,
+    vt100_parser: Arc<Mutex<vt100::Parser>>,
     attached: AtomicBool,
     last_activity: AtomicI64,
     /// Sender for the exit notification
@@ -173,6 +170,8 @@ impl PtyService {
         let session_id = Uuid::new_v4();
         let buffer = Arc::new(TerminalBuffer::new());
         let buffer_clone = buffer.clone();
+        let vt100_parser = Arc::new(Mutex::new(vt100::Parser::new(rows, cols, 0)));
+        let parser_clone = vt100_parser.clone();
         let (exit_tx, exit_rx) = watch::channel(false);
         let exit_tx = Arc::new(exit_tx);
         let exit_tx_clone = exit_tx.clone();
@@ -277,7 +276,9 @@ impl PtyService {
                     match reader.read(&mut buf) {
                         Ok(0) => break,
                         Ok(n) => {
-                            buffer_clone.push(buf[..n].to_vec());
+                            let chunk = &buf[..n];
+                            buffer_clone.push(chunk.to_vec());
+                            parser_clone.lock().unwrap().process(chunk);
                         }
                         Err(_) => break,
                     }
@@ -299,6 +300,7 @@ impl PtyService {
             _output_handle: output_handle,
             closed: false,
             buffer,
+            vt100_parser,
             attached: AtomicBool::new(true),
             last_activity: AtomicI64::new(
                 SystemTime::now()
@@ -327,14 +329,14 @@ impl PtyService {
         Ok((session_id, rx, exit_rx))
     }
 
-    /// Attach to an existing session, returning buffered history and a new receiver.
+    /// Attach to an existing session, returning a screen snapshot and a new receiver.
     /// Returns SessionNotFound if the session doesn't exist.
     pub async fn attach_session(
         &self,
         session_id: Uuid,
     ) -> Result<
         (
-            Vec<Vec<u8>>,
+            Vec<u8>,
             broadcast::Receiver<Vec<u8>>,
             watch::Receiver<bool>,
         ),
@@ -353,13 +355,18 @@ impl PtyService {
             return Err(PtyError::SessionClosed);
         }
 
-        let history = session.buffer.get_history();
+        let snapshot = session
+            .vt100_parser
+            .lock()
+            .unwrap()
+            .screen()
+            .contents_formatted();
         let rx = session.buffer.subscribe();
         session.attached.store(true, Ordering::Relaxed);
         session.update_activity();
         let exit_rx = (*session.exit_tx).subscribe();
 
-        Ok((history, rx, exit_rx))
+        Ok((snapshot, rx, exit_rx))
     }
 
     /// Detach from a session without closing it. Session keeps running in background.
@@ -425,6 +432,12 @@ impl PtyService {
                 pixel_height: 0,
             })
             .map_err(|e| PtyError::ResizeFailed(e.to_string()))?;
+
+        session
+            .vt100_parser
+            .lock()
+            .unwrap()
+            .set_size(rows, cols);
 
         Ok(())
     }

@@ -197,13 +197,13 @@ async fn handle_terminal_ws(
     reconnect_session_id: Option<Uuid>,
 ) {
     // Determine session: try to attach or create new
-    let (session_id, mut output_rx, history, session_expired, mut exit_rx) =
+    let (session_id, mut output_rx, snapshot, session_expired, mut exit_rx) =
         if let Some(existing_id) = reconnect_session_id {
             // Try to attach to existing session
             match deployment.pty().attach_session(existing_id).await {
-                Ok((history, rx, exit)) => {
+                Ok((snapshot, rx, exit)) => {
                     tracing::info!("Reattached to terminal session: {}", existing_id);
-                    (existing_id, rx, history, false, exit)
+                    (existing_id, rx, snapshot, false, exit)
                 }
                 Err(_) => {
                     // Session not found or expired - create new one
@@ -259,10 +259,10 @@ async fn handle_terminal_ws(
         return;
     }
 
-    // Send buffered history first
-    for data in history {
+    // Send screen snapshot for reconnection
+    if !snapshot.is_empty() {
         let msg = TerminalMessage::Output {
-            data: BASE64.encode(&data),
+            data: BASE64.encode(&snapshot),
         };
         let json = serde_json::to_string(&msg).unwrap_or_default();
         if ws_sender.send(Message::Text(json.into())).await.is_err() {
