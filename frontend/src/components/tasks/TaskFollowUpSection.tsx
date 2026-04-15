@@ -9,6 +9,7 @@ import {
   Paperclip,
   Terminal,
   MessageSquare,
+  MoreHorizontal,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -16,6 +17,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -718,6 +720,20 @@ export function TaskFollowUpSection({
     [workspaceId, getQueueState, cancelMutation]
   );
 
+  // Action bar compact mode detection
+  const actionBarRef = useRef<HTMLDivElement>(null);
+  const [isCompact, setIsCompact] = useState(false);
+
+  useEffect(() => {
+    const el = actionBarRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setIsCompact(entry.contentRect.width < 480);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   // Attachment button - file input ref and handlers
   const fileInputRef = useRef<HTMLInputElement>(null);
   const handleAttachClick = useCallback(() => {
@@ -955,7 +971,7 @@ export function TaskFollowUpSection({
       </div>
 
       {/* Always-visible action bar */}
-      <div className="p-4">
+      <div className="p-4" ref={actionBarRef}>
         <div className="flex flex-row gap-2 items-center">
           {!isAttemptRunning && (
             <div className="flex-1 flex gap-2">
@@ -995,63 +1011,114 @@ export function TaskFollowUpSection({
             onChange={handleFileInputChange}
           />
 
-          {/* Attach button - always visible */}
-          <Button
-            onClick={handleAttachClick}
-            disabled={!isEditable}
-            size="sm"
-            variant="outline"
-            title="Attach image"
-            aria-label="Attach image"
-          >
-            <Paperclip className="h-4 w-4" />
-          </Button>
-
-          {/* PR Comments button */}
-          <Button
-            onClick={handlePrCommentClick}
-            disabled={!isEditable}
-            size="sm"
-            variant="outline"
-            title="Insert PR comment"
-            aria-label="Insert PR comment"
-          >
-            <MessageSquare className="h-4 w-4" />
-          </Button>
-
-          {/* Scripts dropdown - only show if project has any scripts */}
-          {hasAnyScript && (
+          {isCompact ? (
             <DropdownMenu>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={isAttemptRunning}
-                        aria-label="Run scripts"
-                      >
-                        <Terminal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                  </TooltipTrigger>
-                  {isAttemptRunning && (
-                    <TooltipContent side="bottom">
-                      {t('followUp.scriptsDisabledWhileRunning')}
-                    </TooltipContent>
-                  )}
-                </Tooltip>
-              </TooltipProvider>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  aria-label="More actions"
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={handleRunSetupScript}>
-                  {t('followUp.runSetupScript')}
+                <DropdownMenuItem
+                  onClick={handleAttachClick}
+                  disabled={!isEditable}
+                >
+                  <Paperclip className="h-4 w-4 mr-2" />
+                  {t('followUp.attachImage', 'Attach image')}
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleRunCleanupScript}>
-                  {t('followUp.runCleanupScript')}
+                <DropdownMenuItem
+                  onClick={handlePrCommentClick}
+                  disabled={!isEditable}
+                >
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  {t('followUp.insertPrComment', 'Insert PR comment')}
                 </DropdownMenuItem>
+                {hasAnyScript && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={handleRunSetupScript}
+                      disabled={isAttemptRunning}
+                    >
+                      <Terminal className="h-4 w-4 mr-2" />
+                      {t('followUp.runSetupScript')}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={handleRunCleanupScript}
+                      disabled={isAttemptRunning}
+                    >
+                      <Terminal className="h-4 w-4 mr-2" />
+                      {t('followUp.runCleanupScript')}
+                    </DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
+          ) : (
+            <>
+              {/* Attach button */}
+              <Button
+                onClick={handleAttachClick}
+                disabled={!isEditable}
+                size="sm"
+                variant="outline"
+                title="Attach image"
+                aria-label="Attach image"
+              >
+                <Paperclip className="h-4 w-4" />
+              </Button>
+
+              {/* PR Comments button */}
+              <Button
+                onClick={handlePrCommentClick}
+                disabled={!isEditable}
+                size="sm"
+                variant="outline"
+                title="Insert PR comment"
+                aria-label="Insert PR comment"
+              >
+                <MessageSquare className="h-4 w-4" />
+              </Button>
+
+              {/* Scripts dropdown - only show if project has any scripts */}
+              {hasAnyScript && (
+                <DropdownMenu>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={isAttemptRunning}
+                            aria-label="Run scripts"
+                          >
+                            <Terminal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                      </TooltipTrigger>
+                      {isAttemptRunning && (
+                        <TooltipContent side="bottom">
+                          {t('followUp.scriptsDisabledWhileRunning')}
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+                  </TooltipProvider>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={handleRunSetupScript}>
+                      {t('followUp.runSetupScript')}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleRunCleanupScript}>
+                      {t('followUp.runCleanupScript')}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </>
           )}
 
           {isAttemptRunning ? (
