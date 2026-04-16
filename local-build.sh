@@ -47,7 +47,7 @@ rm -rf npx-cli/dist
 mkdir -p npx-cli/dist/$PLATFORM
 
 echo "🔨 Building frontend..."
-(cd frontend && npm run build)
+(cd frontend && VITE_APP_MODE=local-direct npm run build)
 
 echo "🔨 Building Rust binaries..."
 cargo build --release --manifest-path Cargo.toml
