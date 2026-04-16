@@ -86,7 +86,7 @@ export function ProjectTab({ tab }: { tab: TabPersisted }) {
   return (
     <ConnectionProvider connection={conn}>
       <QueryClientProvider client={conn.queryClient}>
-        <App />
+        <App initialPath={`/local-projects/${tab.projectId}/tasks`} />
       </QueryClientProvider>
     </ConnectionProvider>
   );

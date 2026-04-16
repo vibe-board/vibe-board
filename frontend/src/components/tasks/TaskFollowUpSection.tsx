@@ -1014,11 +1014,7 @@ export function TaskFollowUpSection({
           {isCompact ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  aria-label="More actions"
-                >
+                <Button size="sm" variant="outline" aria-label="More actions">
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>

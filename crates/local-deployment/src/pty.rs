@@ -334,14 +334,7 @@ impl PtyService {
     pub async fn attach_session(
         &self,
         session_id: Uuid,
-    ) -> Result<
-        (
-            Vec<u8>,
-            broadcast::Receiver<Vec<u8>>,
-            watch::Receiver<bool>,
-        ),
-        PtyError,
-    > {
+    ) -> Result<(Vec<u8>, broadcast::Receiver<Vec<u8>>, watch::Receiver<bool>), PtyError> {
         let sessions = self
             .sessions
             .lock()
@@ -433,11 +426,7 @@ impl PtyService {
             })
             .map_err(|e| PtyError::ResizeFailed(e.to_string()))?;
 
-        session
-            .vt100_parser
-            .lock()
-            .unwrap()
-            .set_size(rows, cols);
+        session.vt100_parser.lock().unwrap().set_size(rows, cols);
 
         Ok(())
     }

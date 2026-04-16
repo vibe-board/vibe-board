@@ -2,7 +2,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import {
-  ArrowLeft,
   Loader2,
   Plus,
   Pin,
@@ -14,7 +13,6 @@ import { ConnectionProvider } from '@/contexts/ConnectionContext';
 import { useConnectionStore } from '@/stores/connection-store';
 import { GatewayMachineConnection } from '@/lib/connections/gatewayConnection';
 import type { TabPersisted, ConnectionProject } from '@/lib/connections/types';
-import App from '@/App';
 
 export function MachineProjectsTab({ tab }: { tab: TabPersisted }) {
   const getConnection = useConnectionStore((s) => s.getConnection);
@@ -43,9 +41,6 @@ export function MachineProjectsTab({ tab }: { tab: TabPersisted }) {
       conn.connect().catch(() => {});
     }
   }, [conn, conn?.status]);
-
-  // Internal navigation: null = project list, string = project detail
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
 
   if (!conn) {
     return (
@@ -96,35 +91,10 @@ export function MachineProjectsTab({ tab }: { tab: TabPersisted }) {
     );
   }
 
-  // View B: Project detail (full App workspace)
-  if (activeProjectId) {
-    return (
-      <div className="flex flex-col h-full">
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-muted/30 shrink-0">
-          <button
-            className="flex items-center gap-1.5 text-sm text-foreground/60 hover:text-foreground"
-            onClick={() => setActiveProjectId(null)}
-          >
-            <ArrowLeft size={16} />
-            Back to projects
-          </button>
-        </div>
-        <div className="flex-1 overflow-hidden">
-          <ConnectionProvider connection={conn}>
-            <QueryClientProvider client={conn.queryClient}>
-              <App />
-            </QueryClientProvider>
-          </ConnectionProvider>
-        </div>
-      </div>
-    );
-  }
-
-  // View A: Project list
   return (
     <ConnectionProvider connection={conn}>
       <QueryClientProvider client={conn.queryClient}>
-        <ProjectListView tab={tab} onSelectProject={setActiveProjectId} />
+        <ProjectListView tab={tab} />
       </QueryClientProvider>
     </ConnectionProvider>
   );
@@ -132,13 +102,7 @@ export function MachineProjectsTab({ tab }: { tab: TabPersisted }) {
 
 // -- Project List View (View A) --
 
-function ProjectListView({
-  tab,
-  onSelectProject,
-}: {
-  tab: TabPersisted;
-  onSelectProject: (projectId: string) => void;
-}) {
+function ProjectListView({ tab }: { tab: TabPersisted }) {
   const { openProjectTab } = useConnectionStore();
   const [projects, setProjects] = useState<ConnectionProject[]>([]);
   const [loading, setLoading] = useState(true);
@@ -168,6 +132,11 @@ function ProjectListView({
   }, [loadProjects]);
 
   const handlePin = (project: ConnectionProject) => {
+    if (!tab.connectionId) return;
+    openProjectTab(tab.connectionId, tab.machineId, project.id, project.name);
+  };
+
+  const handleOpen = (project: ConnectionProject) => {
     if (!tab.connectionId) return;
     openProjectTab(tab.connectionId, tab.machineId, project.id, project.name);
   };
@@ -215,7 +184,7 @@ function ProjectListView({
               <ProjectCardSimple
                 key={project.id}
                 project={project}
-                onSelect={() => onSelectProject(project.id)}
+                onSelect={() => handleOpen(project)}
                 onPin={() => handlePin(project)}
               />
             ))}
