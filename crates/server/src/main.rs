@@ -92,6 +92,8 @@ async fn main() -> Result<(), VibeBoardError> {
         utils::assets::set_data_dir(data_dir);
     }
 
+    utils::assets::migrate_from_legacy_dir();
+
     match cli.command {
         None | Some(Commands::Server) => cmd_server().await,
         Some(Commands::Login { gateway }) => {

@@ -36,6 +36,8 @@ fn main() -> anyhow::Result<()> {
                 utils::assets::set_data_dir(path);
             }
 
+            utils::assets::migrate_from_legacy_dir();
+
             // Read backend port from port file or environment variable
             let base_url = if let Ok(url) = std::env::var("VIBE_BACKEND_URL") {
                 tracing::info!("[MCP] Using backend URL from VIBE_BACKEND_URL: {}", url);
