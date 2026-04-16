@@ -80,7 +80,6 @@ import {
 } from '@/components/ui/breadcrumb';
 import { AttemptHeaderActions } from '@/components/panels/AttemptHeaderActions';
 import { TaskPanelHeaderActions } from '@/components/panels/TaskPanelHeaderActions';
-import { TerminalPanel } from '@/components/panels/TerminalPanel';
 import {
   Tooltip,
   TooltipContent,
@@ -350,16 +349,6 @@ export function ProjectTasks() {
   const [copied, setCopied] = useState(false);
   const { repos, isLoading: reposLoading } = useAttemptRepo(attempt?.id);
 
-  // Compute working directory for terminal
-  const terminalCwd = useMemo(() => {
-    const containerRef = attempt?.container_ref;
-    if (!containerRef) return null;
-    const repo = repos[0];
-    return attempt.mode === 'worktree' && repo
-      ? `${containerRef}/${repo.name}`
-      : containerRef;
-  }, [attempt?.container_ref, attempt?.mode, repos]);
-
   const handleCopyWorktree = useCallback(async () => {
     const containerRef = attempt?.container_ref;
     if (!containerRef) return;
@@ -384,10 +373,7 @@ export function ProjectTasks() {
 
   const rawMode = searchParams.get('view') as LayoutMode;
   const mode: LayoutMode =
-    rawMode === 'preview' ||
-    rawMode === 'diffs' ||
-    rawMode === 'commits' ||
-    rawMode === 'terminal'
+    rawMode === 'preview' || rawMode === 'diffs' || rawMode === 'commits'
       ? rawMode
       : null;
 
@@ -593,13 +579,7 @@ export function ProjectTasks() {
    */
   const cycleView = useCallback(
     (direction: 'forward' | 'backward' = 'forward') => {
-      const order: LayoutMode[] = [
-        null,
-        'preview',
-        'diffs',
-        'commits',
-        'terminal',
-      ];
+      const order: LayoutMode[] = [null, 'preview', 'diffs', 'commits'];
       const idx = order.indexOf(mode);
       const next =
         direction === 'forward'
@@ -1027,26 +1007,6 @@ export function ProjectTasks() {
     </NewCard>
   ) : null;
 
-  // Terminal content - always rendered when we have workspace data,
-  // visibility is controlled by mode === 'terminal' in AuxRouter
-  const terminalContent =
-    attempt?.id && taskId && terminalCwd ? (
-      <TerminalPanel
-        workspaceId={attempt.id}
-        taskId={taskId}
-        cwd={terminalCwd}
-      />
-    ) : taskId ? (
-      <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-        {t(
-          selectedTask?.status === 'done' ||
-            selectedTask?.status === 'cancelled'
-            ? 'terminal.workspaceCleanedUp'
-            : 'terminal.selectWorkspace'
-        )}
-      </div>
-    ) : null;
-
   const auxContent =
     selectedTask && attempt ? (
       <div className="relative h-full w-full">
@@ -1086,7 +1046,6 @@ export function ProjectTasks() {
               kanban={kanbanContent}
               attempt={attemptContent}
               aux={auxContent}
-              terminal={terminalContent}
               isPanelOpen={isPanelOpen}
               mode={mode}
               isMobile={isMobile}

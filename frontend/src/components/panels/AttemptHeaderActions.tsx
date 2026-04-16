@@ -1,11 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import {
-  Eye,
-  FileDiff,
-  GitCommitHorizontal,
-  SquareTerminal,
-  X,
-} from 'lucide-react';
+import { Eye, FileDiff, GitCommitHorizontal, X } from 'lucide-react';
 import { Button } from '../ui/button';
 import { ToggleGroup, ToggleGroupItem } from '../ui/toggle-group';
 import {
@@ -59,12 +53,6 @@ export const AttemptHeaderActions = ({
                 });
               } else if (newMode === 'diffs') {
                 posthog?.capture('diffs_navigated', {
-                  trigger: 'button',
-                  timestamp: new Date().toISOString(),
-                  source: 'frontend',
-                });
-              } else if (newMode === 'terminal') {
-                posthog?.capture('terminal_navigated', {
                   trigger: 'button',
                   timestamp: new Date().toISOString(),
                   source: 'frontend',
@@ -134,21 +122,6 @@ export const AttemptHeaderActions = ({
               </TooltipTrigger>
               <TooltipContent side="bottom">
                 {t('attemptHeaderActions.commits', 'Commits')}
-              </TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <ToggleGroupItem
-                  value="terminal"
-                  aria-label="Terminal"
-                  active={mode === 'terminal'}
-                >
-                  <SquareTerminal className="h-4 w-4" />
-                </ToggleGroupItem>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {t('attemptHeaderActions.terminal', 'Terminal')}
               </TooltipContent>
             </Tooltip>
           </ToggleGroup>

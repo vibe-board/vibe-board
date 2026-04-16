@@ -1,5 +1,5 @@
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
-import { useCallback, useEffect } from 'react';
+import { useCallback } from 'react';
 import { siDiscord } from 'simple-icons';
 import { Button } from '@/components/ui/button';
 import {
@@ -43,7 +43,7 @@ import { useUserSystem } from '@/components/ConfigProvider';
 import { useApi } from '@/hooks/useApi';
 import { useOptionalConnection } from '@/contexts/ConnectionContext';
 import { cn } from '@/lib/utils';
-import { useTerminalDrawer } from '@/contexts/TerminalDrawerContext';
+import { useTerminal } from '@/contexts/TerminalContext';
 import { useHomeDir } from '@/hooks/useHomeDir';
 
 const INTERNAL_NAV = [
@@ -91,28 +91,43 @@ export function Navbar() {
 
   const { data: repos } = useProjectRepos(projectId);
   const isSingleRepoProject = repos?.length === 1;
-  const { isDrawerOpen, drawerWorkspaceId, closeDrawer, toggleDrawer } =
-    useTerminalDrawer();
+  const { isDrawerOpen, toggleDrawer, createTab, getAllTabs } = useTerminal();
   const { data: homeDirData } = useHomeDir();
 
-  // Close project terminal when navigating away from that project
-  useEffect(() => {
-    if (!isDrawerOpen) return;
-    if (!drawerWorkspaceId.startsWith('project-terminal:')) return;
-    const drawerProjectId = drawerWorkspaceId.replace('project-terminal:', '');
-    if (drawerProjectId !== projectId) {
-      closeDrawer();
-    }
-  }, [projectId, isDrawerOpen, drawerWorkspaceId, closeDrawer]);
-
   const handleToggleTerminal = useCallback(() => {
-    if (projectId && repos?.length) {
-      const repoPath = String(repos[0].path);
-      toggleDrawer(repoPath, `project-terminal:${projectId}`);
-    } else if (homeDirData?.home_dir) {
-      toggleDrawer(homeDirData.home_dir, 'global-terminal');
+    if (isDrawerOpen) {
+      toggleDrawer();
+      return;
     }
-  }, [projectId, repos, homeDirData, toggleDrawer]);
+
+    // Smart auto-open: create a tab in the best context if none exist
+    const existingTabs = getAllTabs();
+    if (existingTabs.length === 0) {
+      if (projectId && repos?.length) {
+        const repoPath = String(repos[0].path);
+        createTab(
+          `project-terminal:${projectId}`,
+          `project-terminal:${projectId}`,
+          repoPath,
+          { type: 'project', projectId }
+        );
+      } else if (homeDirData?.home_dir) {
+        createTab('global-terminal', 'global-terminal', homeDirData.home_dir, {
+          type: 'home',
+        });
+      }
+    }
+
+    toggleDrawer();
+  }, [
+    isDrawerOpen,
+    toggleDrawer,
+    getAllTabs,
+    createTab,
+    projectId,
+    repos,
+    homeDirData,
+  ]);
 
   const setSearchBarRef = useCallback(
     (node: HTMLInputElement | null) => {

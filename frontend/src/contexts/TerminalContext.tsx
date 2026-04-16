@@ -8,6 +8,11 @@ import {
   ReactNode,
 } from 'react';
 
+export type TerminalTabContext =
+  | { type: 'task'; attemptId: string; taskId: string }
+  | { type: 'project'; projectId: string }
+  | { type: 'home' };
+
 const STORAGE_KEY = 'vibe-board:terminal-sessions';
 
 function loadPersistedState(): TerminalState {
@@ -19,6 +24,8 @@ function loadPersistedState(): TerminalState {
         activeTabByWorkspace: {},
         closedWorkspaces: [],
         tabCounterByWorkspace: {},
+        isDrawerOpen: false,
+        globalActiveTabId: null,
       };
     const parsed = JSON.parse(raw);
     return {
@@ -26,6 +33,8 @@ function loadPersistedState(): TerminalState {
       activeTabByWorkspace: parsed.activeTabByWorkspace || {},
       closedWorkspaces: parsed.closedWorkspaces || [],
       tabCounterByWorkspace: parsed.tabCounterByWorkspace || {},
+      isDrawerOpen: false,
+      globalActiveTabId: parsed.globalActiveTabId ?? null,
     };
   } catch {
     return {
@@ -33,6 +42,8 @@ function loadPersistedState(): TerminalState {
       activeTabByWorkspace: {},
       closedWorkspaces: [],
       tabCounterByWorkspace: {},
+      isDrawerOpen: false,
+      globalActiveTabId: null,
     };
   }
 }
@@ -53,6 +64,7 @@ export interface TerminalTab {
   cwd: string;
   /** Backend PTY session ID for reconnection */
   sessionId: string | null;
+  context: TerminalTabContext;
 }
 
 interface TerminalState {
@@ -62,10 +74,18 @@ interface TerminalState {
   closedWorkspaces: string[];
   /** Monotonically increasing counter per workspace for terminal numbering */
   tabCounterByWorkspace: Record<string, number>;
+  isDrawerOpen: boolean;
+  globalActiveTabId: string | null;
 }
 
 type TerminalAction =
-  | { type: 'CREATE_TAB'; workspaceId: string; taskId: string; cwd: string }
+  | {
+      type: 'CREATE_TAB';
+      workspaceId: string;
+      taskId: string;
+      cwd: string;
+      context: TerminalTabContext;
+    }
   | { type: 'CLOSE_TAB'; workspaceId: string; tabId: string }
   | { type: 'SET_ACTIVE_TAB'; workspaceId: string; tabId: string }
   | {
@@ -80,7 +100,11 @@ type TerminalAction =
       workspaceId: string;
       tabId: string;
       sessionId: string | null;
-    };
+    }
+  | { type: 'OPEN_DRAWER' }
+  | { type: 'CLOSE_DRAWER' }
+  | { type: 'TOGGLE_DRAWER' }
+  | { type: 'SET_GLOBAL_ACTIVE_TAB'; tabId: string };
 
 function generateTabId(): string {
   return `term-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -92,7 +116,7 @@ function terminalReducer(
 ): TerminalState {
   switch (action.type) {
     case 'CREATE_TAB': {
-      const { workspaceId, taskId, cwd } = action;
+      const { workspaceId, taskId, cwd, context } = action;
       const existingTabs = state.tabsByWorkspace[workspaceId] || [];
       const nextCounter = (state.tabCounterByWorkspace[workspaceId] || 0) + 1;
       const newTab: TerminalTab = {
@@ -102,6 +126,7 @@ function terminalReducer(
         taskId,
         cwd,
         sessionId: null,
+        context,
       };
       return {
         ...state,
@@ -120,6 +145,7 @@ function terminalReducer(
           ...state.tabCounterByWorkspace,
           [workspaceId]: nextCounter,
         },
+        globalActiveTabId: newTab.id,
       };
     }
 
@@ -144,6 +170,18 @@ function terminalReducer(
           ? [...new Set([...state.closedWorkspaces, workspaceId])]
           : state.closedWorkspaces;
 
+      let globalActiveTabId = state.globalActiveTabId;
+      if (globalActiveTabId === tabId) {
+        globalActiveTabId = newActiveTab;
+        if (!globalActiveTabId) {
+          const allTabs = Object.values({
+            ...state.tabsByWorkspace,
+            [workspaceId]: newTabs,
+          }).flat();
+          globalActiveTabId = allTabs[0]?.id ?? null;
+        }
+      }
+
       return {
         ...state,
         tabsByWorkspace: {
@@ -155,6 +193,7 @@ function terminalReducer(
           [workspaceId]: newActiveTab,
         },
         closedWorkspaces,
+        globalActiveTabId,
       };
     }
 
@@ -207,6 +246,8 @@ function terminalReducer(
           (id) => id !== workspaceId
         ),
         tabCounterByWorkspace: restCounter,
+        isDrawerOpen: state.isDrawerOpen,
+        globalActiveTabId: state.globalActiveTabId,
       };
     }
 
@@ -224,6 +265,15 @@ function terminalReducer(
       };
     }
 
+    case 'OPEN_DRAWER':
+      return { ...state, isDrawerOpen: true };
+    case 'CLOSE_DRAWER':
+      return { ...state, isDrawerOpen: false };
+    case 'TOGGLE_DRAWER':
+      return { ...state, isDrawerOpen: !state.isDrawerOpen };
+    case 'SET_GLOBAL_ACTIVE_TAB':
+      return { ...state, globalActiveTabId: action.tabId };
+
     default:
       return state;
   }
@@ -234,7 +284,12 @@ interface TerminalContextType {
   getActiveTab: (workspaceId: string) => TerminalTab | null;
   hasTerminalForTask: (taskId: string) => boolean;
   isWorkspaceClosed: (workspaceId: string) => boolean;
-  createTab: (workspaceId: string, taskId: string, cwd: string) => void;
+  createTab: (
+    workspaceId: string,
+    taskId: string,
+    cwd: string,
+    context: TerminalTabContext
+  ) => void;
   closeTab: (workspaceId: string, tabId: string) => void;
   setActiveTab: (workspaceId: string, tabId: string) => void;
   updateTabTitle: (workspaceId: string, tabId: string, title: string) => void;
@@ -244,6 +299,13 @@ interface TerminalContextType {
     tabId: string,
     sessionId: string | null
   ) => void;
+  isDrawerOpen: boolean;
+  openDrawer: () => void;
+  closeDrawer: () => void;
+  toggleDrawer: () => void;
+  getAllTabs: () => TerminalTab[];
+  getActiveGlobalTab: () => TerminalTab | null;
+  setActiveGlobalTab: (tabId: string) => void;
 }
 
 const TerminalContext = createContext<TerminalContextType | null>(null);
@@ -298,8 +360,13 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
   );
 
   const createTab = useCallback(
-    (workspaceId: string, taskId: string, cwd: string) => {
-      dispatch({ type: 'CREATE_TAB', workspaceId, taskId, cwd });
+    (
+      workspaceId: string,
+      taskId: string,
+      cwd: string,
+      context: TerminalTabContext
+    ) => {
+      dispatch({ type: 'CREATE_TAB', workspaceId, taskId, cwd, context });
     },
     []
   );
@@ -330,6 +397,36 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
     []
   );
 
+  const openDrawer = useCallback(() => {
+    dispatch({ type: 'OPEN_DRAWER' });
+  }, []);
+
+  const closeDrawer = useCallback(() => {
+    dispatch({ type: 'CLOSE_DRAWER' });
+  }, []);
+
+  const toggleDrawer = useCallback(() => {
+    dispatch({ type: 'TOGGLE_DRAWER' });
+  }, []);
+
+  const getAllTabs = useCallback((): TerminalTab[] => {
+    return Object.values(state.tabsByWorkspace).flat();
+  }, [state.tabsByWorkspace]);
+
+  const getActiveGlobalTab = useCallback((): TerminalTab | null => {
+    const tabId = state.globalActiveTabId;
+    if (!tabId) return null;
+    for (const tabs of Object.values(state.tabsByWorkspace)) {
+      const found = tabs.find((t) => t.id === tabId);
+      if (found) return found;
+    }
+    return null;
+  }, [state.globalActiveTabId, state.tabsByWorkspace]);
+
+  const setActiveGlobalTab = useCallback((tabId: string) => {
+    dispatch({ type: 'SET_GLOBAL_ACTIVE_TAB', tabId });
+  }, []);
+
   const value = useMemo(
     () => ({
       getTabsForWorkspace,
@@ -342,6 +439,13 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
       updateTabTitle,
       clearWorkspaceTabs,
       setSessionId,
+      isDrawerOpen: state.isDrawerOpen,
+      openDrawer,
+      closeDrawer,
+      toggleDrawer,
+      getAllTabs,
+      getActiveGlobalTab,
+      setActiveGlobalTab,
     }),
     [
       getTabsForWorkspace,
@@ -354,6 +458,13 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
       updateTabTitle,
       clearWorkspaceTabs,
       setSessionId,
+      state.isDrawerOpen,
+      openDrawer,
+      closeDrawer,
+      toggleDrawer,
+      getAllTabs,
+      getActiveGlobalTab,
+      setActiveGlobalTab,
     ]
   );
 

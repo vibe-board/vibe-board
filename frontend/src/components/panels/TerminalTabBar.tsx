@@ -1,13 +1,21 @@
-import { PlusIcon, XIcon } from '@phosphor-icons/react';
+import { CaretDownIcon, PlusIcon, XIcon } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import type { TerminalTab } from '@/contexts/TerminalContext';
+import type { NewTabOption } from './TerminalPanel';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface TerminalTabBarProps {
   tabs: TerminalTab[];
   activeTabId: string | null;
   onTabSelect: (tabId: string) => void;
   onTabClose: (tabId: string) => void;
-  onNewTab: () => void;
+  newTabOptions: NewTabOption[];
+  onNewTab: (option: NewTabOption) => void;
 }
 
 export function TerminalTabBar({
@@ -15,8 +23,11 @@ export function TerminalTabBar({
   activeTabId,
   onTabSelect,
   onTabClose,
+  newTabOptions,
   onNewTab,
 }: TerminalTabBarProps) {
+  const enabledOptions = newTabOptions.filter((o) => !o.disabled);
+
   return (
     <div className="flex items-center gap-1 border-b border-border bg-secondary px-2 py-1">
       <div className="flex items-center gap-1 overflow-x-auto">
@@ -50,13 +61,29 @@ export function TerminalTabBar({
           </div>
         ))}
       </div>
-      <button
-        className="flex items-center justify-center h-6 w-6 shrink-0 rounded text-low hover:text-normal hover:bg-primary/50"
-        onClick={onNewTab}
-        aria-label="New terminal"
-      >
-        <PlusIcon className="h-4 w-4" />
-      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            className="flex items-center justify-center h-6 shrink-0 rounded text-low hover:text-normal hover:bg-primary/50 gap-0.5 px-1"
+            aria-label="New terminal"
+            disabled={enabledOptions.length === 0}
+          >
+            <PlusIcon className="h-4 w-4" />
+            <CaretDownIcon className="h-3 w-3" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          {newTabOptions.map((option, i) => (
+            <DropdownMenuItem
+              key={i}
+              disabled={option.disabled}
+              onSelect={() => onNewTab(option)}
+            >
+              {option.label}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
