@@ -76,7 +76,9 @@ export function LocalDirectShell() {
   return (
     <ConnectionProvider connection={conn}>
       <QueryClientProvider client={conn.queryClient}>
-        <App />
+        <div className="h-screen">
+          <App />
+        </div>
       </QueryClientProvider>
     </ConnectionProvider>
   );
