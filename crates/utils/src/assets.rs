@@ -100,8 +100,8 @@ pub fn migrate_from_legacy_dir() {
     };
     let new_dir = home.join(".vibe-board");
 
-    let old_dir = ProjectDirs::from("ai", "bloop", "vibe-board")
-        .map(|p| p.data_dir().to_path_buf());
+    let old_dir =
+        ProjectDirs::from("ai", "bloop", "vibe-board").map(|p| p.data_dir().to_path_buf());
     let Some(old_dir) = old_dir else {
         return;
     };
@@ -125,10 +125,7 @@ pub fn migrate_from_legacy_dir() {
             tracing::info!("Migration complete (rename)");
         }
         Err(e) => {
-            tracing::warn!(
-                "rename failed ({}), falling back to recursive copy",
-                e
-            );
+            tracing::warn!("rename failed ({}), falling back to recursive copy", e);
             // Copy to a staging directory first, then rename atomically.
             // This avoids leaving a partial ~/.vibe-board on copy failure.
             let staging_dir = home.join(".vibe-board.migrating");
