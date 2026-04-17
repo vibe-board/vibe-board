@@ -6,12 +6,11 @@ import { isLocalDirect } from '@/lib/isLocalDirect';
 import { LocalConnection } from '@/lib/connections/localConnection';
 
 export function ActiveConnectionBridge({ children }: { children: ReactNode }) {
-  // In local-direct mode, always provide the LocalConnection singleton
+  // In local-direct mode, always provide the LocalConnection singleton.
+  // No status check — the instance + queryClient exist immediately.
+  // LocalDirectShell handles the loading/error UI before rendering App.
   if (isLocalDirect) {
     const conn = LocalConnection.getInstance();
-    if (conn.status !== 'connected') {
-      return <>{children}</>;
-    }
     return (
       <ConnectionProvider connection={conn}>
         <QueryClientProvider client={conn.queryClient}>
