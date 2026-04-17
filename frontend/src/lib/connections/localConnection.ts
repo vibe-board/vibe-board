@@ -6,7 +6,20 @@ import type {
   ConnectionProject,
 } from './types';
 
+let _instance: LocalConnection | null = null;
+
 export class LocalConnection implements UnifiedConnection {
+  /**
+   * Module-level singleton so ActiveConnectionBridge and LocalDirectShell
+   * share the same connection instance.
+   */
+  static getInstance(): LocalConnection {
+    if (!_instance) {
+      _instance = new LocalConnection();
+    }
+    return _instance;
+  }
+
   readonly id = 'local';
   readonly type = 'direct' as const;
   readonly url = '';

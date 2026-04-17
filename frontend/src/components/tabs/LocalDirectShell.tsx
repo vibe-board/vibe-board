@@ -1,16 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
-import { QueryClientProvider } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { ConnectionProvider } from '@/contexts/ConnectionContext';
 import { LocalConnection } from '@/lib/connections/localConnection';
 import App from '@/App';
 
 export function LocalDirectShell() {
-  const connRef = useRef<LocalConnection | null>(null);
-  if (!connRef.current) {
-    connRef.current = new LocalConnection();
-  }
-  const conn = connRef.current;
+  const conn = LocalConnection.getInstance();
 
   const [status, setStatus] = useState(conn.status);
   const [error, setError] = useState(conn.error);
@@ -73,13 +67,11 @@ export function LocalDirectShell() {
   }
 
   // Connected — render the full App (NormalLayout, navbar, router-based navigation)
+  // ConnectionProvider + QueryClientProvider are handled by ActiveConnectionBridge
+  // above NiceModal.Provider so dialogs also have access to the connection context.
   return (
-    <ConnectionProvider connection={conn}>
-      <QueryClientProvider client={conn.queryClient}>
-        <div className="h-screen">
-          <App />
-        </div>
-      </QueryClientProvider>
-    </ConnectionProvider>
+    <div className="h-screen">
+      <App />
+    </div>
   );
 }
