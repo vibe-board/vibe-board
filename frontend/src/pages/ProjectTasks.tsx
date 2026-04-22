@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -140,6 +141,18 @@ function DiffsPanelContainer({
   repoId?: string | null;
 }) {
   const { isAttemptRunning } = useAttemptExecution(attempt?.id);
+  const queryClient = useQueryClient();
+  const wasRunningRef = useRef(isAttemptRunning);
+
+  useEffect(() => {
+    const wasRunning = wasRunningRef.current;
+    wasRunningRef.current = isAttemptRunning;
+    if (wasRunning && !isAttemptRunning) {
+      queryClient.invalidateQueries({ queryKey: ['workspaceDiff'] });
+      queryClient.invalidateQueries({ queryKey: ['commitHistory'] });
+      queryClient.invalidateQueries({ queryKey: ['commitDiff'] });
+    }
+  }, [isAttemptRunning, queryClient]);
 
   return (
     <DiffsPanel
