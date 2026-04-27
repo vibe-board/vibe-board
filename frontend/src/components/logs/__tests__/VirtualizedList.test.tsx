@@ -16,7 +16,7 @@ vi.mock('@/contexts/EntriesContext', () => ({
 }));
 
 vi.mock('@/hooks/useConversationHistory', () => ({
-  useConversationHistory: () => ({
+  useConversationWindow: () => ({
     entries: [],
     hasMore: false,
     isLoadingMore: false,
@@ -26,6 +26,13 @@ vi.mock('@/hooks/useConversationHistory', () => ({
     initialLoading: true,
     onAtBottom: vi.fn(),
     lastPrependCountRef: { current: 0 },
+    windowMode: { mode: 'tail' },
+    scrollState: 'tail-following',
+    jumpTo: vi.fn(),
+    returnToBottom: vi.fn(),
+    loadAfter: vi.fn(),
+    unreadCount: 0,
+    isJumping: false,
   }),
 }));
 

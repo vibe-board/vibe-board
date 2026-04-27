@@ -1,5 +1,6 @@
 import type React from 'react';
-import { ExecutorAction, PatchType, Workspace } from 'shared/types';
+import { ExecutorAction, PatchType } from 'shared/types';
+import type { WorkspaceWithSession } from '@/types/attempt';
 
 export type PatchTypeWithKey = PatchType & {
   patchKey: string;
@@ -95,7 +96,7 @@ export type ExecutionProcessState = {
 export type ExecutionProcessStateStore = Record<string, ExecutionProcessState>;
 
 export interface UseConversationHistoryParams {
-  attempt: Workspace;
+  attempt: WorkspaceWithSession;
 }
 
 export interface UseConversationHistoryResult {
@@ -118,4 +119,28 @@ export interface UseConversationHistoryResult {
   onAtBottom: (atBottom: boolean) => void;
   /** Count of items prepended in the last loadMore call. Component reads for scroll compensation. */
   lastPrependCountRef: React.MutableRefObject<number>;
+}
+
+export type WindowMode =
+  | { mode: 'tail' }
+  | { mode: 'anchored'; anchorProcessId: string };
+
+export type ScrollState = 'tail-following' | 'tail-browsing' | 'anchored';
+
+export interface UseConversationWindowResult
+  extends UseConversationHistoryResult {
+  windowMode: WindowMode;
+  scrollState: ScrollState;
+  jumpTo: (
+    anchorCursor: string,
+    processId: string,
+    allSummaries: Array<{
+      execution_process_id: string;
+      summary: string;
+    }>
+  ) => Promise<void>;
+  returnToBottom: () => void;
+  loadAfter: () => Promise<void>;
+  unreadCount: number;
+  isJumping: boolean;
 }

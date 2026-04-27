@@ -96,7 +96,30 @@ export type NormalizedEntryRecord = {
 export type PaginatedNormalizedEntries = {
   entries: NormalizedEntryRecord[];
   total_count: number;
-  has_more: boolean;
+  has_more_before: boolean;
+  has_more_after: boolean;
+};
+
+export type UserMessageSummary = {
+  execution_process_id: string;
+  entry_index: number;
+  summary: string;
+  created_at: string;
+  anchor_cursor: string;
+};
+
+export type SessionConversationEntryRecord = {
+  execution_process_id: string;
+  entry_index: number;
+  entry_json: string;
+};
+
+export type SessionConversationEntriesResponse = {
+  entries: SessionConversationEntryRecord[];
+  first_cursor: string | null;
+  last_cursor: string | null;
+  has_more_before: boolean;
+  has_more_after: boolean;
 };
 
 export class ApiError<E = unknown> extends Error {
@@ -731,6 +754,24 @@ export function createApi(makeReq: MakeRequestFn, uploadFd: UploadFormDataFn) {
       });
       return handleApiResponse<void>(response);
     },
+
+    getSessionEntries: async (
+      sessionId: string,
+      options: { before?: string; after?: string; limit?: number }
+    ): Promise<SessionConversationEntriesResponse> => {
+      const limit = options.limit ?? 200;
+      const params = new URLSearchParams({ limit: String(limit) });
+      if (options.before !== undefined) {
+        params.set('before', options.before);
+      }
+      if (options.after !== undefined) {
+        params.set('after', options.after);
+      }
+      const response = await makeReq(
+        `/api/sessions/${sessionId}/conversation-entries?${params}`
+      );
+      return handleApiResponse<SessionConversationEntriesResponse>(response);
+    },
   };
 
   return {
@@ -914,17 +955,30 @@ export function createApi(makeReq: MakeRequestFn, uploadFd: UploadFormDataFn) {
 
       getEntries: async (
         processId: string,
-        before?: number,
-        limit: number = 50
+        options?: {
+          before?: number;
+          limit?: number;
+        }
       ): Promise<PaginatedNormalizedEntries> => {
+        const limit = options?.limit ?? 50;
         const params = new URLSearchParams({ limit: String(limit) });
-        if (before !== undefined) {
-          params.set('before', String(before));
+        if (options?.before !== undefined) {
+          params.set('before', String(options.before));
         }
         const response = await makeReq(
           `/api/execution-processes/${processId}/entries?${params}`
         );
         return handleApiResponse<PaginatedNormalizedEntries>(response);
+      },
+
+      getUserMessages: async (
+        sessionId: string
+      ): Promise<UserMessageSummary[]> => {
+        const params = new URLSearchParams({ session_id: sessionId });
+        const response = await makeReq(
+          `/api/execution-processes/user-messages?${params}`
+        );
+        return handleApiResponse<UserMessageSummary[]>(response);
       },
     },
 

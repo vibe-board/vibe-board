@@ -510,12 +510,31 @@ impl ExecutionProcess {
         }
     }
 
-    /// Soft-drop processes at and after the specified boundary (inclusive)
+    /// Soft-drop processes at and after the specified boundary (inclusive).
+    /// The `execution_processes` rows are kept (marked `dropped = TRUE`) for
+    /// audit, but their `normalized_entries` rows are deleted so the
+    /// session-flat query doesn't need to filter them. Raw logs (in their own
+    /// table) are untouched and can be used to rebuild normalized entries if
+    /// ever needed.
     pub async fn drop_at_and_after(
         pool: &SqlitePool,
         session_id: Uuid,
         boundary_process_id: Uuid,
     ) -> Result<i64, sqlx::Error> {
+        let mut tx = pool.begin().await?;
+
+        sqlx::query!(
+            r#"DELETE FROM normalized_entries
+               WHERE session_id = $1
+                 AND process_created_at >= (
+                     SELECT created_at FROM execution_processes WHERE id = $2
+                 )"#,
+            session_id,
+            boundary_process_id
+        )
+        .execute(&mut *tx)
+        .await?;
+
         let result = sqlx::query!(
             r#"UPDATE execution_processes
                SET dropped = TRUE
@@ -525,8 +544,10 @@ impl ExecutionProcess {
             session_id,
             boundary_process_id
         )
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
+
+        tx.commit().await?;
         Ok(result.rows_affected() as i64)
     }
 

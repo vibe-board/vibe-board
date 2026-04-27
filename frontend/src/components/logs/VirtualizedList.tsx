@@ -9,11 +9,9 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 
 import DisplayConversationEntry from '../NormalizedConversation/DisplayConversationEntry';
 import { useEntries } from '@/contexts/EntriesContext';
-import {
-  PatchTypeWithKey,
-  useConversationHistory,
-} from '@/hooks/useConversationHistory';
-import { Loader2 } from 'lucide-react';
+import { useConversationWindow } from '@/hooks/useConversationHistory';
+import type { PatchTypeWithKey } from '@/hooks/useConversationHistory';
+import { ChevronDown, Loader2 } from 'lucide-react';
 import { Task } from 'shared/types';
 import type { WorkspaceWithSession } from '@/types/attempt';
 import { ApprovalFormProvider } from '@/contexts/ApprovalFormContext';
@@ -21,12 +19,28 @@ import { ApprovalFormProvider } from '@/contexts/ApprovalFormContext';
 interface VirtualizedListProps {
   attempt: WorkspaceWithSession;
   task?: Task;
+  onJumpToReady?: (
+    fn: (
+      anchorCursor: string,
+      processId: string,
+      allSummaries: Array<{
+        execution_process_id: string;
+        summary: string;
+      }>
+    ) => Promise<void>
+  ) => void;
+  onVisibleProcessIdChange?: (id: string | null) => void;
 }
 
 const AT_BOTTOM_THRESHOLD = 50;
 const AT_TOP_THRESHOLD = 100;
 
-const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
+const VirtualizedList = ({
+  attempt,
+  task,
+  onJumpToReady,
+  onVisibleProcessIdChange,
+}: VirtualizedListProps) => {
   const {
     entries,
     loadMore,
@@ -36,12 +50,39 @@ const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
     isLoadingMore,
     onAtBottom,
     lastPrependCountRef,
-  } = useConversationHistory({ attempt });
+    windowMode,
+    scrollState,
+    loadAfter,
+    returnToBottom,
+    unreadCount,
+    isJumping,
+    jumpTo,
+  } = useConversationWindow({ attempt });
 
   const { setEntries, reset } = useEntries();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const prevTotalSizeRef = useRef(0);
   const isAtBottomRef = useRef(true);
+
+  // Callback refs — the scroll listener is mounted once and reads
+  // current callbacks via ref, so re-renders of useConversationWindow
+  // (very frequent in tail mode due to WS streaming) don't detach/re-attach
+  // the listener and lose scroll events.
+  const loadMoreRef = useRef(loadMore);
+  const setWantMoreRef = useRef(setWantMore);
+  const onAtBottomRef = useRef(onAtBottom);
+  const loadAfterRef = useRef(loadAfter);
+  const windowModeRef = useRef(windowMode.mode);
+  loadMoreRef.current = loadMore;
+  setWantMoreRef.current = setWantMore;
+  onAtBottomRef.current = onAtBottom;
+  loadAfterRef.current = loadAfter;
+  windowModeRef.current = windowMode.mode;
+
+  // Expose jumpTo to parent via callback
+  useEffect(() => {
+    onJumpToReady?.(jumpTo);
+  }, [jumpTo, onJumpToReady]);
 
   // Reset EntriesContext when attempt changes
   useEffect(() => {
@@ -62,8 +103,6 @@ const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
   });
 
   // --- Prepend scroll compensation ---
-  // After React commits DOM changes from a prepend, shift scrollTop
-  // by the height delta so the user's viewport stays in place.
   useLayoutEffect(() => {
     const count = lastPrependCountRef.current;
     if (count <= 0) return;
@@ -79,12 +118,31 @@ const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
     }
   }, [entries, virtualizer, lastPrependCountRef]);
 
+  // --- Anchor-jump scroll reset ---
+  // When jumpTo switches us into anchored mode, or switches the anchor to a
+  // different process, scroll the container to the top so the target
+  // process's synthetic user message is the first thing the user sees.
+  // Without this, scrollTop carries over from the previous window (often
+  // the bottom of tail mode) and gets clamped into the wrong position.
+  const prevAnchorProcessIdRef = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const currentAnchor =
+      windowMode.mode === 'anchored' ? windowMode.anchorProcessId : null;
+    if (currentAnchor && currentAnchor !== prevAnchorProcessIdRef.current) {
+      const container = scrollContainerRef.current;
+      if (container) container.scrollTop = 0;
+    }
+    prevAnchorProcessIdRef.current = currentAnchor;
+  }, [windowMode, entries.length]);
+
   // Track totalSize for next prepend compensation
   useEffect(() => {
     prevTotalSizeRef.current = virtualizer.getTotalSize();
   });
 
   // --- Scroll event: at-top / at-bottom detection ---
+  // Mount the listener exactly once. Callbacks are read via refs above
+  // so we don't tear down the listener on every render.
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
@@ -101,20 +159,45 @@ const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
         const atTop = scrollTop <= AT_TOP_THRESHOLD;
 
         isAtBottomRef.current = atBottom;
-        onAtBottom(atBottom);
+        onAtBottomRef.current(atBottom);
 
         if (atTop) {
-          setWantMore(true);
-          loadMore();
+          setWantMoreRef.current(true);
+          loadMoreRef.current();
         } else {
-          setWantMore(false);
+          setWantMoreRef.current(false);
+        }
+
+        // In anchored mode, trigger loadAfter when at bottom
+        if (atBottom && windowModeRef.current === 'anchored') {
+          loadAfterRef.current();
         }
       });
     };
 
     container.addEventListener('scroll', onScroll, { passive: true });
     return () => container.removeEventListener('scroll', onScroll);
-  }, [loadMore, setWantMore, onAtBottom]);
+  }, []);
+
+  // --- Anchored mode: chain loads when still at an edge after entries change.
+  // Covers two cases the scroll handler can't: (a) content doesn't fill
+  // viewport so no scroll events fire, (b) the previous load appended/
+  // prepended a small batch and the user is still within the edge threshold,
+  // but no new scroll event fires because scroll position didn't change.
+  useEffect(() => {
+    if (windowMode.mode !== 'anchored') return;
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    requestAnimationFrame(() => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+      const atBottom = distanceFromBottom <= AT_BOTTOM_THRESHOLD;
+      const atTop = scrollTop <= AT_TOP_THRESHOLD;
+      if (atBottom) loadAfter();
+      if (atTop) loadMore();
+    });
+  }, [entries.length, windowMode.mode, loadAfter, loadMore]);
 
   // --- Follow-output / auto-scroll ---
   useEffect(() => {
@@ -123,9 +206,6 @@ const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
     if (!container) return;
 
     if (scrollIntent === 'bottom-instant') {
-      // Use raw scrollTop instead of scrollToIndex — the virtualizer's
-      // totalSize may be based on estimateSize for unmeasured items,
-      // so scrollToIndex can overshoot past the real content.
       container.scrollTop = container.scrollHeight;
     } else if (scrollIntent === 'bottom-smooth' && isAtBottomRef.current) {
       container.scrollTo({
@@ -134,6 +214,25 @@ const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
       });
     }
   }, [entries.length, scrollIntent]);
+
+  // --- Track visible process ID for TOC highlight ---
+  const virtualItems = virtualizer.getVirtualItems();
+
+  useEffect(() => {
+    if (virtualItems.length === 0) return;
+
+    for (const item of virtualItems) {
+      const entry = entries[item.index];
+      if (
+        entry &&
+        entry.type === 'NORMALIZED_ENTRY' &&
+        entry.content.entry_type.type === 'user_message'
+      ) {
+        onVisibleProcessIdChange?.(entry.executionProcessId);
+        return;
+      }
+    }
+  }, [virtualItems, entries, onVisibleProcessIdChange]);
 
   const context = useMemo(() => ({ attempt, task }), [attempt, task]);
 
@@ -163,7 +262,8 @@ const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
     []
   );
 
-  const virtualItems = virtualizer.getVirtualItems();
+  const showJumpToBottom =
+    scrollState === 'tail-browsing' || scrollState === 'anchored';
 
   return (
     <ApprovalFormProvider>
@@ -173,9 +273,19 @@ const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
           <p>Loading History</p>
         </div>
       )}
+      {isJumping && (
+        <div className="absolute inset-0 bg-primary/50 flex justify-center items-center z-10">
+          <Loader2 className="h-6 w-6 animate-spin" />
+        </div>
+      )}
       <div className="relative flex-1 min-h-0">
         {isLoadingMore && (
           <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-muted rounded-full p-2 shadow">
+            <Loader2 className="h-5 w-5 animate-spin" />
+          </div>
+        )}
+        {isLoadingMore && windowMode.mode === 'anchored' && (
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 bg-muted rounded-full p-2 shadow">
             <Loader2 className="h-5 w-5 animate-spin" />
           </div>
         )}
@@ -216,6 +326,20 @@ const VirtualizedList = ({ attempt, task }: VirtualizedListProps) => {
             </div>
           </div>
         </div>
+
+        {showJumpToBottom && (
+          <button
+            onClick={returnToBottom}
+            className="absolute bottom-4 right-4 z-10 flex items-center justify-center w-10 h-10 rounded-full bg-muted border border-border shadow-lg hover:bg-accent transition-colors"
+          >
+            <ChevronDown className="h-5 w-5 text-foreground" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-destructive text-destructive-foreground text-xs px-1">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </button>
+        )}
       </div>
     </ApprovalFormProvider>
   );

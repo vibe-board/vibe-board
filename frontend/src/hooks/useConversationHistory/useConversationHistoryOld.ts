@@ -167,11 +167,9 @@ export const useConversationHistoryOld = ({
       // Fetch via REST (tail-first: last 50 entries)
       let result;
       try {
-        result = await executionProcessesApi.getEntries(
-          processId,
-          undefined,
-          50
-        );
+        result = await executionProcessesApi.getEntries(processId, {
+          limit: 50,
+        });
       } catch (err) {
         console.debug(
           `Could not load entries for historic execution process ${processId}`,
@@ -220,7 +218,7 @@ export const useConversationHistoryOld = ({
       return {
         entries: entriesWithKey,
         totalCount: result.total_count,
-        hasMore: result.has_more,
+        hasMore: result.has_more_before,
         minEntryIndex,
       };
     },
@@ -980,8 +978,7 @@ export const useConversationHistoryOld = ({
         try {
           result = await executionProcessesApi.getEntries(
             processWithMore.executionProcess.id,
-            processWithMore.minEntryIndex,
-            50
+            { before: processWithMore.minEntryIndex, limit: 50 }
           );
         } catch (err) {
           console.debug(
@@ -1027,9 +1024,9 @@ export const useConversationHistoryOld = ({
               ...state[processWithMore.executionProcess.id].entries,
             ];
             state[processWithMore.executionProcess.id].hasMoreEntries =
-              result.has_more;
+              result.has_more_before;
             state[processWithMore.executionProcess.id].minEntryIndex =
-              result.has_more ? newMinIndex : undefined;
+              result.has_more_before ? newMinIndex : undefined;
           }
         });
 
@@ -1093,9 +1090,11 @@ export const useConversationHistoryOld = ({
           mergeIntoDisplayed((state) => {
             if (state[processWithMore.executionProcess.id]) {
               state[processWithMore.executionProcess.id].hasMoreEntries =
-                result.has_more;
+                result.has_more_before;
               state[processWithMore.executionProcess.id].minEntryIndex =
-                result.has_more && rawMin < Infinity ? rawMin : undefined;
+                result.has_more_before && rawMin < Infinity
+                  ? rawMin
+                  : undefined;
             }
           });
         }

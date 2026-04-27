@@ -1,5 +1,9 @@
-// Re-export types
-export type { PatchTypeWithKey, ScrollIntent } from './types';
-
-// Use old WebSocket-based hook for history loading
+export type {
+  PatchTypeWithKey,
+  ScrollIntent,
+  ScrollState,
+  WindowMode,
+  UseConversationWindowResult,
+} from './types';
 export { useConversationHistoryOld as useConversationHistory } from './useConversationHistoryOld';
+export { useConversationWindow } from './useConversationWindow';
