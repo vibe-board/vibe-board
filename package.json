@@ -30,7 +30,7 @@
     "prepare-db:check": "node scripts/prepare-db.js --check",
     "build:npx": "bash ./local-build.sh",
     "prepack": "pnpm run build:npx",
-    "gateway:build": "cd frontend && pnpm run build && cd .. && cargo build --release --bin e2ee-gateway",
+    "gateway:build": "cd frontend && VITE_APP_MODE=gateway pnpm run build && cd .. && cargo build --release --bin e2ee-gateway",
     "gateway:dev": "RUST_LOG=debug cargo run --bin e2ee-gateway",
     "prepare": "husky",
     "tauri:dev": "FRONTEND_PORT=1420 BACKEND_PORT=1421 concurrently \"pnpm run backend:dev:watch\" \"pnpm tauri dev\"",
