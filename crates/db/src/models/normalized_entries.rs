@@ -4,6 +4,14 @@ use sqlx::{FromRow, SqlitePool};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
+pub struct SessionConversationEntry {
+    pub execution_id: Uuid,
+    pub entry_index: i64,
+    pub entry_json: String,
+    pub process_created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct NormalizedEntry {
     pub execution_id: Uuid,
     pub entry_index: i64,
@@ -15,11 +23,16 @@ pub struct NormalizedEntry {
 pub struct PaginatedEntries {
     pub entries: Vec<NormalizedEntry>,
     pub total_count: i64,
-    pub has_more: bool,
+    pub has_more_before: bool,
+    pub has_more_after: bool,
 }
 
 impl NormalizedEntry {
-    /// Insert a batch of normalized entries for an execution process
+    /// Insert a batch of normalized entries for an execution process.
+    /// `session_id` and `process_created_at` are looked up from
+    /// `execution_processes` so callers don't have to pass them. The subquery
+    /// assumes the execution process row exists (which it must: `insert_batch`
+    /// is only called for a started process).
     pub async fn insert_batch(
         pool: &SqlitePool,
         execution_id: Uuid,
@@ -34,8 +47,11 @@ impl NormalizedEntry {
 
         for (entry_index, entry_json) in entries {
             sqlx::query!(
-                r#"INSERT INTO normalized_entries (execution_id, entry_index, entry_json)
-                   VALUES ($1, $2, $3)
+                r#"INSERT INTO normalized_entries
+                       (execution_id, entry_index, entry_json, session_id, process_created_at)
+                   SELECT $1, $2, $3, ep.session_id, ep.created_at
+                   FROM execution_processes ep
+                   WHERE ep.id = $1
                    ON CONFLICT(execution_id, entry_index) DO UPDATE SET
                        entry_json = excluded.entry_json"#,
                 execution_id,
@@ -81,12 +97,13 @@ impl NormalizedEntry {
         .fetch_all(pool)
         .await?;
 
-        let has_more = (offset + limit) < total_count;
+        let has_more_after = (offset + limit) < total_count;
 
         Ok(PaginatedEntries {
             entries,
             total_count,
-            has_more,
+            has_more_before: offset > 0,
+            has_more_after,
         })
     }
 
@@ -141,16 +158,19 @@ impl NormalizedEntry {
             .await?
         };
 
-        let has_more = entries.len() > limit as usize;
+        let has_more_before = entries.len() > limit as usize;
         entries.truncate(limit as usize);
-
-        // Reverse to ASC order for client consumption
         entries.reverse();
+
+        // If before was None, we loaded from the very end — nothing after.
+        // If before was Some, we loaded a page before the cursor — entries after exist.
+        let has_more_after = before.is_some();
 
         Ok(PaginatedEntries {
             entries,
             total_count,
-            has_more,
+            has_more_before,
+            has_more_after,
         })
     }
 
@@ -193,5 +213,91 @@ impl NormalizedEntry {
         .await?;
 
         Ok(result.rows_affected())
+    }
+
+    /// Load entries across all processes in a session, ordered chronologically.
+    /// `before = true` loads entries strictly before the cursor (DESC, reversed
+    /// to ASC). `before = false` loads entries strictly after the cursor (ASC).
+    /// When `cursor` is `None`, `before = true` returns the tail and
+    /// `before = false` returns the head of the session.
+    ///
+    /// Fetches `limit + 1` to detect has_more. Filtering uses the denormalized
+    /// `session_id` and `process_created_at` columns plus the
+    /// `idx_normalized_entries_session` composite index, so no JOIN is needed.
+    /// Dropped processes have already had their rows deleted by
+    /// `ExecutionProcess::drop_at_and_after`.
+    pub async fn find_by_session_flat(
+        pool: &SqlitePool,
+        session_id: Uuid,
+        cursor: Option<(DateTime<Utc>, i64)>,
+        before: bool,
+        limit: i64,
+    ) -> Result<(Vec<SessionConversationEntry>, bool), sqlx::Error> {
+        let fetch_limit = limit + 1;
+        let (cursor_at, cursor_idx) = match cursor {
+            Some((at, idx)) => (Some(at), Some(idx)),
+            None => (None, None),
+        };
+
+        let rows = if before {
+            sqlx::query_as!(
+                SessionConversationEntry,
+                r#"SELECT
+                    execution_id as "execution_id!: Uuid",
+                    entry_index,
+                    entry_json,
+                    process_created_at as "process_created_at!: DateTime<Utc>"
+                   FROM normalized_entries
+                   WHERE session_id = $1
+                     AND (
+                       $2 IS NULL
+                       OR process_created_at < $2
+                       OR (process_created_at = $2 AND entry_index < $3)
+                     )
+                   ORDER BY process_created_at DESC, entry_index DESC
+                   LIMIT $4"#,
+                session_id,
+                cursor_at,
+                cursor_idx,
+                fetch_limit
+            )
+            .fetch_all(pool)
+            .await?
+        } else {
+            sqlx::query_as!(
+                SessionConversationEntry,
+                r#"SELECT
+                    execution_id as "execution_id!: Uuid",
+                    entry_index,
+                    entry_json,
+                    process_created_at as "process_created_at!: DateTime<Utc>"
+                   FROM normalized_entries
+                   WHERE session_id = $1
+                     AND (
+                       $2 IS NULL
+                       OR process_created_at > $2
+                       OR (process_created_at = $2 AND entry_index > $3)
+                     )
+                   ORDER BY process_created_at ASC, entry_index ASC
+                   LIMIT $4"#,
+                session_id,
+                cursor_at,
+                cursor_idx,
+                fetch_limit
+            )
+            .fetch_all(pool)
+            .await?
+        };
+
+        let has_more = rows.len() > limit as usize;
+        let mut rows: Vec<SessionConversationEntry> =
+            rows.into_iter().take(limit as usize).collect();
+
+        // `before` fetched DESC; reverse to ASC for client consumption.
+        if before {
+            rows.reverse();
+        }
+
+        Ok((rows, has_more))
     }
 }

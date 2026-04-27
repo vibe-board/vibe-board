@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM normalized_entries\n               WHERE session_id = $1\n                 AND process_created_at >= (\n                     SELECT created_at FROM execution_processes WHERE id = $2\n                 )",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "295406306936580898ed340c417c132fa8a868e01c86236985545a80b46c7c5a"
+}

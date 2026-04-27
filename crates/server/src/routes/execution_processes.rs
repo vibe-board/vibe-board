@@ -10,14 +10,16 @@ use axum::{
     routing::{get, post},
 };
 use db::models::{
-    execution_process::{ExecutionProcess, ExecutionProcessError, ExecutionProcessStatus},
+    execution_process::{
+        ExecutionProcess, ExecutionProcessError, ExecutionProcessStatus, ExecutorActionField,
+    },
     execution_process_repo_state::ExecutionProcessRepoState,
 };
 use deployment::Deployment;
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use services::services::container::ContainerService;
-use utils::{log_msg::LogMsg, response::ApiResponse};
+use utils::{conversation_cursor::ConversationCursor, log_msg::LogMsg, response::ApiResponse};
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError, middleware::load_execution_process_middleware};
@@ -285,7 +287,8 @@ pub async fn get_normalized_entries(
             db::models::normalized_entries::PaginatedEntries {
                 entries: vec![],
                 total_count: 0,
-                has_more: false,
+                has_more_before: false,
+                has_more_after: false,
             }
         }
     };
@@ -318,6 +321,70 @@ pub async fn stream_normalized_logs_live_ws(
     }))
 }
 
+#[derive(Debug, Serialize)]
+pub struct UserMessageSummary {
+    pub execution_process_id: Uuid,
+    pub entry_index: i64,
+    pub summary: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    /// Opaque cursor that, when used as `?after=`, starts loading entries
+    /// from the very beginning of this process.
+    pub anchor_cursor: String,
+}
+
+pub async fn get_user_messages(
+    State(deployment): State<DeploymentImpl>,
+    Query(query): Query<SessionExecutionProcessQuery>,
+) -> Result<ResponseJson<ApiResponse<Vec<UserMessageSummary>>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let show_soft_deleted = query.show_soft_deleted.unwrap_or(false);
+    let processes = db::models::execution_process::ExecutionProcess::find_by_session_id(
+        pool,
+        query.session_id,
+        show_soft_deleted,
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to fetch execution processes: {}", e);
+        ApiError::Database(e)
+    })?;
+
+    let summaries: Vec<UserMessageSummary> = processes
+        .into_iter()
+        .filter_map(|ep| {
+            let action = match &ep.executor_action.0 {
+                ExecutorActionField::ExecutorAction(a) => a,
+                _ => return None,
+            };
+            let prompt = match &action.typ {
+                executors::actions::ExecutorActionType::CodingAgentInitialRequest(r) => &r.prompt,
+                executors::actions::ExecutorActionType::CodingAgentFollowUpRequest(r) => &r.prompt,
+                executors::actions::ExecutorActionType::ReviewRequest(r) => &r.prompt,
+                _ => return None,
+            };
+            let summary = if prompt.len() > 100 {
+                format!("{}...", &prompt[..prompt.floor_char_boundary(100)])
+            } else {
+                prompt.clone()
+            };
+            let anchor_cursor = ConversationCursor {
+                process_created_at: ep.created_at,
+                entry_index: -1,
+            }
+            .encode();
+            Some(UserMessageSummary {
+                execution_process_id: ep.id,
+                entry_index: 0,
+                summary,
+                created_at: ep.created_at,
+                anchor_cursor,
+            })
+        })
+        .collect();
+
+    Ok(ResponseJson(ApiResponse::success(summaries)))
+}
+
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     let workspace_id_router = Router::new()
         .route("/", get(get_execution_process_by_id))
@@ -340,6 +407,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             "/stream/session/ws",
             get(stream_execution_processes_by_session_ws),
         )
+        .route("/user-messages", get(get_user_messages))
         .nest("/{id}", workspace_id_router);
 
     Router::new().nest("/execution-processes", workspaces_router)

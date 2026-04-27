@@ -11,6 +11,7 @@ use axum::{
 use db::models::{
     coding_agent_turn::CodingAgentTurn,
     execution_process::{ExecutionProcess, ExecutionProcessRunReason},
+    normalized_entries::{NormalizedEntry, SessionConversationEntry},
     scratch::{Scratch, ScratchType},
     session::{CreateSession, Session, SessionError},
     workspace::{Workspace, WorkspaceError},
@@ -26,7 +27,7 @@ use executors::{
 use serde::Deserialize;
 use services::services::container::ContainerService;
 use ts_rs::TS;
-use utils::response::ApiResponse;
+use utils::{conversation_cursor::ConversationCursor, response::ApiResponse};
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError, middleware::load_session_middleware};
@@ -100,6 +101,34 @@ pub struct ResetProcessRequest {
     pub process_id: Uuid,
     pub force_when_dirty: Option<bool>,
     pub perform_git_reset: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ConversationEntriesQuery {
+    pub before: Option<String>,
+    pub after: Option<String>,
+    #[serde(default = "default_conversation_limit")]
+    pub limit: i64,
+}
+
+fn default_conversation_limit() -> i64 {
+    200
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct SessionConversationEntryRecord {
+    pub execution_process_id: Uuid,
+    pub entry_index: i64,
+    pub entry_json: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct ConversationEntriesResponse {
+    pub entries: Vec<SessionConversationEntryRecord>,
+    pub first_cursor: Option<String>,
+    pub last_cursor: Option<String>,
+    pub has_more_before: bool,
+    pub has_more_after: bool,
 }
 
 pub async fn follow_up(
@@ -267,9 +296,100 @@ pub async fn reset_process(
     Ok(ResponseJson(ApiResponse::success(())))
 }
 
+pub async fn get_conversation_entries(
+    Extension(session): Extension<Session>,
+    State(deployment): State<DeploymentImpl>,
+    Query(query): Query<ConversationEntriesQuery>,
+) -> Result<ResponseJson<ApiResponse<ConversationEntriesResponse>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let limit = query.limit.clamp(1, 500);
+
+    // Determine direction from query params. Default to "tail" (load last entries) when neither is set.
+    let (before_flag, cursor) = match (query.before.as_deref(), query.after.as_deref()) {
+        (Some(s), _) => (true, ConversationCursor::decode(s)),
+        (None, Some(s)) => (false, ConversationCursor::decode(s)),
+        (None, None) => (true, None),
+    };
+
+    // Validate cursor if provided (treat invalid as absent rather than 400 to keep UX resilient)
+    let cursor_tuple = cursor.map(|c| (c.process_created_at, c.entry_index));
+    let has_cursor = cursor_tuple.is_some();
+
+    let (rows, has_more) = match NormalizedEntry::find_by_session_flat(
+        pool,
+        session.id,
+        cursor_tuple,
+        before_flag,
+        limit,
+    )
+    .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(
+                "Failed to fetch session flat entries for {}: {}",
+                session.id,
+                e
+            );
+            return Ok(ResponseJson(ApiResponse::success(
+                ConversationEntriesResponse {
+                    entries: vec![],
+                    first_cursor: None,
+                    last_cursor: None,
+                    has_more_before: false,
+                    has_more_after: false,
+                },
+            )));
+        }
+    };
+
+    let first_cursor = rows.first().map(|r| {
+        ConversationCursor {
+            process_created_at: r.process_created_at,
+            entry_index: r.entry_index,
+        }
+        .encode()
+    });
+    let last_cursor = rows.last().map(|r| {
+        ConversationCursor {
+            process_created_at: r.process_created_at,
+            entry_index: r.entry_index,
+        }
+        .encode()
+    });
+
+    let (has_more_before, has_more_after) = if before_flag {
+        (has_more, has_cursor)
+    } else {
+        (has_cursor, has_more)
+    };
+
+    let entries: Vec<SessionConversationEntryRecord> = rows
+        .into_iter()
+        .map(
+            |r: SessionConversationEntry| SessionConversationEntryRecord {
+                execution_process_id: r.execution_id,
+                entry_index: r.entry_index,
+                entry_json: r.entry_json,
+            },
+        )
+        .collect();
+
+    Ok(ResponseJson(ApiResponse::success(
+        ConversationEntriesResponse {
+            entries,
+            first_cursor,
+            last_cursor,
+            has_more_before,
+            has_more_after,
+        },
+    )))
+}
+
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     let session_id_router = Router::new()
         .route("/", get(get_session))
+        .route("/conversation-entries", get(get_conversation_entries))
         .route("/follow-up", post(follow_up))
         .route("/reset", post(reset_process))
         .route("/review", post(review::start_review))

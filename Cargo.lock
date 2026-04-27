@@ -8243,6 +8243,7 @@ version = "0.1.9-main.5"
 dependencies = [
  "api-types",
  "axum",
+ "base64",
  "bytes",
  "chrono",
  "command-group",
