@@ -422,7 +422,7 @@ impl CodingAgent {
             CodingAgent::QwenCode(_) | CodingAgent::Gemini(_) => Gemini,
             CodingAgent::CursorAgent(_) => Cursor,
             CodingAgent::Codex(_) => Codex,
-            CodingAgent::Opencode(_) => Opencode,
+            CodingAgent::Opencode(_) | CodingAgent::MiMoCode(_) => Opencode,
             CodingAgent::Copilot(..) => Copilot,
             #[cfg(feature = "qa-mode")]
             CodingAgent::QaMock(_) => Passthrough, // QA mock doesn't need MCP

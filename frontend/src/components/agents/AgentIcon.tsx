@@ -54,6 +54,8 @@ export function getAgentName(
       return 'Kimi';
     case BaseCodingAgent.MINION_CODE:
       return 'Minion Code';
+    case BaseCodingAgent.MIMO_CODE:
+      return 'MiMoCode';
     case BaseCodingAgent.MISTRAL_VIBE:
       return 'Mistral Vibe';
     case BaseCodingAgent.NOVA:
@@ -144,6 +146,9 @@ export function AgentIcon({ agent, className = 'h-4 w-4' }: AgentIconProps) {
       break;
     case BaseCodingAgent.MINION_CODE:
       iconPath = `/agents/minion${suffix}.svg`;
+      break;
+    case BaseCodingAgent.MIMO_CODE:
+      iconPath = `/agents/mimo${suffix}.svg`;
       break;
     case BaseCodingAgent.MISTRAL_VIBE:
       iconPath = `/agents/mistral${suffix}.svg`;

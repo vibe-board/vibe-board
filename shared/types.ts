@@ -512,9 +512,9 @@ working_dir: string | null, };
 
 export type ScriptRequestLanguage = "Bash";
 
-export enum BaseCodingAgent { CLAUDE_CODE = "CLAUDE_CODE", AMP = "AMP", GEMINI = "GEMINI", CODEX = "CODEX", OPENCODE = "OPENCODE", CURSOR_AGENT = "CURSOR_AGENT", QWEN_CODE = "QWEN_CODE", COPILOT = "COPILOT", DROID = "DROID", AUGGIE = "AUGGIE", AUTOHAND = "AUTOHAND", CLINE = "CLINE", CODEBUDDY_CODE = "CODEBUDDY_CODE", CORUST_AGENT = "CORUST_AGENT", CROW_CLI = "CROW_CLI", DEEPAGENTS = "DEEPAGENTS", DIMCODE = "DIMCODE", FAST_AGENT = "FAST_AGENT", GOOSE = "GOOSE", JUNIE = "JUNIE", KILO = "KILO", KIMI = "KIMI", MINION_CODE = "MINION_CODE", MISTRAL_VIBE = "MISTRAL_VIBE", NOVA = "NOVA", PI_ACP = "PI_ACP", QODER = "QODER", STAKPAK = "STAKPAK" }
+export enum BaseCodingAgent { CLAUDE_CODE = "CLAUDE_CODE", AMP = "AMP", GEMINI = "GEMINI", CODEX = "CODEX", MIMO_CODE = "MIMO_CODE", OPENCODE = "OPENCODE", CURSOR_AGENT = "CURSOR_AGENT", QWEN_CODE = "QWEN_CODE", COPILOT = "COPILOT", DROID = "DROID", AUGGIE = "AUGGIE", AUTOHAND = "AUTOHAND", CLINE = "CLINE", CODEBUDDY_CODE = "CODEBUDDY_CODE", CORUST_AGENT = "CORUST_AGENT", CROW_CLI = "CROW_CLI", DEEPAGENTS = "DEEPAGENTS", DIMCODE = "DIMCODE", FAST_AGENT = "FAST_AGENT", GOOSE = "GOOSE", JUNIE = "JUNIE", KILO = "KILO", KIMI = "KIMI", MINION_CODE = "MINION_CODE", MISTRAL_VIBE = "MISTRAL_VIBE", NOVA = "NOVA", PI_ACP = "PI_ACP", QODER = "QODER", STAKPAK = "STAKPAK" }
 
-export type CodingAgent = { "CLAUDE_CODE": ClaudeCode } | { "AMP": Amp } | { "GEMINI": Gemini } | { "CODEX": Codex } | { "OPENCODE": Opencode } | { "CURSOR_AGENT": CursorAgent } | { "QWEN_CODE": QwenCode } | { "COPILOT": Copilot } | { "DROID": Droid } | { "AUGGIE": Auggie } | { "AUTOHAND": Autohand } | { "CLINE": Cline } | { "CODEBUDDY_CODE": CodebuddyCode } | { "CORUST_AGENT": CorustAgent } | { "CROW_CLI": CrowCli } | { "DEEPAGENTS": Deepagents } | { "DIMCODE": Dimcode } | { "FAST_AGENT": FastAgent } | { "GOOSE": Goose } | { "JUNIE": Junie } | { "KILO": Kilo } | { "KIMI": Kimi } | { "MINION_CODE": MinionCode } | { "MISTRAL_VIBE": MistralVibe } | { "NOVA": Nova } | { "PI_ACP": PiAcp } | { "QODER": Qoder } | { "STAKPAK": Stakpak };
+export type CodingAgent = { "CLAUDE_CODE": ClaudeCode } | { "AMP": Amp } | { "GEMINI": Gemini } | { "CODEX": Codex } | { "MIMO_CODE": MiMoCode } | { "OPENCODE": Opencode } | { "CURSOR_AGENT": CursorAgent } | { "QWEN_CODE": QwenCode } | { "COPILOT": Copilot } | { "DROID": Droid } | { "AUGGIE": Auggie } | { "AUTOHAND": Autohand } | { "CLINE": Cline } | { "CODEBUDDY_CODE": CodebuddyCode } | { "CORUST_AGENT": CorustAgent } | { "CROW_CLI": CrowCli } | { "DEEPAGENTS": Deepagents } | { "DIMCODE": Dimcode } | { "FAST_AGENT": FastAgent } | { "GOOSE": Goose } | { "JUNIE": Junie } | { "KILO": Kilo } | { "KIMI": Kimi } | { "MINION_CODE": MinionCode } | { "MISTRAL_VIBE": MistralVibe } | { "NOVA": Nova } | { "PI_ACP": PiAcp } | { "QODER": Qoder } | { "STAKPAK": Stakpak };
 
 export type SlashCommandDescription = { 
 /**
@@ -546,9 +546,9 @@ executor: BaseCodingAgent,
  */
 variant: string | null, };
 
-export type VariantConfig = { inherit_from?: string | null, } & ({ "CLAUDE_CODE": ClaudeCode } | { "AMP": Amp } | { "GEMINI": Gemini } | { "CODEX": Codex } | { "OPENCODE": Opencode } | { "CURSOR_AGENT": CursorAgent } | { "QWEN_CODE": QwenCode } | { "COPILOT": Copilot } | { "DROID": Droid } | { "AUGGIE": Auggie } | { "AUTOHAND": Autohand } | { "CLINE": Cline } | { "CODEBUDDY_CODE": CodebuddyCode } | { "CORUST_AGENT": CorustAgent } | { "CROW_CLI": CrowCli } | { "DEEPAGENTS": Deepagents } | { "DIMCODE": Dimcode } | { "FAST_AGENT": FastAgent } | { "GOOSE": Goose } | { "JUNIE": Junie } | { "KILO": Kilo } | { "KIMI": Kimi } | { "MINION_CODE": MinionCode } | { "MISTRAL_VIBE": MistralVibe } | { "NOVA": Nova } | { "PI_ACP": PiAcp } | { "QODER": Qoder } | { "STAKPAK": Stakpak });
+export type VariantConfig = { inherit_from?: string | null, } & ({ "CLAUDE_CODE": ClaudeCode } | { "AMP": Amp } | { "GEMINI": Gemini } | { "CODEX": Codex } | { "MIMO_CODE": MiMoCode } | { "OPENCODE": Opencode } | { "CURSOR_AGENT": CursorAgent } | { "QWEN_CODE": QwenCode } | { "COPILOT": Copilot } | { "DROID": Droid } | { "AUGGIE": Auggie } | { "AUTOHAND": Autohand } | { "CLINE": Cline } | { "CODEBUDDY_CODE": CodebuddyCode } | { "CORUST_AGENT": CorustAgent } | { "CROW_CLI": CrowCli } | { "DEEPAGENTS": Deepagents } | { "DIMCODE": Dimcode } | { "FAST_AGENT": FastAgent } | { "GOOSE": Goose } | { "JUNIE": Junie } | { "KILO": Kilo } | { "KIMI": Kimi } | { "MINION_CODE": MinionCode } | { "MISTRAL_VIBE": MistralVibe } | { "NOVA": Nova } | { "PI_ACP": PiAcp } | { "QODER": Qoder } | { "STAKPAK": Stakpak });
 
-export type ExecutorConfig = { [key in string]?: { inherit_from?: string | null, } & ({ "CLAUDE_CODE": ClaudeCode } | { "AMP": Amp } | { "GEMINI": Gemini } | { "CODEX": Codex } | { "OPENCODE": Opencode } | { "CURSOR_AGENT": CursorAgent } | { "QWEN_CODE": QwenCode } | { "COPILOT": Copilot } | { "DROID": Droid } | { "AUGGIE": Auggie } | { "AUTOHAND": Autohand } | { "CLINE": Cline } | { "CODEBUDDY_CODE": CodebuddyCode } | { "CORUST_AGENT": CorustAgent } | { "CROW_CLI": CrowCli } | { "DEEPAGENTS": Deepagents } | { "DIMCODE": Dimcode } | { "FAST_AGENT": FastAgent } | { "GOOSE": Goose } | { "JUNIE": Junie } | { "KILO": Kilo } | { "KIMI": Kimi } | { "MINION_CODE": MinionCode } | { "MISTRAL_VIBE": MistralVibe } | { "NOVA": Nova } | { "PI_ACP": PiAcp } | { "QODER": Qoder } | { "STAKPAK": Stakpak }) };
+export type ExecutorConfig = { [key in string]?: { inherit_from?: string | null, } & ({ "CLAUDE_CODE": ClaudeCode } | { "AMP": Amp } | { "GEMINI": Gemini } | { "CODEX": Codex } | { "MIMO_CODE": MiMoCode } | { "OPENCODE": Opencode } | { "CURSOR_AGENT": CursorAgent } | { "QWEN_CODE": QwenCode } | { "COPILOT": Copilot } | { "DROID": Droid } | { "AUGGIE": Auggie } | { "AUTOHAND": Autohand } | { "CLINE": Cline } | { "CODEBUDDY_CODE": CodebuddyCode } | { "CORUST_AGENT": CorustAgent } | { "CROW_CLI": CrowCli } | { "DEEPAGENTS": Deepagents } | { "DIMCODE": Dimcode } | { "FAST_AGENT": FastAgent } | { "GOOSE": Goose } | { "JUNIE": Junie } | { "KILO": Kilo } | { "KIMI": Kimi } | { "MINION_CODE": MinionCode } | { "MISTRAL_VIBE": MistralVibe } | { "NOVA": Nova } | { "PI_ACP": PiAcp } | { "QODER": Qoder } | { "STAKPAK": Stakpak }) };
 
 export type ExecutorConfigs = { executors: { [key in BaseCodingAgent]?: ExecutorConfig }, };
 
@@ -577,6 +577,16 @@ export type CursorAgent = { append_prompt: AppendPrompt, force?: boolean | null,
 export type Copilot = { append_prompt: AppendPrompt, model?: string | null, allow_all_tools?: boolean | null, allow_tool?: string | null, deny_tool?: string | null, add_dir?: Array<string> | null, disable_mcp_server?: Array<string> | null, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
 
 export type Opencode = { append_prompt: AppendPrompt, model?: string | null, variant?: string | null, agent?: string | null, 
+/**
+ * Auto-approve agent actions
+ */
+auto_approve: boolean, 
+/**
+ * Enable auto-compaction when the context length approaches the model's context window limit
+ */
+auto_compact: boolean, base_command_override?: string | null, additional_params?: Array<string> | null, env?: { [key in string]?: string } | null, };
+
+export type MiMoCode = { append_prompt: AppendPrompt, model?: string | null, variant?: string | null, agent?: string | null, 
 /**
  * Auto-approve agent actions
  */

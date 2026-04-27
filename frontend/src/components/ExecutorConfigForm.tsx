@@ -35,6 +35,7 @@ const DEFAULT_BASE_COMMAND_PLACEHOLDERS: Record<BaseCodingAgent, string> = {
   [BaseCodingAgent.KILO]: 'npx -y @kilocode/cli@7.0.47',
   [BaseCodingAgent.KIMI]: 'kimi',
   [BaseCodingAgent.MINION_CODE]: 'uvx minion-code@0.1.42',
+  [BaseCodingAgent.MIMO_CODE]: 'mimo',
   [BaseCodingAgent.MISTRAL_VIBE]: 'mistral-vibe',
   [BaseCodingAgent.NOVA]: 'npx -y @compass-ai/nova@1.0.78',
   [BaseCodingAgent.OPENCODE]: 'npx -y opencode-ai@1.2.24',

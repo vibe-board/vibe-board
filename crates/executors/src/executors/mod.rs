@@ -25,8 +25,9 @@ use crate::{
         codebuddy_code::CodebuddyCode, codex::Codex, copilot::Copilot, corust_agent::CorustAgent,
         crow_cli::CrowCli, cursor::CursorAgent, deepagents::Deepagents, dimcode::Dimcode,
         droid::Droid, fast_agent::FastAgent, gemini::Gemini, goose::Goose, junie::Junie,
-        kilo::Kilo, kimi::Kimi, minion_code::MinionCode, mistral_vibe::MistralVibe, nova::Nova,
-        opencode::Opencode, pi_acp::PiAcp, qoder::Qoder, qwen::QwenCode, stakpak::Stakpak,
+        kilo::Kilo, kimi::Kimi, mimo_code::MiMoCode, minion_code::MinionCode,
+        mistral_vibe::MistralVibe, nova::Nova, opencode::Opencode, pi_acp::PiAcp, qoder::Qoder,
+        qwen::QwenCode, stakpak::Stakpak,
     },
     logs::utils::patch,
     mcp_config::McpConfig,
@@ -53,6 +54,7 @@ pub mod goose;
 pub mod junie;
 pub mod kilo;
 pub mod kimi;
+pub mod mimo_code;
 pub mod minion_code;
 pub mod mistral_vibe;
 pub mod nova;
@@ -133,6 +135,10 @@ pub enum CodingAgent {
     Amp,
     Gemini,
     Codex,
+    #[serde(rename = "MIMO_CODE")]
+    #[strum_discriminants(serde(rename = "MIMO_CODE"))]
+    #[strum_discriminants(strum(serialize = "MIMO_CODE"))]
+    MiMoCode,
     Opencode,
     #[serde(alias = "CURSOR")]
     #[strum_discriminants(serde(alias = "CURSOR"))]
@@ -193,6 +199,14 @@ impl CodingAgent {
                 self.preconfigured_mcp(),
                 false,
             ),
+            Self::MiMoCode(_) => McpConfig::new(
+                vec!["mcp".to_string()],
+                serde_json::json!({
+                    "mcp": {}
+                }),
+                self.preconfigured_mcp(),
+                false,
+            ),
             Self::Droid(_) => McpConfig::new(
                 vec!["mcpServers".to_string()],
                 serde_json::json!({
@@ -223,6 +237,10 @@ impl CodingAgent {
                 BaseAgentCapability::ContextUsage,
             ],
             Self::Opencode(_) => vec![
+                BaseAgentCapability::SessionFork,
+                BaseAgentCapability::ContextUsage,
+            ],
+            Self::MiMoCode(_) => vec![
                 BaseAgentCapability::SessionFork,
                 BaseAgentCapability::ContextUsage,
             ],
@@ -288,6 +306,10 @@ impl CodingAgent {
                 format_interactive_command(&builder, &inner.cmd.env)
             }
             Self::Opencode(inner) => {
+                let builder = inner.build_interactive_command_builder()?;
+                format_interactive_command(&builder, &inner.cmd.env)
+            }
+            Self::MiMoCode(inner) => {
                 let builder = inner.build_interactive_command_builder()?;
                 format_interactive_command(&builder, &inner.cmd.env)
             }
