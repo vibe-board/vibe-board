@@ -1,6 +1,5 @@
 import { ReactNode, useState } from 'react';
 import { PortalContainerContext } from '@/contexts/PortalContainerContext';
-import NiceModal from '@ebay/nice-modal-react';
 import { ActiveConnectionBridge } from './ActiveConnectionBridge';
 import '@/styles/legacy/index.css';
 
@@ -15,9 +14,7 @@ export function LegacyDesignScope({ children }: LegacyDesignScopeProps) {
     <div ref={setContainer} className="legacy-design min-h-screen">
       {container && (
         <PortalContainerContext.Provider value={container}>
-          <ActiveConnectionBridge>
-            <NiceModal.Provider>{children}</NiceModal.Provider>
-          </ActiveConnectionBridge>
+          <ActiveConnectionBridge>{children}</ActiveConnectionBridge>
         </PortalContainerContext.Provider>
       )}
     </div>

@@ -7,6 +7,7 @@ import {
   Routes,
 } from 'react-router-dom';
 import { I18nextProvider } from 'react-i18next';
+import NiceModal from '@ebay/nice-modal-react';
 import i18n from '@/i18n';
 import { Projects } from '@/pages/Projects';
 import { ProjectTasks } from '@/pages/ProjectTasks';
@@ -157,13 +158,15 @@ function App({ initialPath }: { initialPath?: string }) {
 
   return (
     <Router {...routerProps}>
-      <UserSystemProvider>
-        <ClickedElementsProvider>
-          <ProjectProvider>
-            <AppContent />
-          </ProjectProvider>
-        </ClickedElementsProvider>
-      </UserSystemProvider>
+      <NiceModal.Provider>
+        <UserSystemProvider>
+          <ClickedElementsProvider>
+            <ProjectProvider>
+              <AppContent />
+            </ProjectProvider>
+          </ClickedElementsProvider>
+        </UserSystemProvider>
+      </NiceModal.Provider>
     </Router>
   );
 }
