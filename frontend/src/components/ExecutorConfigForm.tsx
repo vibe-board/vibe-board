@@ -20,7 +20,7 @@ const DEFAULT_BASE_COMMAND_PLACEHOLDERS: Record<BaseCodingAgent, string> = {
   [BaseCodingAgent.CLAUDE_CODE]: 'npx -y @anthropic-ai/claude-code@2.1.32',
   [BaseCodingAgent.CLINE]: 'npx -y cline@2.7.0',
   [BaseCodingAgent.CODEBUDDY_CODE]: 'npx -y @tencent-ai/codebuddy-code@2.62.0',
-  [BaseCodingAgent.CODEX]: 'npx -y @openai/codex@0.98.0',
+  [BaseCodingAgent.CODEX]: 'npx -y @openai/codex@0.124.0',
   [BaseCodingAgent.COPILOT]: 'npx -y @github/copilot@0.0.403',
   [BaseCodingAgent.CORUST_AGENT]: 'corust-agent',
   [BaseCodingAgent.CROW_CLI]: 'uvx crow-cli',
