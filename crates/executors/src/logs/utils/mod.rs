@@ -2,6 +2,7 @@
 
 pub mod entry_index;
 pub mod patch;
+pub mod shell_command_parsing;
 
 pub use entry_index::EntryIndexProvider;
 pub use patch::{ConversationPatch, extract_normalized_entry_from_patch};

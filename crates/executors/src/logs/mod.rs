@@ -113,7 +113,7 @@ pub struct AnsweredQuestion {
     pub answer: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, Default)]
 pub struct TokenUsageInfo {
     pub total_tokens: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
