@@ -158,15 +158,15 @@ function App({ initialPath }: { initialPath?: string }) {
 
   return (
     <Router {...routerProps}>
-      <NiceModal.Provider>
-        <UserSystemProvider>
-          <ClickedElementsProvider>
-            <ProjectProvider>
+      <UserSystemProvider>
+        <ClickedElementsProvider>
+          <ProjectProvider>
+            <NiceModal.Provider>
               <AppContent />
-            </ProjectProvider>
-          </ClickedElementsProvider>
-        </UserSystemProvider>
-      </NiceModal.Provider>
+            </NiceModal.Provider>
+          </ProjectProvider>
+        </ClickedElementsProvider>
+      </UserSystemProvider>
     </Router>
   );
 }
