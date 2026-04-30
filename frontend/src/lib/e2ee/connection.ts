@@ -124,11 +124,7 @@ export class E2EEConnection {
 
   /** Disconnect from the gateway */
   disconnect(): void {
-    // Close all remote WS streams
-    for (const [id, stream] of this.wsStreams) {
-      stream._onClosed(1001, 'Disconnected');
-      this.wsStreams.delete(id);
-    }
+    this.resetWsStreams(1001, 'Disconnected');
 
     if (this.ws) {
       // Clear event handlers BEFORE closing so the async onclose
@@ -379,7 +375,7 @@ export class E2EEConnection {
 
   /** Send data over a remote WebSocket stream */
   private sendWsData(id: number, base64Data: string): void {
-    if (!this._connected || !this.options) return;
+    if (!this._connected || !this.options || !this.dek) return;
 
     const request = {
       type: 'ws_data' as const,
@@ -387,7 +383,7 @@ export class E2EEConnection {
       data: base64Data,
     };
 
-    const payload = encryptJson(request, this.dek!);
+    const payload = encryptJson(request, this.dek);
     this.send({
       type: 'forward',
       machine_id: this.options.machineId,
@@ -397,7 +393,9 @@ export class E2EEConnection {
 
   /** Close a remote WebSocket stream */
   private closeWsStream(id: number): void {
-    if (!this._connected || !this.options) {
+    // No DEK means we can't encrypt a close frame; drop local state and return.
+    // The bridge clears its state on reconnect, so an unsent close is harmless.
+    if (!this._connected || !this.options || !this.dek) {
       this.wsStreams.delete(id);
       return;
     }
@@ -407,7 +405,7 @@ export class E2EEConnection {
       id,
     };
 
-    const payload = encryptJson(request, this.dek!);
+    const payload = encryptJson(request, this.dek);
     this.send({
       type: 'forward',
       machine_id: this.options.machineId,
@@ -415,6 +413,14 @@ export class E2EEConnection {
     });
 
     this.wsStreams.delete(id);
+  }
+
+  /** Close all remote WS streams locally, without sending any frames. */
+  private resetWsStreams(code: number, reason: string): void {
+    for (const stream of this.wsStreams.values()) {
+      stream._onClosed(code, reason);
+    }
+    this.wsStreams.clear();
   }
 
   private handleMessage(
@@ -455,6 +461,7 @@ export class E2EEConnection {
         // Bridge reconnected — re-init DEK if we're subscribed to this machine
         if (msg.machine_id === this.options?.machineId && this._connected) {
           this.dek = null;
+          this.resetWsStreams(1006, 'Bridge reconnected');
           this.initDek().catch((e) =>
             console.error('DEK re-init after bridge reconnect failed:', e)
           );
@@ -469,6 +476,7 @@ export class E2EEConnection {
         // Bridge disconnected — invalidate DEK (bridge will have fresh state on reconnect)
         if (msg.machine_id === this.options?.machineId) {
           this.dek = null;
+          this.resetWsStreams(1006, 'Bridge disconnected');
         }
         break;
 
