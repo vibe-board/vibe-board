@@ -46,12 +46,17 @@ echo "🧹 Cleaning previous builds..."
 rm -rf npx-cli/dist
 mkdir -p npx-cli/dist/$PLATFORM
 
-echo "🔨 Building frontend..."
+echo "🔨 Building frontend (local-direct mode, for server/mcp binaries)..."
 (cd frontend && VITE_APP_MODE=local-direct npm run build)
 
-echo "🔨 Building Rust binaries..."
+echo "🔨 Building Rust binaries that embed the local-direct frontend..."
 cargo build --release --manifest-path Cargo.toml
 cargo build --release --bin mcp_task_server --manifest-path Cargo.toml
+
+echo "🔨 Rebuilding frontend (gateway mode, for e2ee-gateway binary)..."
+(cd frontend && VITE_APP_MODE=gateway npm run build)
+
+echo "🔨 Building e2ee-gateway with the gateway-mode frontend..."
 cargo build --release --bin e2ee-gateway --manifest-path Cargo.toml
 
 echo "📦 Creating distribution package..."
