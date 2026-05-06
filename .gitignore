@@ -76,6 +76,7 @@ build-npm-package-codesign.sh
 
 npx-cli/dist
 npx-cli/package-lock.json
+npx-cli/pnpm-lock.yaml
 npx-cli/vibe-board-*
 vibe-board-*.tgz
 
