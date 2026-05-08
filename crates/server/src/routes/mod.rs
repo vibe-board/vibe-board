@@ -12,7 +12,6 @@ pub mod approvals;
 pub mod config;
 pub mod config_transfer;
 pub mod containers;
-pub mod e2ee;
 pub mod filesystem;
 // pub mod github;
 pub mod events;
@@ -57,7 +56,6 @@ pub fn router(
         .merge(migration::router())
         .merge(sessions::router(&deployment))
         .merge(terminal::router())
-        .merge(e2ee::router())
         .nest("/images", images::routes())
         .layer(ValidateRequestHeaderLayer::custom(
             middleware::validate_origin,

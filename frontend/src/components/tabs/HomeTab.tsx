@@ -14,9 +14,9 @@ import {
 } from 'lucide-react';
 import { useConnectionStore } from '@/stores/connection-store';
 import { AddConnectionForm } from './AddConnectionForm';
+import { MachinePairingForm } from './MachinePairingForm';
 import type { GatewayNode } from '@/lib/connections/gatewayNode';
 import type { MachineStatus } from '@/lib/e2ee';
-import { deriveAuthKeyPair } from '@/lib/e2ee';
 
 export function HomeTab() {
   const nodes = useConnectionStore((s) => s.nodes);
@@ -321,11 +321,8 @@ function MachineNodeView({
   connectionId: string;
   gatewayNode: GatewayNode;
 }) {
-  const { openMachineProjectsTab, pairMachine } = useConnectionStore();
+  const { openMachineProjectsTab } = useConnectionStore();
   const [showPairing, setShowPairing] = useState(false);
-  const [pairSecret, setPairSecret] = useState('');
-  const [pairError, setPairError] = useState('');
-  const [pairLoading, setPairLoading] = useState(false);
   const isPaired = gatewayNode.isMachinePaired(machine.machine_id);
 
   const machineLabel = machine.hostname || machine.machine_id.slice(0, 8);
@@ -335,66 +332,6 @@ function MachineNodeView({
       openMachineProjectsTab(connectionId, machine.machine_id, machineLabel);
     } else {
       setShowPairing(!showPairing);
-    }
-  };
-
-  const handlePair = async () => {
-    const secret = pairSecret.trim();
-    if (!secret) return;
-    setPairLoading(true);
-    setPairError('');
-    try {
-      const secretBytes = Uint8Array.from(atob(secret), (c) => c.charCodeAt(0));
-      const authKp = await deriveAuthKeyPair(secretBytes);
-      const pubKeyB64 = btoa(String.fromCharCode(...authKp.publicKey));
-
-      const session = gatewayNode.session;
-      if (!session) throw new Error('Not logged in');
-      const regResp = await fetch(
-        `${gatewayNode.gatewayUrl}/api/auth/device/register`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.sessionToken}`,
-          },
-          body: JSON.stringify({
-            public_key: pubKeyB64,
-            device_name: 'WebUI',
-          }),
-        }
-      );
-      if (!regResp.ok && regResp.status !== 409) {
-        const text = await regResp.text();
-        throw new Error(
-          `Device registration failed (${regResp.status}): ${text}`
-        );
-      }
-
-      const credResp = await fetch('/api/e2ee/credentials', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          master_secret: secret,
-          gateway_url: gatewayNode.gatewayUrl,
-          session_token: session.sessionToken,
-          user_id: session.userId,
-        }),
-      });
-      if (!credResp.ok) {
-        const text = await credResp.text();
-        throw new Error(
-          `Backend credentials failed (${credResp.status}): ${text}`
-        );
-      }
-
-      pairMachine(connectionId, machine.machine_id, secret);
-      setPairSecret('');
-      setShowPairing(false);
-    } catch (e) {
-      setPairError(e instanceof Error ? e.message : 'Pairing failed');
-    } finally {
-      setPairLoading(false);
     }
   };
 
@@ -422,26 +359,11 @@ function MachineNodeView({
       </div>
 
       {showPairing && !isPaired && (
-        <div className="px-3 pb-3 pl-9 space-y-2">
-          <input
-            className="w-full px-3 py-1.5 text-sm bg-muted border border-border rounded"
-            placeholder="Paste master secret from bridge terminal (base64)"
-            value={pairSecret}
-            onChange={(e) => setPairSecret(e.target.value)}
-            disabled={pairLoading}
-          />
-          <p className="text-xs text-foreground/40">
-            Copy the master secret from the bridge terminal output.
-          </p>
-          {pairError && <p className="text-sm text-destructive">{pairError}</p>}
-          <button
-            className="px-3 py-1 text-sm bg-foreground text-background rounded hover:opacity-85 disabled:opacity-50"
-            onClick={handlePair}
-            disabled={!pairSecret.trim() || pairLoading}
-          >
-            {pairLoading ? 'Registering...' : 'Pair'}
-          </button>
-        </div>
+        <MachinePairingForm
+          gwNode={gatewayNode}
+          machineId={machine.machine_id}
+          onPaired={() => setShowPairing(false)}
+        />
       )}
     </div>
   );

@@ -10,6 +10,9 @@ import type {
 } from '@/lib/connections/types';
 import type { MachineStatus } from '@/lib/e2ee';
 import { runMigrationIfNeeded } from './migration';
+import { isGateway } from '@/lib/appMode';
+
+export const GATEWAY_SELF_ID = 'gateway-self';
 
 // -- Persistence helpers --
 
@@ -121,7 +124,29 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     if (get().initialized) return;
     runMigrationIfNeeded();
 
-    const entries = loadConnections();
+    let entries = loadConnections();
+
+    if (isGateway) {
+      const sameOrigin = window.location.origin;
+      const existing = entries.find((e) => e.id === GATEWAY_SELF_ID);
+      if (existing) {
+        entries = entries
+          .filter((e) => e.id === GATEWAY_SELF_ID)
+          .map((e) => ({ ...e, url: sameOrigin }));
+      } else {
+        entries = [
+          {
+            id: GATEWAY_SELF_ID,
+            type: 'gateway',
+            url: sameOrigin,
+            label: 'Gateway',
+          },
+        ];
+      }
+      // Deliberately DO NOT call saveConnections — leave localStorage alone so
+      // switching back to tauri preserves the user's other connections.
+    }
+
     const nodes: ConnectionNode[] = entries.map((entry) => {
       if (entry.type === 'direct') {
         const conn = new DirectConnection(
@@ -171,6 +196,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
   },
 
   removeConnection(id) {
+    if (isGateway && id === GATEWAY_SELF_ID) return;
     set((s) => {
       const node = s.nodes.find((n) => n.entry.id === id);
       if (node?.directConn) node.directConn.disconnect();
