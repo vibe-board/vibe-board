@@ -95,15 +95,6 @@ impl BridgeManager {
         }
     }
 
-    /// Check if a specific gateway's bridge is running.
-    pub async fn is_gateway_running(&self, gateway_url: &str) -> bool {
-        if let Some(instance) = self.bridges.lock().await.get(gateway_url) {
-            !instance.handle.is_finished()
-        } else {
-            false
-        }
-    }
-
     /// Synchronise running bridges with a credentials file.
     /// Starts new, stops removed, restarts changed, leaves unchanged.
     pub async fn sync_with_credentials(self: &Arc<Self>, file: &CredentialsFile) {
