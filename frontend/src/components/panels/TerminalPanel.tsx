@@ -1,7 +1,8 @@
+import { useRef } from 'react';
 import { useTerminal } from '@/contexts/TerminalContext';
 import type { TerminalTabContext } from '@/contexts/TerminalContext';
 import { TerminalTabBar } from './TerminalTabBar';
-import { XTermInstance } from './XTermInstance';
+import { XTermInstance, type XTermInstanceHandle } from './XTermInstance';
 
 export interface NewTabOption {
   label: string;
@@ -40,6 +41,8 @@ export function TerminalPanel({ newTabOptions }: TerminalPanelProps) {
   const tabs = getAllTabs();
   const activeTab = getActiveGlobalTab();
 
+  const instanceRefs = useRef<Map<string, XTermInstanceHandle>>(new Map());
+
   const handleNewTab = (option: NewTabOption) => {
     createTab(option.workspaceId, option.taskId, option.cwd, option.context);
   };
@@ -52,7 +55,10 @@ export function TerminalPanel({ newTabOptions }: TerminalPanelProps) {
         onTabSelect={(tabId) => setActiveGlobalTab(tabId)}
         onTabClose={(tabId) => {
           const tab = tabs.find((t) => t.id === tabId);
-          if (tab) closeTab(tab.workspaceId, tabId);
+          if (!tab) return;
+          instanceRefs.current.get(tabId)?.closeIntentionally();
+          instanceRefs.current.delete(tabId);
+          closeTab(tab.workspaceId, tabId);
         }}
         newTabOptions={newTabOptions}
         onNewTab={handleNewTab}
@@ -67,6 +73,13 @@ export function TerminalPanel({ newTabOptions }: TerminalPanelProps) {
           return (
             <XTermInstance
               key={tab.id}
+              ref={(handle) => {
+                if (handle) {
+                  instanceRefs.current.set(tab.id, handle);
+                } else {
+                  instanceRefs.current.delete(tab.id);
+                }
+              }}
               endpointUrl={endpointUrl}
               isActive={tab.id === activeTab?.id}
               onClose={() => closeTab(tab.workspaceId, tab.id)}

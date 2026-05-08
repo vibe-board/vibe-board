@@ -45,6 +45,7 @@ fn default_rows() -> u16 {
 enum TerminalCommand {
     Input { data: String },
     Resize { cols: u16, rows: u16 },
+    Close,
 }
 
 #[derive(Debug, Serialize)]
@@ -338,6 +339,7 @@ async fn handle_terminal_ws(
         ws_sender
     });
 
+    let mut intentional_close = false;
     while let Some(Ok(msg)) = ws_receiver.next().await {
         match msg {
             Message::Text(text) => {
@@ -351,6 +353,10 @@ async fn handle_terminal_ws(
                         TerminalCommand::Resize { cols, rows } => {
                             let _ = pty_service.resize(session_id_for_input, cols, rows).await;
                         }
+                        TerminalCommand::Close => {
+                            intentional_close = true;
+                            break;
+                        }
                     }
                 }
             }
@@ -361,9 +367,11 @@ async fn handle_terminal_ws(
 
     output_task.abort();
 
-    // Detach session instead of closing - session persists in background
-    // unless the process already exited
-    if *exit_rx.borrow() {
+    // Three outcomes, in priority:
+    //   1. Client sent `{"type":"close"}` -> user intentionally closed the tab; kill.
+    //   2. The PTY process already exited on its own -> clean up the session.
+    //   3. Bare WS disconnect (reload, network drop) -> detach for reconnection.
+    if intentional_close || *exit_rx.borrow() {
         let _ = deployment.pty().close_session(session_id).await;
     } else {
         let _ = deployment.pty().detach_session(session_id).await;
