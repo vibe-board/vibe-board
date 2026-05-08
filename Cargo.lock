@@ -3738,6 +3738,7 @@ dependencies = [
  "futures",
  "git",
  "globwalk",
+ "libc",
  "portable-pty",
  "serde_json",
  "services",

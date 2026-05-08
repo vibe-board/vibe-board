@@ -49,7 +49,7 @@ sha2 = "0.10"
 regex = "1"
 e2ee-core = { path = "../e2ee-core" }
 tokio-tungstenite = { version = "0.28", features = ["rustls-tls-native-roots"] }
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 hostname = "0.4"
 whoami = "1"
 urlencoding = "2"

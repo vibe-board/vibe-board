@@ -92,6 +92,12 @@ struct PtySession {
     last_activity: AtomicI64,
     /// Sender for the exit notification
     exit_tx: Arc<watch::Sender<bool>>,
+    /// Child process handle, kept accessible from outside the reader thread
+    /// so `close_session` can terminate it. `Option` so `close_session` can
+    /// `take()` the Child out for explicit `kill()`; if the process has
+    /// already exited, the reader thread may also take and drop the Child
+    /// (but does not kill — only close_session kills).
+    child: Mutex<Option<Box<dyn portable_pty::Child + Send>>>,
 }
 
 impl PtySession {
@@ -284,15 +290,14 @@ impl PtyService {
                     }
                 }
                 let _ = exit_tx_clone.send(true);
-                drop(child);
             });
 
-            Ok::<_, PtyError>((pty_pair.master, writer, output_handle))
+            Ok::<_, PtyError>((pty_pair.master, writer, output_handle, child))
         })
         .await
         .map_err(|e| PtyError::CreateFailed(e.to_string()))??;
 
-        let (master, writer, output_handle) = result;
+        let (master, writer, output_handle, child) = result;
 
         let session = PtySession {
             writer,
@@ -309,6 +314,7 @@ impl PtyService {
                     .as_secs() as i64,
             ),
             exit_tx,
+            child: Mutex::new(Some(child)),
         };
 
         self.sessions
@@ -432,14 +438,40 @@ impl PtyService {
     }
 
     pub async fn close_session(&self, session_id: Uuid) -> Result<(), PtyError> {
-        if let Some(mut session) = self
-            .sessions
-            .lock()
-            .map_err(|_| PtyError::SessionClosed)?
-            .remove(&session_id)
-        {
+        let removed = {
+            let mut sessions = self.sessions.lock().map_err(|_| PtyError::SessionClosed)?;
+            sessions.remove(&session_id)
+        };
+
+        if let Some(mut session) = removed {
+            // Terminate the child and any descendants. Errors are swallowed:
+            // the child may already have exited (race with natural exit), which
+            // we treat as success. The reader thread will observe EOF on the
+            // master and flip `exit_tx` regardless.
+            //
+            // On Unix we also SIGKILL the entire process group (the shell was
+            // spawned with `setsid()`, so its PID is the pgid). This is
+            // required to kill grandchildren — e.g. an `exec sh -c "trap ''
+            // HUP; sleep 9999"` in the shell: `Child::kill()` escalates to
+            // SIGKILL on the tracked shell, but would leave `sleep` alive,
+            // holding the slave PTY open, preventing EOF from the reader.
+            if let Ok(mut guard) = session.child.lock()
+                && let Some(mut child) = guard.take()
+            {
+                #[cfg(unix)]
+                let pid = child.process_id();
+                let _ = child.kill();
+                #[cfg(unix)]
+                if let Some(pid) = pid {
+                    // SAFETY: negative pid sends to the process group.
+                    unsafe {
+                        libc::kill(-(pid as i32), libc::SIGKILL);
+                    }
+                }
+            }
             session.closed = true;
         }
+
         Ok(())
     }
 
@@ -454,5 +486,68 @@ impl PtyService {
 impl Default for PtyService {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+
+    /// Calling `close_session` on a live session must cause the child process
+    /// to exit within a short deadline — observable via `exit_rx` flipping
+    /// from false to true.
+    ///
+    /// The child is `exec`d into a subshell that traps HUP and sleeps
+    /// indefinitely. This makes the test deterministic: without an explicit
+    /// kill from `close_session`, the child does not exit — neither HUP
+    /// cascade nor stdin EOF will terminate it, since the sleep process
+    /// ignores HUP and never reads from stdin.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn close_session_kills_child() {
+        let service = PtyService::new();
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let (session_id, _rx, mut exit_rx) = service
+            .create_session(tmp.path().to_path_buf(), 80, 24)
+            .await
+            .expect("create_session");
+
+        // Give the interactive shell a moment to finish starting up.
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Replace the shell with a HUP-ignoring sleep so the only way to
+        // terminate this PTY's child is an explicit kill.
+        service
+            .write(session_id, b"exec sh -c \"trap '' HUP; sleep 9999\"\n")
+            .await
+            .expect("write exec command");
+
+        // Wait for the exec to take effect.
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        // Sanity: the process has not exited yet.
+        assert!(
+            !*exit_rx.borrow(),
+            "child should still be running before close"
+        );
+
+        service
+            .close_session(session_id)
+            .await
+            .expect("close_session");
+
+        // After closing, exit_rx must flip to true within 2 seconds.
+        tokio::time::timeout(Duration::from_secs(2), exit_rx.changed())
+            .await
+            .expect("exit_rx should fire within 2s after close_session")
+            .expect("exit_tx sender should not be dropped prematurely");
+        assert!(*exit_rx.borrow(), "process should be marked exited");
+
+        // Session should be gone from the map.
+        assert!(
+            !service.session_exists(&session_id),
+            "session should be removed after close"
+        );
     }
 }

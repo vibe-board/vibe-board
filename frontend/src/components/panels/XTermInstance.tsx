@@ -1,4 +1,11 @@
-import { useEffect, useRef, useMemo, useCallback } from 'react';
+import {
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+  forwardRef,
+  useImperativeHandle,
+} from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -25,6 +32,16 @@ interface TerminalMessage {
   message?: string;
   code?: number;
   session_id?: string;
+}
+
+export interface XTermInstanceHandle {
+  /**
+   * User-initiated close: signal the backend to terminate the PTY, then
+   * close the WebSocket. Must be called BEFORE the tab is removed from state
+   * (which unmounts this component) — after unmount, the component is gone
+   * and the cleanup effect runs as a plain disconnect (detach).
+   */
+  closeIntentionally: () => void;
 }
 
 function encodeBase64(str: string): string {
@@ -80,13 +97,13 @@ function ensureViewportReady(
   });
 }
 
-export function XTermInstance({
-  endpointUrl,
-  isActive,
-  onClose,
-  sessionId,
-  onSessionId,
-}: XTermInstanceProps) {
+export const XTermInstance = forwardRef<
+  XTermInstanceHandle,
+  XTermInstanceProps
+>(function XTermInstance(
+  { endpointUrl, isActive, onClose, sessionId, onSessionId },
+  ref
+) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -94,6 +111,31 @@ export function XTermInstance({
   const initialSizeRef = useRef({ cols: 80, rows: 24 });
   const { theme } = useTheme();
   const conn = useConnection();
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      closeIntentionally: () => {
+        const ws = wsRef.current;
+        if (!ws) return;
+        if (ws.readyState === WebSocket.OPEN) {
+          try {
+            ws.send(JSON.stringify({ type: 'close' }));
+          } catch {
+            // Best-effort; if send throws, close still runs below.
+          }
+        }
+        try {
+          ws.close();
+        } catch {
+          // Ignore: any failure still results in the WS being torn down by
+          // the upcoming unmount cleanup.
+        }
+        wsRef.current = null;
+      },
+    }),
+    []
+  );
 
   const endpoint = useMemo(() => {
     let url = `${endpointUrl}&cols=${initialSizeRef.current.cols}&rows=${initialSizeRef.current.rows}`;
@@ -384,4 +426,4 @@ export function XTermInstance({
       style={{ display: isActive ? 'block' : 'none' }}
     />
   );
-}
+});
