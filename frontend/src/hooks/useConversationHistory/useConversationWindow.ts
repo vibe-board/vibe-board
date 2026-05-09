@@ -95,6 +95,8 @@ export const useConversationWindow = (
   );
   const [isJumping, setIsJumping] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isLoadingBefore, setIsLoadingBefore] = useState(false);
+  const [isLoadingAfter, setIsLoadingAfter] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
   const sessionId = params.attempt.session?.id;
@@ -187,6 +189,7 @@ export const useConversationWindow = (
 
     isLoadingAfterRef.current = true;
     setIsLoadingMore(true);
+    setIsLoadingAfter(true);
     try {
       const result = await sessionsApi.getSessionEntries(sessionId, {
         after: lastCursorRef.current,
@@ -213,6 +216,7 @@ export const useConversationWindow = (
       hasMoreAfterRef.current = result.has_more_after;
     } finally {
       isLoadingAfterRef.current = false;
+      setIsLoadingAfter(false);
       setIsLoadingMore(false);
     }
   }, [sessionId, sessionsApi]);
@@ -225,6 +229,7 @@ export const useConversationWindow = (
 
     isLoadingBeforeRef.current = true;
     setIsLoadingMore(true);
+    setIsLoadingBefore(true);
     try {
       const result = await sessionsApi.getSessionEntries(sessionId, {
         before: firstCursorRef.current,
@@ -252,6 +257,7 @@ export const useConversationWindow = (
       hasMoreBeforeRef.current = result.has_more_before;
     } finally {
       isLoadingBeforeRef.current = false;
+      setIsLoadingBefore(false);
       setIsLoadingMore(false);
     }
   }, [sessionId, sessionsApi]);
@@ -262,6 +268,8 @@ export const useConversationWindow = (
     setAnchoredEntries([]);
     setUnreadCount(0);
     setIsLoadingMore(false);
+    setIsLoadingBefore(false);
+    setIsLoadingAfter(false);
     isLoadingBeforeRef.current = false;
     isLoadingAfterRef.current = false;
     firstCursorRef.current = null;
@@ -296,6 +304,8 @@ export const useConversationWindow = (
     loadAfter,
     unreadCount,
     isJumping,
+    isLoadingBefore,
+    isLoadingAfter,
   };
 
   if (windowMode.mode === 'tail') {
@@ -303,6 +313,8 @@ export const useConversationWindow = (
       ...tailHook,
       onAtBottom: wrappedOnAtBottom,
       ...extras,
+      isLoadingBefore: tailHook.isLoadingMore,
+      isLoadingAfter: false,
     };
   }
 

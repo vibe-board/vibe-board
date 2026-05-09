@@ -20,6 +20,8 @@ vi.mock('@/hooks/useConversationHistory', () => ({
     entries: [],
     hasMore: false,
     isLoadingMore: false,
+    isLoadingBefore: false,
+    isLoadingAfter: false,
     loadMore: vi.fn(),
     setWantMore: vi.fn(),
     scrollIntent: 'none',
