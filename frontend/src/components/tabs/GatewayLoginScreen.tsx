@@ -1,43 +1,46 @@
 // frontend/src/components/tabs/GatewayLoginScreen.tsx
 import { useEffect, useState, useCallback } from 'react';
 import { Loader2 } from 'lucide-react';
-import { useConnectionStore } from '@/stores/connection-store';
-import type { GatewayNode } from '@/lib/connections/gatewayNode';
+import {
+  EMPTY_GATEWAY_STATE,
+  useConnectionStore,
+} from '@/stores/connection-store';
+import * as gatewayService from '@/services/gateway-service';
 
-export function GatewayLoginScreen({ gwNode }: { gwNode: GatewayNode }) {
+export function GatewayLoginScreen({ connectionId }: { connectionId: string }) {
   const { loginConnection, signupConnection } = useConnectionStore();
   const [isSignup, setIsSignup] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
 
-  // Force re-render when gwNode internal state changes
-  const [, force] = useState(0);
-  useEffect(() => gwNode.onChange(() => force((t) => t + 1)), [gwNode]);
+  const { registrationOpen, authError, authLoading } = useConnectionStore(
+    (s) =>
+      s.nodes.find((n) => n.entry.id === connectionId)?.gatewayState ??
+      EMPTY_GATEWAY_STATE
+  );
 
-  // Refresh registration-status on mount
+  // Refresh registration-status on mount via the gateway service.
+  const gatewayUrl = useConnectionStore(
+    (s) => s.nodes.find((n) => n.entry.id === connectionId)?.gatewayUrl
+  );
   useEffect(() => {
-    gwNode.fetchRegistrationStatus();
-  }, [gwNode]);
-
-  const { registrationOpen, authError, authLoading } = gwNode;
+    if (gatewayUrl) {
+      gatewayService.fetchRegistrationStatus(connectionId, gatewayUrl);
+    }
+  }, [connectionId, gatewayUrl]);
 
   const handleSubmit = useCallback(async () => {
     if (isSignup) {
-      await signupConnection(
-        gwNode.connectionId,
-        email,
-        password,
-        name || undefined
-      );
+      await signupConnection(connectionId, email, password, name || undefined);
     } else {
-      await loginConnection(gwNode.connectionId, email, password);
+      await loginConnection(connectionId, email, password);
     }
   }, [
     isSignup,
     signupConnection,
     loginConnection,
-    gwNode.connectionId,
+    connectionId,
     email,
     password,
     name,

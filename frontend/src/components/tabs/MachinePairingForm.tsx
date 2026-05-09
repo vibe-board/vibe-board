@@ -1,21 +1,27 @@
-// frontend/src/components/tabs/MachinePairingForm.tsx
 import { useState } from 'react';
 import { useConnectionStore } from '@/stores/connection-store';
 import { deriveAuthKeyPair } from '@/lib/e2ee';
-import type { GatewayNode } from '@/lib/connections/gatewayNode';
 
 interface MachinePairingFormProps {
-  gwNode: GatewayNode;
+  connectionId: string;
   machineId: string;
   onPaired?: () => void;
 }
 
 export function MachinePairingForm({
-  gwNode,
+  connectionId,
   machineId,
   onPaired,
 }: MachinePairingFormProps) {
-  const { pairMachine } = useConnectionStore();
+  const session = useConnectionStore(
+    (s) =>
+      s.nodes.find((n) => n.entry.id === connectionId)?.gatewayState?.session
+  );
+  const gatewayUrl = useConnectionStore(
+    (s) => s.nodes.find((n) => n.entry.id === connectionId)?.gatewayUrl ?? ''
+  );
+  const pairMachine = useConnectionStore((s) => s.pairMachine);
+
   const [secret, setSecret] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,29 +32,24 @@ export function MachinePairingForm({
     setLoading(true);
     setError('');
     try {
-      const session = gwNode.session;
       if (!session) throw new Error('Not logged in');
-
       const secretBytes = Uint8Array.from(atob(trimmed), (c) =>
         c.charCodeAt(0)
       );
       const authKp = await deriveAuthKeyPair(secretBytes);
       const pubKeyB64 = btoa(String.fromCharCode(...authKp.publicKey));
 
-      const regResp = await fetch(
-        `${gwNode.gatewayUrl}/api/auth/device/register`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.sessionToken}`,
-          },
-          body: JSON.stringify({
-            public_key: pubKeyB64,
-            device_name: 'WebUI',
-          }),
-        }
-      );
+      const regResp = await fetch(`${gatewayUrl}/api/auth/device/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.sessionToken}`,
+        },
+        body: JSON.stringify({
+          public_key: pubKeyB64,
+          device_name: 'WebUI',
+        }),
+      });
       if (!regResp.ok && regResp.status !== 409) {
         const text = await regResp.text();
         throw new Error(
@@ -56,7 +57,7 @@ export function MachinePairingForm({
         );
       }
 
-      pairMachine(gwNode.connectionId, machineId, trimmed);
+      pairMachine(machineId, trimmed);
       setSecret('');
       onPaired?.();
     } catch (e) {

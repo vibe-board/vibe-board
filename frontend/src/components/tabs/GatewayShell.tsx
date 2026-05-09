@@ -1,5 +1,5 @@
 // frontend/src/components/tabs/GatewayShell.tsx
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { GATEWAY_SELF_ID, useConnectionStore } from '@/stores/connection-store';
 import { TabBar } from './TabBar';
 import { GatewayHomeTab } from './GatewayHomeTab';
@@ -15,15 +15,13 @@ export function GatewayShell() {
     init();
   }, [init]);
 
-  // Same Ctrl+1..9 / Ctrl+W shortcuts as MultiConnectionShell.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key >= '1' && e.key <= '9') {
         e.preventDefault();
         const idx = parseInt(e.key, 10) - 1;
-        if (idx === 0) {
-          setActiveTab('home');
-        } else {
+        if (idx === 0) setActiveTab('home');
+        else {
           const tab = tabs[idx - 1];
           if (tab) setActiveTab(tab.id);
         }
@@ -39,18 +37,13 @@ export function GatewayShell() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [tabs, activeTabId, setActiveTab, closeTab]);
 
-  const gwNode = useConnectionStore(
-    (s) => s.nodes.find((n) => n.entry.id === GATEWAY_SELF_ID)?.gatewayNode
+  const sessionExists = useConnectionStore(
+    (s) =>
+      !!s.nodes.find((n) => n.entry.id === GATEWAY_SELF_ID)?.gatewayState
+        ?.session
   );
 
-  // Force re-render when gwNode session/state changes.
-  const [, force] = useState(0);
-  useEffect(() => {
-    if (!gwNode) return;
-    return gwNode.onChange(() => force((t) => t + 1));
-  }, [gwNode]);
-
-  if (!initialized || !gwNode) {
+  if (!initialized) {
     return (
       <div className="flex items-center justify-center h-screen bg-background">
         <p className="text-foreground/50 animate-pulse">Loading...</p>
@@ -58,8 +51,8 @@ export function GatewayShell() {
     );
   }
 
-  if (!gwNode.session) {
-    return <GatewayLoginScreen gwNode={gwNode} />;
+  if (!sessionExists) {
+    return <GatewayLoginScreen connectionId={GATEWAY_SELF_ID} />;
   }
 
   return (
@@ -71,7 +64,7 @@ export function GatewayShell() {
             activeTabId === 'home' ? '' : 'hidden'
           }`}
         >
-          <GatewayHomeTab gwNode={gwNode} />
+          <GatewayHomeTab connectionId={GATEWAY_SELF_ID} />
         </div>
         {tabs.map((tab) => (
           <div

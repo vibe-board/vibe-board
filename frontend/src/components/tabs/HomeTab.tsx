@@ -1,5 +1,5 @@
 // frontend/src/components/tabs/HomeTab.tsx
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import {
   ChevronRight,
   ChevronDown,
@@ -15,7 +15,6 @@ import {
 import { useConnectionStore } from '@/stores/connection-store';
 import { AddConnectionForm } from './AddConnectionForm';
 import { MachinePairingForm } from './MachinePairingForm';
-import type { GatewayNode } from '@/lib/connections/gatewayNode';
 import type { MachineStatus } from '@/lib/e2ee';
 
 export function HomeTab() {
@@ -124,24 +123,16 @@ function GatewayNodeView({
 }: {
   node: {
     entry: { id: string; url: string; label?: string };
-    gatewayNode?: GatewayNode;
   };
 }) {
   const { removeConnection, logoutConnection } = useConnectionStore();
   const [expanded, setExpanded] = useState(true);
   const [showMenu, setShowMenu] = useState(false);
-  const gwNode = node.gatewayNode;
-
-  // Subscribe to gateway node changes
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    if (!gwNode) return;
-    return gwNode.onChange(() => setTick((t) => t + 1));
-  }, [gwNode]);
-
-  if (!gwNode) return null;
-
-  const isLoggedIn = !!gwNode.session;
+  const gatewayState = useConnectionStore(
+    (s) => s.nodes.find((n) => n.entry.id === node.entry.id)?.gatewayState
+  );
+  if (!gatewayState) return null;
+  const isLoggedIn = !!gatewayState.session;
 
   return (
     <div className="border border-border rounded-md bg-muted/30">
@@ -198,21 +189,20 @@ function GatewayNodeView({
           {!isLoggedIn ? (
             <GatewayLoginForm
               connectionId={node.entry.id}
-              registrationOpen={gwNode.registrationOpen}
-              authError={gwNode.authError}
-              authLoading={gwNode.authLoading}
+              registrationOpen={gatewayState.registrationOpen}
+              authError={gatewayState.authError}
+              authLoading={gatewayState.authLoading}
             />
           ) : (
             <div className="space-y-1.5 max-h-[400px] overflow-y-auto">
-              {gwNode.machines.length === 0 && (
+              {gatewayState.machines.length === 0 && (
                 <p className="text-sm text-foreground/40">No machines online</p>
               )}
-              {gwNode.machines.map((m) => (
+              {gatewayState.machines.map((m) => (
                 <MachineNodeView
                   key={m.machine_id}
                   machine={m}
                   connectionId={node.entry.id}
-                  gatewayNode={gwNode}
                 />
               ))}
             </div>
@@ -315,15 +305,15 @@ function GatewayLoginForm({
 function MachineNodeView({
   machine,
   connectionId,
-  gatewayNode,
 }: {
   machine: MachineStatus;
   connectionId: string;
-  gatewayNode: GatewayNode;
 }) {
   const { openMachineProjectsTab } = useConnectionStore();
   const [showPairing, setShowPairing] = useState(false);
-  const isPaired = gatewayNode.isMachinePaired(machine.machine_id);
+  const isPaired = useConnectionStore(
+    (s) => machine.machine_id in s.machineSecrets
+  );
 
   const machineLabel = machine.hostname || machine.machine_id.slice(0, 8);
 
@@ -360,7 +350,7 @@ function MachineNodeView({
 
       {showPairing && !isPaired && (
         <MachinePairingForm
-          gwNode={gatewayNode}
+          connectionId={connectionId}
           machineId={machine.machine_id}
           onPaired={() => setShowPairing(false)}
         />

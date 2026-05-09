@@ -1,5 +1,5 @@
 // frontend/src/components/tabs/GatewayHomeTab.tsx
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   ChevronDown,
   LogOut,
@@ -10,13 +10,15 @@ import {
 } from 'lucide-react';
 import { useConnectionStore } from '@/stores/connection-store';
 import { MachinePairingForm } from './MachinePairingForm';
-import type { GatewayNode } from '@/lib/connections/gatewayNode';
 import type { MachineStatus } from '@/lib/e2ee';
 
-export function GatewayHomeTab({ gwNode }: { gwNode: GatewayNode }) {
-  const { logoutConnection } = useConnectionStore();
-  const [, force] = useState(0);
-  useEffect(() => gwNode.onChange(() => force((t) => t + 1)), [gwNode]);
+export function GatewayHomeTab({ connectionId }: { connectionId: string }) {
+  const machines = useConnectionStore(
+    (s) =>
+      s.nodes.find((n) => n.entry.id === connectionId)?.gatewayState
+        ?.machines ?? []
+  );
+  const logoutConnection = useConnectionStore((s) => s.logoutConnection);
 
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-4">
@@ -24,18 +26,22 @@ export function GatewayHomeTab({ gwNode }: { gwNode: GatewayNode }) {
         <h2 className="text-xl font-semibold text-foreground">Machines</h2>
         <button
           className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-border rounded text-foreground/70 hover:text-foreground"
-          onClick={() => logoutConnection(gwNode.connectionId)}
+          onClick={() => logoutConnection(connectionId)}
         >
           <LogOut size={14} /> Sign out
         </button>
       </div>
 
-      {gwNode.machines.length === 0 ? (
+      {machines.length === 0 ? (
         <EmptyMachinesPlaceholder />
       ) : (
         <div className="space-y-2">
-          {gwNode.machines.map((m) => (
-            <MachineRow key={m.machine_id} machine={m} gwNode={gwNode} />
+          {machines.map((m) => (
+            <MachineRow
+              key={m.machine_id}
+              connectionId={connectionId}
+              machine={m}
+            />
           ))}
         </div>
       )}
@@ -56,20 +62,24 @@ function EmptyMachinesPlaceholder() {
 }
 
 function MachineRow({
+  connectionId,
   machine,
-  gwNode,
 }: {
+  connectionId: string;
   machine: MachineStatus;
-  gwNode: GatewayNode;
 }) {
-  const { openMachineProjectsTab } = useConnectionStore();
-  const isPaired = gwNode.isMachinePaired(machine.machine_id);
+  const isPaired = useConnectionStore(
+    (s) => machine.machine_id in s.machineSecrets
+  );
+  const openMachineProjectsTab = useConnectionStore(
+    (s) => s.openMachineProjectsTab
+  );
   const [showPair, setShowPair] = useState(false);
   const label = machine.hostname || machine.machine_id.slice(0, 8);
 
   const handleClick = () => {
     if (isPaired) {
-      openMachineProjectsTab(gwNode.connectionId, machine.machine_id, label);
+      openMachineProjectsTab(connectionId, machine.machine_id, label);
     } else {
       setShowPair((v) => !v);
     }
@@ -100,7 +110,7 @@ function MachineRow({
 
       {showPair && !isPaired && (
         <MachinePairingForm
-          gwNode={gwNode}
+          connectionId={connectionId}
           machineId={machine.machine_id}
           onPaired={() => setShowPair(false)}
         />
