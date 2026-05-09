@@ -186,7 +186,8 @@ export const KanbanHeader = (props: KanbanHeaderProps) => {
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
-              className="m-0 p-0 h-0 text-foreground/50 hover:text-foreground"
+              size="icon"
+              className="m-0 h-7 w-7 p-0 text-foreground/50 hover:text-foreground"
               onClick={props.onAddTask}
               aria-label={t('actions.addTask')}
             >
