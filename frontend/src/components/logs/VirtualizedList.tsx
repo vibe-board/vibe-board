@@ -47,7 +47,8 @@ const VirtualizedList = ({
     setWantMore,
     scrollIntent,
     initialLoading,
-    isLoadingMore,
+    isLoadingBefore,
+    isLoadingAfter,
     onAtBottom,
     lastPrependCountRef,
     windowMode,
@@ -279,12 +280,12 @@ const VirtualizedList = ({
         </div>
       )}
       <div className="relative flex-1 min-h-0">
-        {isLoadingMore && (
+        {isLoadingBefore && (
           <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 bg-muted rounded-full p-2 shadow">
             <Loader2 className="h-5 w-5 animate-spin" />
           </div>
         )}
-        {isLoadingMore && windowMode.mode === 'anchored' && (
+        {isLoadingAfter && windowMode.mode === 'anchored' && (
           <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 bg-muted rounded-full p-2 shadow">
             <Loader2 className="h-5 w-5 animate-spin" />
           </div>

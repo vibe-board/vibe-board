@@ -143,4 +143,6 @@ export interface UseConversationWindowResult
   loadAfter: () => Promise<void>;
   unreadCount: number;
   isJumping: boolean;
+  isLoadingBefore: boolean;
+  isLoadingAfter: boolean;
 }
