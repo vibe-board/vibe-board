@@ -160,6 +160,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
         const node = new GatewayNode(entry.id, entry.url);
         node.loadSession();
         node.fetchRegistrationStatus();
+        node.onChange(() => set((s) => ({ nodes: [...s.nodes] })));
         if (node.session) {
           node.startMachineListWs();
         }
@@ -184,6 +185,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     } else {
       const gwNode = new GatewayNode(id, url);
       gwNode.fetchRegistrationStatus();
+      gwNode.onChange(() => set((s) => ({ nodes: [...s.nodes] })));
       node.gatewayNode = gwNode;
     }
 
@@ -231,6 +233,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
         } else {
           const gwNode = new GatewayNode(id, url);
           gwNode.fetchRegistrationStatus();
+          gwNode.onChange(() => set((s) => ({ nodes: [...s.nodes] })));
           return { entry, gatewayNode: gwNode };
         }
       });
