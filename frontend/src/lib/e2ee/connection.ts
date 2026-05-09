@@ -10,7 +10,7 @@ import {
   type EncryptedPayload,
   toBase64,
 } from './envelope';
-import { E2EEManager } from './manager';
+import { getContentPublicKey } from './pairing';
 import { RemoteWs } from './remoteWs';
 import { wrapDek } from './crypto';
 
@@ -186,8 +186,7 @@ export class E2EEConnection {
     const dek = crypto.getRandomValues(new Uint8Array(32));
 
     // Get content public key for this specific machine
-    const manager = E2EEManager.getInstance();
-    const publicKey = manager.getContentPublicKey(this.options!.machineId);
+    const publicKey = getContentPublicKey(this.options!.machineId);
     if (!publicKey) {
       throw new Error('No content public key available for this machine');
     }

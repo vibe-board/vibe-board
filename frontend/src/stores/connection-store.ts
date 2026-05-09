@@ -1,7 +1,7 @@
 // frontend/src/stores/connection-store.ts
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import { DirectConnection } from '@/lib/connections/directConnection';
-import { GatewayNode } from '@/lib/connections/gatewayNode';
 import type {
   ConnectionEntryPersisted,
   TabPersisted,
@@ -11,6 +11,8 @@ import type {
 import type { MachineStatus } from '@/lib/e2ee';
 import { runMigrationIfNeeded } from './migration';
 import { isGateway } from '@/lib/appMode';
+import * as gatewayService from '@/services/gateway-service';
+import * as machineRegistry from '@/services/machine-registry';
 
 export const GATEWAY_SELF_ID = 'gateway-self';
 
@@ -52,10 +54,27 @@ function saveActiveTab(id: string): void {
 
 // -- Store types --
 
+export interface GatewayState {
+  session: GatewaySession | null;
+  machines: MachineStatus[];
+  registrationOpen: boolean | null;
+  authError: string | null;
+  authLoading: boolean;
+}
+
+export const EMPTY_GATEWAY_STATE: GatewayState = {
+  session: null,
+  machines: [],
+  registrationOpen: null,
+  authError: null,
+  authLoading: false,
+};
+
 interface ConnectionNode {
   entry: ConnectionEntryPersisted;
   directConn?: DirectConnection;
-  gatewayNode?: GatewayNode;
+  gatewayUrl?: string; // constant, set at creation (gateway type only)
+  gatewayState?: GatewayState; // new: reactive plain data
 }
 
 export interface ConnectionStoreState {
@@ -63,6 +82,7 @@ export interface ConnectionStoreState {
   tabs: TabPersisted[];
   activeTabId: string;
   initialized: boolean;
+  machineSecrets: Record<string, string>; // machineId -> base64 master secret
 }
 
 export interface ConnectionStoreActions {
@@ -82,12 +102,16 @@ export interface ConnectionStoreActions {
     name?: string
   ): Promise<void>;
   logoutConnection(id: string): void;
-  pairMachine(
+  pairMachine(machineId: string, base64Secret: string): void;
+  unpairMachine(machineId: string): void;
+  setGatewayField: <K extends keyof GatewayState>(
     connectionId: string,
-    machineId: string,
-    base64Secret: string
-  ): void;
-  unpairMachine(connectionId: string, machineId: string): void;
+    key: K,
+    value: GatewayState[K]
+  ) => void;
+  setMachines: (connectionId: string, machines: MachineStatus[]) => void;
+  upsertMachine: (connectionId: string, machine: MachineStatus) => void;
+  removeMachine: (connectionId: string, machineId: string) => void;
   getConnection(
     connectionId: string,
     machineId?: string
@@ -107,334 +131,435 @@ export interface ConnectionStoreActions {
   setActiveTab(tabId: string): void;
   reorderTabs(fromIndex: number, toIndex: number): void;
   getNode(connectionId: string): ConnectionNode | undefined;
-  getGatewayNode(connectionId: string): GatewayNode | undefined;
   getMachines(connectionId: string): MachineStatus[];
   getSession(connectionId: string): GatewaySession | null;
 }
 
 export type ConnectionStore = ConnectionStoreState & ConnectionStoreActions;
 
-export const useConnectionStore = create<ConnectionStore>((set, get) => ({
-  nodes: [],
-  tabs: [],
-  activeTabId: 'home',
-  initialized: false,
+export const useConnectionStore = create<ConnectionStore>()(
+  persist(
+    (set, get) => ({
+      nodes: [],
+      tabs: [],
+      activeTabId: 'home',
+      initialized: false,
+      machineSecrets: {},
 
-  init() {
-    if (get().initialized) return;
-    runMigrationIfNeeded();
+      pairMachine(machineId, secret) {
+        set((s) => ({
+          machineSecrets: { ...s.machineSecrets, [machineId]: secret },
+        }));
+      },
+      unpairMachine(machineId) {
+        set((s) => {
+          const { [machineId]: _removed, ...rest } = s.machineSecrets;
+          return { machineSecrets: rest };
+        });
+      },
 
-    let entries = loadConnections();
+      setGatewayField(connectionId, key, value) {
+        set((s) => ({
+          nodes: s.nodes.map((n) =>
+            n.entry.id === connectionId && n.gatewayState
+              ? { ...n, gatewayState: { ...n.gatewayState, [key]: value } }
+              : n
+          ),
+        }));
+      },
+      setMachines(connectionId, machines) {
+        set((s) => ({
+          nodes: s.nodes.map((n) =>
+            n.entry.id === connectionId && n.gatewayState
+              ? { ...n, gatewayState: { ...n.gatewayState, machines } }
+              : n
+          ),
+        }));
+      },
+      upsertMachine(connectionId, machine) {
+        set((s) => ({
+          nodes: s.nodes.map((n) => {
+            if (n.entry.id !== connectionId || !n.gatewayState) return n;
+            const existing = n.gatewayState.machines.findIndex(
+              (m) => m.machine_id === machine.machine_id
+            );
+            const machines =
+              existing >= 0
+                ? n.gatewayState.machines.map((m, i) =>
+                    i === existing ? machine : m
+                  )
+                : [...n.gatewayState.machines, machine];
+            return { ...n, gatewayState: { ...n.gatewayState, machines } };
+          }),
+        }));
+      },
+      removeMachine(connectionId, machineId) {
+        set((s) => ({
+          nodes: s.nodes.map((n) =>
+            n.entry.id === connectionId && n.gatewayState
+              ? {
+                  ...n,
+                  gatewayState: {
+                    ...n.gatewayState,
+                    machines: n.gatewayState.machines.filter(
+                      (m) => m.machine_id !== machineId
+                    ),
+                  },
+                }
+              : n
+          ),
+        }));
+      },
 
-    if (isGateway) {
-      const sameOrigin = window.location.origin;
-      const existing = entries.find((e) => e.id === GATEWAY_SELF_ID);
-      if (existing) {
-        entries = entries
-          .filter((e) => e.id === GATEWAY_SELF_ID)
-          .map((e) => ({ ...e, url: sameOrigin }));
-      } else {
-        entries = [
-          {
-            id: GATEWAY_SELF_ID,
-            type: 'gateway',
-            url: sameOrigin,
-            label: 'Gateway',
-          },
-        ];
-      }
-      // Deliberately DO NOT call saveConnections — leave localStorage alone so
-      // switching back to tauri preserves the user's other connections.
-    }
+      init() {
+        if (get().initialized) return;
+        runMigrationIfNeeded();
 
-    const nodes: ConnectionNode[] = entries.map((entry) => {
-      if (entry.type === 'direct') {
-        const conn = new DirectConnection(
-          entry.id,
-          entry.url,
-          entry.label || entry.url
-        );
-        conn.connect().catch(() => {});
-        return { entry, directConn: conn };
-      } else {
-        const node = new GatewayNode(entry.id, entry.url);
-        node.loadSession();
-        node.fetchRegistrationStatus();
-        node.onChange(() => set((s) => ({ nodes: [...s.nodes] })));
-        if (node.session) {
-          node.startMachineListWs();
+        let entries = loadConnections();
+
+        if (isGateway) {
+          const sameOrigin = window.location.origin;
+          const existing = entries.find((e) => e.id === GATEWAY_SELF_ID);
+          if (existing) {
+            entries = entries
+              .filter((e) => e.id === GATEWAY_SELF_ID)
+              .map((e) => ({ ...e, url: sameOrigin }));
+          } else {
+            entries = [
+              {
+                id: GATEWAY_SELF_ID,
+                type: 'gateway',
+                url: sameOrigin,
+                label: 'Gateway',
+              },
+            ];
+          }
+          // Deliberately DO NOT call saveConnections — leave localStorage alone so
+          // switching back to tauri preserves the user's other connections.
         }
-        return { entry, gatewayNode: node };
-      }
-    });
 
-    const tabs = loadTabs();
-    const activeTabId = loadActiveTab();
-    set({ nodes, tabs, activeTabId, initialized: true });
-  },
+        const nodes: ConnectionNode[] = entries.map((entry) => {
+          if (entry.type === 'direct') {
+            const conn = new DirectConnection(
+              entry.id,
+              entry.url,
+              entry.label || entry.url
+            );
+            conn.connect().catch(() => {});
+            return { entry, directConn: conn };
+          } else {
+            const persistedSession = gatewayService.loadPersistedSession(
+              entry.id
+            );
+            gatewayService.fetchRegistrationStatus(entry.id, entry.url);
+            if (persistedSession) {
+              gatewayService.startMachineListWs(
+                entry.id,
+                entry.url,
+                persistedSession
+              );
+            }
+            return {
+              entry,
+              gatewayUrl: entry.url,
+              gatewayState: {
+                ...EMPTY_GATEWAY_STATE,
+                session: persistedSession,
+              },
+            };
+          }
+        });
 
-  addConnection(type, url, label) {
-    const id = crypto.randomUUID();
-    const entry: ConnectionEntryPersisted = { id, type, url, label };
-    const node: ConnectionNode = { entry };
+        const tabs = loadTabs();
+        const activeTabId = loadActiveTab();
+        set({ nodes, tabs, activeTabId, initialized: true });
+      },
 
-    if (type === 'direct') {
-      const conn = new DirectConnection(id, url, label || url);
-      conn.connect().catch(() => {});
-      node.directConn = conn;
-    } else {
-      const gwNode = new GatewayNode(id, url);
-      gwNode.fetchRegistrationStatus();
-      gwNode.onChange(() => set((s) => ({ nodes: [...s.nodes] })));
-      node.gatewayNode = gwNode;
-    }
+      addConnection(type, url, label) {
+        const id = crypto.randomUUID();
+        const entry: ConnectionEntryPersisted = { id, type, url, label };
+        const node: ConnectionNode = { entry };
 
-    set((s) => {
-      const nodes = [...s.nodes, node];
-      saveConnections(nodes.map((n) => n.entry));
-      return { nodes };
-    });
-    return id;
-  },
-
-  removeConnection(id) {
-    if (isGateway && id === GATEWAY_SELF_ID) return;
-    set((s) => {
-      const node = s.nodes.find((n) => n.entry.id === id);
-      if (node?.directConn) node.directConn.disconnect();
-      if (node?.gatewayNode) node.gatewayNode.destroy();
-      localStorage.removeItem(`vb_gateway_session_${id}`);
-
-      const nodes = s.nodes.filter((n) => n.entry.id !== id);
-      const tabs = s.tabs.filter((t) => t.connectionId !== id);
-      saveConnections(nodes.map((n) => n.entry));
-      saveTabs(tabs);
-
-      const activeTabId = tabs.find((t) => t.id === s.activeTabId)
-        ? s.activeTabId
-        : 'home';
-      saveActiveTab(activeTabId);
-      return { nodes, tabs, activeTabId };
-    });
-  },
-
-  updateConnectionUrl(id, url) {
-    set((s) => {
-      const nodes = s.nodes.map((n) => {
-        if (n.entry.id !== id) return n;
-        const entry = { ...n.entry, url };
-        if (n.directConn) n.directConn.disconnect();
-        if (n.gatewayNode) n.gatewayNode.destroy();
-
-        if (entry.type === 'direct') {
-          const conn = new DirectConnection(id, url, entry.label || url);
+        if (type === 'direct') {
+          const conn = new DirectConnection(id, url, label || url);
           conn.connect().catch(() => {});
-          return { entry, directConn: conn };
+          node.directConn = conn;
         } else {
-          const gwNode = new GatewayNode(id, url);
-          gwNode.fetchRegistrationStatus();
-          gwNode.onChange(() => set((s) => ({ nodes: [...s.nodes] })));
-          return { entry, gatewayNode: gwNode };
+          gatewayService.fetchRegistrationStatus(id, url);
+          node.gatewayUrl = url;
+          node.gatewayState = { ...EMPTY_GATEWAY_STATE };
         }
-      });
-      saveConnections(nodes.map((n) => n.entry));
-      return { nodes };
-    });
-  },
 
-  async loginConnection(id, email, password) {
-    const node = get().nodes.find((n) => n.entry.id === id);
-    if (!node?.gatewayNode) return;
-    await node.gatewayNode.login(email, password);
-    set((s) => ({ nodes: [...s.nodes] }));
-  },
+        set((s) => {
+          const nodes = [...s.nodes, node];
+          saveConnections(nodes.map((n) => n.entry));
+          return { nodes };
+        });
+        return id;
+      },
 
-  async signupConnection(id, email, password, name) {
-    const node = get().nodes.find((n) => n.entry.id === id);
-    if (!node?.gatewayNode) return;
-    await node.gatewayNode.signup(email, password, name);
-    set((s) => ({ nodes: [...s.nodes] }));
-  },
+      removeConnection(id) {
+        if (isGateway && id === GATEWAY_SELF_ID) return;
+        set((s) => {
+          const node = s.nodes.find((n) => n.entry.id === id);
+          if (node?.directConn) node.directConn.disconnect();
+          if (node?.gatewayState) {
+            gatewayService.stopMachineListWs(id);
+            machineRegistry.destroyAllForConnection(id);
+          }
+          localStorage.removeItem(`vb_gateway_session_${id}`);
 
-  logoutConnection(id) {
-    const node = get().nodes.find((n) => n.entry.id === id);
-    if (!node?.gatewayNode) return;
-    node.gatewayNode.logout();
+          const nodes = s.nodes.filter((n) => n.entry.id !== id);
+          const tabs = s.tabs.filter((t) => t.connectionId !== id);
+          saveConnections(nodes.map((n) => n.entry));
+          saveTabs(tabs);
 
-    set((s) => {
-      const tabs = s.tabs.filter((t) => t.connectionId !== id);
-      saveTabs(tabs);
-      const activeTabId = tabs.find((t) => t.id === s.activeTabId)
-        ? s.activeTabId
-        : 'home';
-      saveActiveTab(activeTabId);
-      return { nodes: [...s.nodes], tabs, activeTabId };
-    });
-  },
+          const activeTabId = tabs.find((t) => t.id === s.activeTabId)
+            ? s.activeTabId
+            : 'home';
+          saveActiveTab(activeTabId);
+          return { nodes, tabs, activeTabId };
+        });
+      },
 
-  pairMachine(connectionId, machineId, base64Secret) {
-    const node = get().nodes.find((n) => n.entry.id === connectionId);
-    if (!node?.gatewayNode) return;
-    node.gatewayNode.pairMachine(machineId, base64Secret);
-    set((s) => ({ nodes: [...s.nodes] }));
-  },
+      updateConnectionUrl(id, url) {
+        set((s) => {
+          const nodes = s.nodes.map((n) => {
+            if (n.entry.id !== id) return n;
+            const entry = { ...n.entry, url };
+            if (n.directConn) n.directConn.disconnect();
+            if (n.gatewayState) {
+              gatewayService.stopMachineListWs(n.entry.id);
+              machineRegistry.destroyAllForConnection(n.entry.id);
+            }
 
-  unpairMachine(connectionId, machineId) {
-    const node = get().nodes.find((n) => n.entry.id === connectionId);
-    if (!node?.gatewayNode) return;
-    node.gatewayNode.unpairMachine(machineId);
-    set((s) => ({ nodes: [...s.nodes] }));
-  },
+            if (entry.type === 'direct') {
+              const conn = new DirectConnection(id, url, entry.label || url);
+              conn.connect().catch(() => {});
+              return { entry, directConn: conn };
+            } else {
+              gatewayService.fetchRegistrationStatus(id, url);
+              return {
+                entry,
+                gatewayUrl: url,
+                gatewayState: { ...EMPTY_GATEWAY_STATE },
+              };
+            }
+          });
+          saveConnections(nodes.map((n) => n.entry));
+          return { nodes };
+        });
+      },
 
-  getConnection(connectionId, machineId) {
-    const node = get().nodes.find((n) => n.entry.id === connectionId);
-    if (!node) return null;
-    if (node.directConn) return node.directConn;
-    if (node.gatewayNode && machineId) {
-      return node.gatewayNode.getMachineConnection(machineId);
+      async loginConnection(id, email, password) {
+        const node = get().nodes.find((n) => n.entry.id === id);
+        if (!node?.gatewayState || !node.gatewayUrl) return;
+        await gatewayService.login(id, node.gatewayUrl, email, password);
+      },
+
+      async signupConnection(id, email, password, name) {
+        const node = get().nodes.find((n) => n.entry.id === id);
+        if (!node?.gatewayState || !node.gatewayUrl) return;
+        await gatewayService.signup(id, node.gatewayUrl, email, password, name);
+      },
+
+      logoutConnection(id) {
+        gatewayService.logout(id);
+        set((s) => {
+          const tabs = s.tabs.filter((t) => t.connectionId !== id);
+          saveTabs(tabs);
+          const activeTabId = tabs.find((t) => t.id === s.activeTabId)
+            ? s.activeTabId
+            : 'home';
+          saveActiveTab(activeTabId);
+          return { nodes: [...s.nodes], tabs, activeTabId };
+        });
+      },
+
+      getConnection(connectionId, machineId) {
+        const node = get().nodes.find((n) => n.entry.id === connectionId);
+        if (!node) return null;
+        if (node.directConn) return node.directConn;
+        if (node.gatewayState?.session && node.gatewayUrl && machineId) {
+          const machine = node.gatewayState.machines.find(
+            (m) => m.machine_id === machineId
+          );
+          return machineRegistry.getOrCreate(
+            connectionId,
+            machineId,
+            node.gatewayUrl,
+            node.gatewayState.session,
+            machine?.hostname || machineId.slice(0, 8)
+          );
+        }
+        return null;
+      },
+
+      openProjectTab(connectionId, machineId, projectId, label) {
+        set((s) => {
+          const existing = s.tabs.find(
+            (t) =>
+              t.connectionId === connectionId &&
+              t.machineId === machineId &&
+              t.projectId === projectId
+          );
+          if (existing) {
+            saveActiveTab(existing.id);
+            return { activeTabId: existing.id };
+          }
+
+          const tab: TabPersisted = {
+            id: crypto.randomUUID(),
+            type: 'project',
+            connectionId,
+            machineId,
+            projectId,
+            label,
+          };
+          const tabs = [...s.tabs, tab];
+          saveTabs(tabs);
+          saveActiveTab(tab.id);
+
+          const node = s.nodes.find((n) => n.entry.id === connectionId);
+          if (node?.gatewayState?.session && node.gatewayUrl && machineId) {
+            const machine = node.gatewayState.machines.find(
+              (m) => m.machine_id === machineId
+            );
+            const conn = machineRegistry.getOrCreate(
+              connectionId,
+              machineId,
+              node.gatewayUrl,
+              node.gatewayState.session,
+              machine?.hostname || machineId.slice(0, 8)
+            );
+            conn.addRef();
+            if (conn.status === 'disconnected') {
+              conn.connect().catch(() => {});
+            }
+          }
+
+          return { tabs, activeTabId: tab.id };
+        });
+      },
+
+      openMachineProjectsTab(connectionId, machineId, label) {
+        set((s) => {
+          // Reuse existing tab if one matches
+          const existing = s.tabs.find(
+            (t) =>
+              t.type === 'machine-projects' &&
+              t.connectionId === connectionId &&
+              t.machineId === machineId
+          );
+          if (existing) {
+            saveActiveTab(existing.id);
+            return { activeTabId: existing.id };
+          }
+
+          const tab: TabPersisted = {
+            id: crypto.randomUUID(),
+            type: 'machine-projects',
+            connectionId,
+            machineId,
+            label,
+          };
+          const tabs = [...s.tabs, tab];
+          saveTabs(tabs);
+          saveActiveTab(tab.id);
+
+          // For gateway machines, add ref to keep connection alive
+          const node = s.nodes.find((n) => n.entry.id === connectionId);
+          if (node?.gatewayState?.session && node.gatewayUrl && machineId) {
+            const machine = node.gatewayState.machines.find(
+              (m) => m.machine_id === machineId
+            );
+            const conn = machineRegistry.getOrCreate(
+              connectionId,
+              machineId,
+              node.gatewayUrl,
+              node.gatewayState.session,
+              machine?.hostname || machineId.slice(0, 8)
+            );
+            conn.addRef();
+            if (conn.status === 'disconnected') {
+              conn.connect().catch(() => {});
+            }
+          }
+
+          return { tabs, activeTabId: tab.id };
+        });
+      },
+
+      closeTab(tabId) {
+        set((s) => {
+          const tab = s.tabs.find((t) => t.id === tabId);
+          if (!tab || tab.type === 'home') return s;
+
+          if (tab.connectionId && tab.machineId) {
+            const node = s.nodes.find((n) => n.entry.id === tab.connectionId);
+            if (node?.gatewayState?.session && node.gatewayUrl) {
+              const machine = node.gatewayState.machines.find(
+                (m) => m.machine_id === tab.machineId
+              );
+              const conn = machineRegistry.getOrCreate(
+                tab.connectionId,
+                tab.machineId,
+                node.gatewayUrl,
+                node.gatewayState.session,
+                machine?.hostname || tab.machineId.slice(0, 8)
+              );
+              conn.removeRef();
+            }
+          }
+
+          const tabs = s.tabs.filter((t) => t.id !== tabId);
+          saveTabs(tabs);
+
+          let activeTabId = s.activeTabId;
+          if (activeTabId === tabId) {
+            const closedIdx = s.tabs.findIndex((t) => t.id === tabId);
+            const nextTab = tabs[Math.min(closedIdx, tabs.length - 1)];
+            activeTabId = nextTab?.id || 'home';
+            saveActiveTab(activeTabId);
+          }
+
+          return { tabs, activeTabId };
+        });
+      },
+
+      setActiveTab(tabId) {
+        saveActiveTab(tabId);
+        set({ activeTabId: tabId });
+      },
+
+      reorderTabs(fromIndex, toIndex) {
+        set((s) => {
+          const tabs = [...s.tabs];
+          const [moved] = tabs.splice(fromIndex, 1);
+          tabs.splice(toIndex, 0, moved);
+          saveTabs(tabs);
+          return { tabs };
+        });
+      },
+
+      getNode(connectionId) {
+        return get().nodes.find((n) => n.entry.id === connectionId);
+      },
+
+      getMachines(connectionId) {
+        const node = get().nodes.find((n) => n.entry.id === connectionId);
+        return node?.gatewayState?.machines ?? [];
+      },
+
+      getSession(connectionId) {
+        const node = get().nodes.find((n) => n.entry.id === connectionId);
+        return node?.gatewayState?.session ?? null;
+      },
+    }),
+    {
+      name: 'vb_connection_store',
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({ machineSecrets: state.machineSecrets }),
     }
-    return null;
-  },
-
-  openProjectTab(connectionId, machineId, projectId, label) {
-    set((s) => {
-      const existing = s.tabs.find(
-        (t) =>
-          t.connectionId === connectionId &&
-          t.machineId === machineId &&
-          t.projectId === projectId
-      );
-      if (existing) {
-        saveActiveTab(existing.id);
-        return { activeTabId: existing.id };
-      }
-
-      const tab: TabPersisted = {
-        id: crypto.randomUUID(),
-        type: 'project',
-        connectionId,
-        machineId,
-        projectId,
-        label,
-      };
-      const tabs = [...s.tabs, tab];
-      saveTabs(tabs);
-      saveActiveTab(tab.id);
-
-      const node = s.nodes.find((n) => n.entry.id === connectionId);
-      if (node?.gatewayNode && machineId) {
-        const conn = node.gatewayNode.getMachineConnection(machineId);
-        if (conn) {
-          conn.addRef();
-          if (conn.status === 'disconnected') {
-            conn.connect().catch(() => {});
-          }
-        }
-      }
-
-      return { tabs, activeTabId: tab.id };
-    });
-  },
-
-  openMachineProjectsTab(connectionId, machineId, label) {
-    set((s) => {
-      // Reuse existing tab if one matches
-      const existing = s.tabs.find(
-        (t) =>
-          t.type === 'machine-projects' &&
-          t.connectionId === connectionId &&
-          t.machineId === machineId
-      );
-      if (existing) {
-        saveActiveTab(existing.id);
-        return { activeTabId: existing.id };
-      }
-
-      const tab: TabPersisted = {
-        id: crypto.randomUUID(),
-        type: 'machine-projects',
-        connectionId,
-        machineId,
-        label,
-      };
-      const tabs = [...s.tabs, tab];
-      saveTabs(tabs);
-      saveActiveTab(tab.id);
-
-      // For gateway machines, add ref to keep connection alive
-      const node = s.nodes.find((n) => n.entry.id === connectionId);
-      if (node?.gatewayNode && machineId) {
-        const conn = node.gatewayNode.getMachineConnection(machineId);
-        if (conn) {
-          conn.addRef();
-          if (conn.status === 'disconnected') {
-            conn.connect().catch(() => {});
-          }
-        }
-      }
-
-      return { tabs, activeTabId: tab.id };
-    });
-  },
-
-  closeTab(tabId) {
-    set((s) => {
-      const tab = s.tabs.find((t) => t.id === tabId);
-      if (!tab || tab.type === 'home') return s;
-
-      if (tab.connectionId && tab.machineId) {
-        const node = s.nodes.find((n) => n.entry.id === tab.connectionId);
-        if (node?.gatewayNode) {
-          const conn = node.gatewayNode.getMachineConnection(tab.machineId);
-          conn?.removeRef();
-        }
-      }
-
-      const tabs = s.tabs.filter((t) => t.id !== tabId);
-      saveTabs(tabs);
-
-      let activeTabId = s.activeTabId;
-      if (activeTabId === tabId) {
-        const closedIdx = s.tabs.findIndex((t) => t.id === tabId);
-        const nextTab = tabs[Math.min(closedIdx, tabs.length - 1)];
-        activeTabId = nextTab?.id || 'home';
-        saveActiveTab(activeTabId);
-      }
-
-      return { tabs, activeTabId };
-    });
-  },
-
-  setActiveTab(tabId) {
-    saveActiveTab(tabId);
-    set({ activeTabId: tabId });
-  },
-
-  reorderTabs(fromIndex, toIndex) {
-    set((s) => {
-      const tabs = [...s.tabs];
-      const [moved] = tabs.splice(fromIndex, 1);
-      tabs.splice(toIndex, 0, moved);
-      saveTabs(tabs);
-      return { tabs };
-    });
-  },
-
-  getNode(connectionId) {
-    return get().nodes.find((n) => n.entry.id === connectionId);
-  },
-
-  getGatewayNode(connectionId) {
-    return get().nodes.find((n) => n.entry.id === connectionId)?.gatewayNode;
-  },
-
-  getMachines(connectionId) {
-    const node = get().nodes.find((n) => n.entry.id === connectionId);
-    return node?.gatewayNode?.machines ?? [];
-  },
-
-  getSession(connectionId) {
-    const node = get().nodes.find((n) => n.entry.id === connectionId);
-    return node?.gatewayNode?.session ?? null;
-  },
-}));
+  )
+);

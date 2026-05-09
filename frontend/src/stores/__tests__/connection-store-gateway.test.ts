@@ -85,4 +85,22 @@ describe('connection-store gateway-self seeding', () => {
 
     expect(useConnectionStore.getState().nodes).toHaveLength(before);
   });
+
+  it('persists machineSecrets to localStorage via persist middleware', async () => {
+    const { useConnectionStore } = await import('../connection-store');
+    useConnectionStore.getState().pairMachine('m-abc', 'secret123');
+    const raw = localStorage.getItem('vb_connection_store');
+    expect(raw).toBeTruthy();
+    const parsed = JSON.parse(raw!);
+    expect(parsed.state.machineSecrets).toEqual({ 'm-abc': 'secret123' });
+  });
+
+  it('unpairMachine removes from machineSecrets', async () => {
+    const { useConnectionStore } = await import('../connection-store');
+    useConnectionStore.getState().pairMachine('m-abc', 'secret123');
+    useConnectionStore.getState().pairMachine('m-xyz', 'secret456');
+    useConnectionStore.getState().unpairMachine('m-abc');
+    const { machineSecrets } = useConnectionStore.getState();
+    expect(machineSecrets).toEqual({ 'm-xyz': 'secret456' });
+  });
 });

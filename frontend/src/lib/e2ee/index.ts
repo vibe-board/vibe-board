@@ -20,7 +20,6 @@ export {
   toBase64,
   type EncryptedPayload,
 } from './envelope';
-export { E2EEManager } from './manager';
 export {
   E2EEConnection,
   type ConnectionOptions,
