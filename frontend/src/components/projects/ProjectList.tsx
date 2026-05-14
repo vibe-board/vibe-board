@@ -19,9 +19,11 @@ import { ProjectOrderCard } from '@/components/projects/ProjectOrderCard.tsx';
 import { useKeyCreate, Scope } from '@/keyboard';
 import { useProjects } from '@/hooks/useProjects';
 import { useUserSystem } from '@/components/ConfigProvider';
+import { useProjectsNavigation } from '@/contexts/ProjectsNavigationContext';
 
 export function ProjectList() {
   const navigate = useNavigate();
+  const { openProject } = useProjectsNavigation();
   const { t } = useTranslation('projects');
   const { projects, isLoading, error: projectsError } = useProjects();
   const { config, updateAndSaveConfig } = useUserSystem();
@@ -44,6 +46,14 @@ export function ProjectList() {
 
   const handleEditProject = (project: Project) => {
     navigate(`/settings/projects?projectId=${project.id}`);
+  };
+
+  const handleOpenProject = (project: Project) => {
+    if (openProject) {
+      openProject(project);
+      return;
+    }
+    navigate(`/local-projects/${project.id}/tasks`);
   };
 
   const handleReorder = async (newOrder: string[]) => {
@@ -181,6 +191,7 @@ export function ProjectList() {
               isFocused={focusedProjectId === project.id}
               setError={setError}
               onEdit={handleEditProject}
+              onOpen={handleOpenProject}
             />
           ))}
         </div>
