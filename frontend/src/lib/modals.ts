@@ -11,13 +11,6 @@ type ComponentProps<P> = [P] extends [void] ? NoProps : P;
 // Map P for .show() args: void -> []; otherwise [props: P]
 type ShowArgs<P> = [P] extends [void] ? [] : [props: P];
 
-export const MODAL_PROVIDER_RENDER_EVENT = 'vibe-board:modal-provider-render';
-
-function requestModalProviderRender() {
-  if (typeof window === 'undefined') return;
-  window.dispatchEvent(new Event(MODAL_PROVIDER_RENDER_EVENT));
-}
-
 // Modalized component with static show/hide/remove methods
 export type Modalized<P, R> = React.ComponentType<ComponentProps<P>> & {
   __modalResult?: R;
@@ -31,20 +24,16 @@ export function defineModal<P, R>(
 ): Modalized<P, R> {
   const c = component as unknown as Modalized<P, R>;
   c.show = ((...args: ShowArgs<P>) => {
-    const result = NiceModal.show(
+    return NiceModal.show(
       component as React.FC<ComponentProps<P>>,
       args[0] as ComponentProps<P>
     ) as Promise<R>;
-    requestModalProviderRender();
-    return result;
   }) as Modalized<P, R>['show'];
   c.hide = () => {
     NiceModal.hide(component as React.FC<ComponentProps<P>>);
-    requestModalProviderRender();
   };
   c.remove = () => {
     NiceModal.remove(component as React.FC<ComponentProps<P>>);
-    requestModalProviderRender();
   };
   return c;
 }

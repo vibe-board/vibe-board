@@ -5,6 +5,7 @@ import { ClickToComponent } from 'click-to-react-component';
 import { TabShell } from '@/components/tabs/TabShell';
 import { LegacyDesignScope } from '@/components/legacy-design/LegacyDesignScope';
 import { HotkeysProvider } from 'react-hotkeys-hook';
+import NiceModal from '@ebay/nice-modal-react';
 import {
   QueryClient,
   QueryClientProvider,
@@ -88,7 +89,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <ClickToComponent />
           <HotkeysProvider initiallyActiveScopes={['global', 'projects']}>
             <LegacyDesignScope>
-              <TabShell />
+              <NiceModal.Provider>
+                <TabShell />
+              </NiceModal.Provider>
             </LegacyDesignScope>
           </HotkeysProvider>
           {/*<TanStackDevtools plugins={[FormDevtoolsPlugin()]} />*/}
