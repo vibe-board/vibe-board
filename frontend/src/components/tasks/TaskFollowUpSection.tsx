@@ -144,7 +144,6 @@ export function TaskFollowUpSection({
   const {
     scratch,
     updateScratch,
-    deleteScratch,
     isLoading: isScratchLoading,
   } = useScratch(ScratchType.DRAFT_FOLLOW_UP, sessionId ?? '');
 
@@ -420,7 +419,6 @@ export function TaskFollowUpSection({
       },
       onAfterSendCleanup: () => {
         setLocalMessage(''); // Clear local state immediately
-        deleteScratch(); // Clear persisted draft so it doesn't reappear on reopen
       },
     });
 
