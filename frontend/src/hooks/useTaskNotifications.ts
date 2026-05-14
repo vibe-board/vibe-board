@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useConnection } from '@/contexts/ConnectionContext';
+import { playNotificationSound } from '@/utils/notificationSound';
 import type { TaskStatus, Task, ApprovalInfo } from 'shared/types';
 import type { Config } from 'shared/types';
 
@@ -25,6 +27,7 @@ export function useTaskNotifications(
   pendingApprovals: ApprovalInfo[],
   config: Config | null
 ) {
+  const connection = useConnection();
   const prevTasksRef = useRef<Record<string, TaskStatus>>({});
   const prevApprovalIdsRef = useRef<Set<string>>(new Set());
   const initializedRef = useRef(false);
@@ -56,11 +59,15 @@ export function useTaskNotifications(
 
       // Sound notification
       if (soundEnabled && soundFile) {
-        const audio = new Audio(`/api/sounds/${soundFile}`);
-        audio.play().catch(console.error);
+        void playNotificationSound(connection, soundFile).catch((error) => {
+          console.warn('Failed to play notification sound.', {
+            soundFile,
+            error,
+          });
+        });
       }
     },
-    [pushEnabled, soundEnabled, soundFile]
+    [connection, pushEnabled, soundEnabled, soundFile]
   );
 
   // Request notification permission (must be called from user gesture)

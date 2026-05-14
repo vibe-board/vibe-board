@@ -46,14 +46,17 @@ import { useEditorAvailability } from '@/hooks/useEditorAvailability';
 import { EditorAvailabilityIndicator } from '@/components/EditorAvailabilityIndicator';
 import { useTheme } from '@/components/ThemeProvider';
 import { useUserSystem } from '@/components/ConfigProvider';
+import { useConnection } from '@/contexts/ConnectionContext';
 import { TagManager } from '@/components/TagManager';
 import { FolderPickerDialog } from '@/components/dialogs/shared/FolderPickerDialog';
 import { ExportConfigDialog } from '@/components/dialogs/settings/ExportConfigDialog';
 import { ImportConfigDialog } from '@/components/dialogs/settings/ImportConfigDialog';
 import ExecutorProfileSelector from '@/components/settings/ExecutorProfileSelector';
+import { playNotificationSound } from '@/utils/notificationSound';
 
 export function GeneralSettings() {
   const { t } = useTranslation(['settings', 'common']);
+  const connection = useConnection();
   const [notifPermission, setNotifPermission] = useState(() =>
     getNotificationPermission()
   );
@@ -153,9 +156,8 @@ export function GeneralSettings() {
   }, [hasUnsavedChanges]);
 
   const playSound = async (soundFile: SoundFile) => {
-    const audio = new Audio(`/api/sounds/${soundFile}`);
     try {
-      await audio.play();
+      await playNotificationSound(connection, soundFile);
     } catch (err) {
       console.error('Failed to play sound:', err);
     }
