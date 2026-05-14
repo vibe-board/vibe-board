@@ -1,10 +1,11 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { Outlet, useSearchParams } from 'react-router-dom';
 import {
   Group,
   Panel,
   Separator,
   useDefaultLayout,
+  type PanelImperativeHandle,
 } from 'react-resizable-panels';
 import { DevBanner } from '@/components/DevBanner';
 import { Navbar } from '@/components/layout/Navbar';
@@ -16,11 +17,23 @@ export function NormalLayout() {
   const view = searchParams.get('view');
   const shouldHideNavbar = view === 'preview' || view === 'diffs';
   const { isDrawerOpen } = useTerminal();
+  const terminalPanelRef = useRef<PanelImperativeHandle>(null);
 
   const hasEverOpened = useRef(false);
   if (isDrawerOpen) {
     hasEverOpened.current = true;
   }
+
+  useEffect(() => {
+    const terminalPanel = terminalPanelRef.current;
+    if (!terminalPanel) return;
+
+    if (isDrawerOpen) {
+      terminalPanel.resize(30);
+    } else {
+      terminalPanel.collapse();
+    }
+  }, [isDrawerOpen]);
 
   const { defaultLayout, onLayoutChange } = useDefaultLayout({
     groupId: 'normalLayout-terminal',
@@ -59,12 +72,12 @@ export function NormalLayout() {
               />
               <Panel
                 id="terminal"
+                panelRef={terminalPanelRef}
                 defaultSize={isDrawerOpen ? 30 : 0}
                 minSize={isDrawerOpen ? 15 : 0}
                 collapsible
                 collapsedSize={0}
                 className="min-h-0"
-                style={{ display: isDrawerOpen ? undefined : 'none' }}
               >
                 <TerminalBottomDrawer />
               </Panel>
