@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ConnectionProvider } from '@/contexts/ConnectionContext';
+import { ProjectsNavigationProvider } from '@/contexts/ProjectsNavigationContext';
 import { useConnectionStore } from '@/stores/connection-store';
 import { GatewayMachineConnection } from '@/lib/connections/gatewayConnection';
 import type { TabPersisted } from '@/lib/connections/types';
@@ -9,6 +10,7 @@ import App from '@/App';
 
 export function ProjectTab({ tab }: { tab: TabPersisted }) {
   const getConnection = useConnectionStore((s) => s.getConnection);
+  const { openMachineProjectsTab } = useConnectionStore();
   const conn = tab.connectionId
     ? getConnection(tab.connectionId, tab.machineId)
     : null;
@@ -83,10 +85,17 @@ export function ProjectTab({ tab }: { tab: TabPersisted }) {
     );
   }
 
+  const navigateToProjects = () => {
+    if (!tab.connectionId || !tab.machineId) return;
+    openMachineProjectsTab(tab.connectionId, tab.machineId, conn.label);
+  };
+
   return (
     <ConnectionProvider connection={conn}>
       <QueryClientProvider client={conn.queryClient}>
-        <App initialPath={`/local-projects/${tab.projectId}/tasks`} />
+        <ProjectsNavigationProvider value={{ navigateToProjects }}>
+          <App initialPath={`/local-projects/${tab.projectId}/tasks`} />
+        </ProjectsNavigationProvider>
       </QueryClientProvider>
     </ConnectionProvider>
   );

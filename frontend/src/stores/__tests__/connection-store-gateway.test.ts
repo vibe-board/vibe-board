@@ -103,4 +103,53 @@ describe('connection-store gateway-self seeding', () => {
     const { machineSecrets } = useConnectionStore.getState();
     expect(machineSecrets).toEqual({ 'm-xyz': 'secret456' });
   });
+
+  it('reuses an existing project tab for the same machine and project', async () => {
+    const { useConnectionStore } = await import('../connection-store');
+
+    useConnectionStore.setState({
+      nodes: [
+        {
+          entry: {
+            id: 'gateway-self',
+            type: 'gateway',
+            url: 'http://gateway.test',
+            label: 'Gateway',
+          },
+          gatewayUrl: 'http://gateway.test',
+          gatewayState: {
+            session: { sessionToken: 'token', userId: 'user-1' },
+            machines: [
+              {
+                machine_id: 'machine-1',
+                hostname: 'devbox',
+                platform: 'linux',
+                port: 3000,
+                paired: true,
+              },
+            ],
+            registrationOpen: true,
+            authError: null,
+            authLoading: false,
+          },
+        },
+      ],
+      tabs: [],
+      activeTabId: 'home',
+      initialized: true,
+      machineSecrets: {},
+    });
+
+    useConnectionStore
+      .getState()
+      .openProjectTab('gateway-self', 'machine-1', 'project-1', 'Project One');
+    const firstTabId = useConnectionStore.getState().activeTabId;
+
+    useConnectionStore
+      .getState()
+      .openProjectTab('gateway-self', 'machine-1', 'project-1', 'Project One');
+
+    expect(useConnectionStore.getState().tabs).toHaveLength(1);
+    expect(useConnectionStore.getState().activeTabId).toBe(firstTabId);
+  });
 });

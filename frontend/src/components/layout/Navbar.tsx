@@ -42,6 +42,7 @@ import { OAuthDialog } from '@/components/dialogs/global/OAuthDialog';
 import { useUserSystem } from '@/components/ConfigProvider';
 import { useApi } from '@/hooks/useApi';
 import { useOptionalConnection } from '@/contexts/ConnectionContext';
+import { useProjectsNavigation } from '@/contexts/ProjectsNavigationContext';
 import { cn } from '@/lib/utils';
 import { useTerminal } from '@/contexts/TerminalContext';
 import { useHomeDir } from '@/hooks/useHomeDir';
@@ -88,6 +89,7 @@ export function Navbar() {
   const { data: onlineCount } = useDiscordOnlineCount();
   const { loginStatus, reloadSystem } = useUserSystem();
   const connection = useOptionalConnection();
+  const { navigateToProjects } = useProjectsNavigation();
 
   const { data: repos } = useProjectRepos(projectId);
   const isSingleRepoProject = repos?.length === 1;
@@ -190,9 +192,20 @@ export function Navbar() {
       <div className="w-full px-3">
         <div className="flex items-center h-12 py-2">
           <div className="flex-1 flex items-center">
-            <Link to="/local-projects">
-              <Logo />
-            </Link>
+            {navigateToProjects ? (
+              <button
+                type="button"
+                onClick={navigateToProjects}
+                className="inline-flex"
+                aria-label="Projects"
+              >
+                <Logo />
+              </button>
+            ) : (
+              <Link to="/local-projects" aria-label="Projects">
+                <Logo />
+              </Link>
+            )}
             <a
               href="https://discord.gg/AC4nwVtJM3"
               target="_blank"

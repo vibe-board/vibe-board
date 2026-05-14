@@ -26,14 +26,15 @@ import { useNavigateWithSearch, useProjectRepos } from '@/hooks';
 import { useApi } from '@/hooks/useApi';
 import { useTranslation } from 'react-i18next';
 
-type Props = {
+interface Props {
   project: Project;
-  isFocused: boolean;
+  isFocused?: boolean;
   setError: (error: string) => void;
   onEdit: (project: Project) => void;
-};
+  onOpen?: (project: Project) => void;
+}
 
-function ProjectCard({ project, isFocused, setError, onEdit }: Props) {
+function ProjectCard({ project, isFocused, setError, onEdit, onOpen }: Props) {
   const { projectsApi } = useApi();
   const navigate = useNavigateWithSearch();
   const ref = useRef<HTMLDivElement>(null);
@@ -74,10 +75,18 @@ function ProjectCard({ project, isFocused, setError, onEdit }: Props) {
     handleOpenInEditor();
   };
 
+  const handleOpen = () => {
+    if (onOpen) {
+      onOpen(project);
+      return;
+    }
+    navigate(`/local-projects/${project.id}/tasks`);
+  };
+
   return (
     <Card
       className={`hover:shadow-md transition-shadow cursor-pointer focus:ring-2 focus:ring-primary outline-none border`}
-      onClick={() => navigate(`/local-projects/${project.id}/tasks`)}
+      onClick={handleOpen}
       tabIndex={isFocused ? 0 : -1}
       ref={ref}
     >
@@ -95,7 +104,7 @@ function ProjectCard({ project, isFocused, setError, onEdit }: Props) {
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.stopPropagation();
-                    navigate(`/local-projects/${project.id}`);
+                    handleOpen();
                   }}
                 >
                   <ExternalLink className="mr-2 h-4 w-4" />

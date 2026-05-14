@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { ConnectionProvider } from '@/contexts/ConnectionContext';
+import { ProjectsNavigationProvider } from '@/contexts/ProjectsNavigationContext';
 import { useConnectionStore } from '@/stores/connection-store';
 import { GatewayMachineConnection } from '@/lib/connections/gatewayConnection';
+import type { Project } from 'shared/types';
 import type { TabPersisted } from '@/lib/connections/types';
-import { ProjectListView } from './ProjectListView';
+import App from '@/App';
 
 export function MachineProjectsTab({ tab }: { tab: TabPersisted }) {
   const getConnection = useConnectionStore((s) => s.getConnection);
@@ -82,21 +84,17 @@ export function MachineProjectsTab({ tab }: { tab: TabPersisted }) {
     );
   }
 
+  const openProject = (project: Project) => {
+    if (!tab.connectionId || !tab.machineId) return;
+    openProjectTab(tab.connectionId, tab.machineId, project.id, project.name);
+  };
+
   return (
     <ConnectionProvider connection={conn}>
       <QueryClientProvider client={conn.queryClient}>
-        <ProjectListView
-          subtitle={tab.label}
-          onOpenProject={(project) => {
-            if (!tab.connectionId) return;
-            openProjectTab(
-              tab.connectionId,
-              tab.machineId,
-              project.id,
-              project.name
-            );
-          }}
-        />
+        <ProjectsNavigationProvider value={{ openProject }}>
+          <App initialPath="/local-projects" />
+        </ProjectsNavigationProvider>
       </QueryClientProvider>
     </ConnectionProvider>
   );
