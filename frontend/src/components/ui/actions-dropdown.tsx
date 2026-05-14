@@ -94,9 +94,10 @@ export function ActionsDropdown({ task, attempt }: ActionsDropdownProps) {
 
   const handleCreateNewAttempt = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!task?.id) return;
+    if (!projectId || !task?.id) return;
     CreateAttemptDialog.show({
       taskId: task.id,
+      projectId,
     });
   };
 

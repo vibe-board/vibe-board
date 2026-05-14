@@ -189,11 +189,13 @@ const TaskPanel = ({ task }: TaskPanelProps) => {
                     <span>
                       <Button
                         variant="icon"
-                        onClick={() =>
+                        onClick={() => {
+                          if (!projectId) return;
                           CreateAttemptDialog.show({
                             taskId: task.id,
-                          })
-                        }
+                            projectId,
+                          });
+                        }}
                       >
                         <PlusIcon size={16} />
                       </Button>
