@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   BrowserRouter,
   MemoryRouter,
@@ -38,6 +38,7 @@ import { DisclaimerDialog } from '@/components/dialogs/global/DisclaimerDialog';
 import { OnboardingDialog } from '@/components/dialogs/global/OnboardingDialog';
 
 import { ClickedElementsProvider } from './contexts/ClickedElementsProvider';
+import { MODAL_PROVIDER_RENDER_EVENT } from '@/lib/modals';
 
 const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
 
@@ -152,6 +153,19 @@ function AppContent() {
   );
 }
 
+function ModalProviderWithRenderBridge({ children }: { children: ReactNode }) {
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const rerender = () => setTick((tick) => tick + 1);
+    window.addEventListener(MODAL_PROVIDER_RENDER_EVENT, rerender);
+    return () =>
+      window.removeEventListener(MODAL_PROVIDER_RENDER_EVENT, rerender);
+  }, []);
+
+  return <NiceModal.Provider>{children}</NiceModal.Provider>;
+}
+
 function App({ initialPath }: { initialPath?: string }) {
   const Router = initialPath ? MemoryRouter : BrowserRouter;
   const routerProps = initialPath ? { initialEntries: [initialPath] } : {};
@@ -161,9 +175,9 @@ function App({ initialPath }: { initialPath?: string }) {
       <UserSystemProvider>
         <ClickedElementsProvider>
           <ProjectProvider>
-            <NiceModal.Provider>
+            <ModalProviderWithRenderBridge>
               <AppContent />
-            </NiceModal.Provider>
+            </ModalProviderWithRenderBridge>
           </ProjectProvider>
         </ClickedElementsProvider>
       </UserSystemProvider>

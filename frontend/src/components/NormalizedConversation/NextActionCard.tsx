@@ -124,11 +124,12 @@ export function NextActionCard({
   }, [navigate]);
 
   const handleTryAgain = useCallback(() => {
-    if (!attempt?.task_id) return;
+    if (!projectId || !attempt?.task_id) return;
     CreateAttemptDialog.show({
       taskId: attempt.task_id,
+      projectId,
     });
-  }, [attempt?.task_id]);
+  }, [attempt?.task_id, projectId]);
 
   const handleContinue = useCallback(async () => {
     if (!sessionId || !latestProfile?.executor) return;
