@@ -37,6 +37,7 @@ import { DisclaimerDialog } from '@/components/dialogs/global/DisclaimerDialog';
 import { OnboardingDialog } from '@/components/dialogs/global/OnboardingDialog';
 
 import { ClickedElementsProvider } from './contexts/ClickedElementsProvider';
+import { ScopedNiceModalProvider } from '@/contexts/NiceModalStoreContext';
 
 const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
 
@@ -160,7 +161,9 @@ function App({ initialPath }: { initialPath?: string }) {
       <UserSystemProvider>
         <ClickedElementsProvider>
           <ProjectProvider>
-            <AppContent />
+            <ScopedNiceModalProvider>
+              <AppContent />
+            </ScopedNiceModalProvider>
           </ProjectProvider>
         </ClickedElementsProvider>
       </UserSystemProvider>
