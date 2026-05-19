@@ -84,6 +84,24 @@
         }
       }
     },
+    "MIMO_CODE": {
+      "DEFAULT": {
+        "MIMO_CODE": {
+          "auto_approve": true
+        }
+      },
+      "PLAN": {
+        "MIMO_CODE": {
+          "mode": "plan",
+          "auto_approve": true
+        }
+      },
+      "APPROVALS": {
+        "MIMO_CODE": {
+          "auto_approve": false
+        }
+      }
+    },
     "OPENCODE": {
       "DEFAULT": {
         "OPENCODE": {
