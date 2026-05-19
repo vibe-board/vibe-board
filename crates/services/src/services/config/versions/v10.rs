@@ -45,13 +45,14 @@ fn default_commit_message_enabled() -> bool {
     true
 }
 
-/// Default enabled agents: the original 9 reliable agents
+/// Default enabled agents: the built-in agents shown in task selectors.
 fn default_agent_enabled() -> Vec<BaseCodingAgent> {
     vec![
         BaseCodingAgent::ClaudeCode,
         BaseCodingAgent::Amp,
         BaseCodingAgent::Gemini,
         BaseCodingAgent::Codex,
+        BaseCodingAgent::MiMoCode,
         BaseCodingAgent::Opencode,
         BaseCodingAgent::CursorAgent,
         BaseCodingAgent::QwenCode,
@@ -222,6 +223,12 @@ mod tests {
         assert!(parsed.agent_enabled.contains(&BaseCodingAgent::Amp));
         assert_eq!(parsed.agent_enabled.len(), 2); // TOTALLY_UNKNOWN_AGENT filtered out
         assert_eq!(parsed.agent_order.len(), 1); // Only CLAUDE_CODE
+    }
+
+    #[test]
+    fn test_mimo_code_is_enabled_by_default() {
+        let config = Config::default();
+        assert!(config.agent_enabled.contains(&BaseCodingAgent::MiMoCode));
     }
 
     #[test]

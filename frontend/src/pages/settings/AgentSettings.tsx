@@ -1209,7 +1209,7 @@ function AgentOrderCard({
                 <SortableAgentItem
                   key={agent}
                   agent={agent}
-                  enabled={!agentEnabled || agentEnabled.includes(agent)}
+                  enabled={agentEnabled?.includes(agent) ?? true}
                   disabled={disabled}
                   onToggle={onToggleEnabled}
                 />
