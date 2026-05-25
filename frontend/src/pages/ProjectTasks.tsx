@@ -109,8 +109,10 @@ function GitErrorBanner() {
   if (!displayError) return null;
 
   return (
-    <div className="mx-4 mt-4 p-3 border border-destructive rounded flex items-center justify-between gap-2">
-      <div className="text-destructive text-sm">{displayError}</div>
+    <div className="mx-4 mt-4 p-3 border border-destructive rounded flex items-start justify-between gap-2 shrink-0">
+      <div className="flex-1 min-w-0 max-h-32 overflow-auto text-destructive text-sm whitespace-pre-wrap break-words">
+        {displayError}
+      </div>
       {mergeError && (
         <button
           onClick={() => setMergeError(null)}
