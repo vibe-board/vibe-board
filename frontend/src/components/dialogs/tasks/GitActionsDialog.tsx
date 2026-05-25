@@ -79,8 +79,10 @@ function GitActionsDialogContent({
         </div>
       )}
       {gitError && (
-        <div className="p-3 border border-destructive rounded text-destructive text-sm flex items-center justify-between gap-2">
-          <span>{gitError}</span>
+        <div className="p-3 border border-destructive rounded text-destructive text-sm flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0 max-h-32 overflow-auto whitespace-pre-wrap break-words">
+            {gitError}
+          </div>
           {mergeError && (
             <button
               onClick={() => setMergeError(null)}
