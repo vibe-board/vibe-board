@@ -23,11 +23,15 @@ export function NormalLayout() {
     const terminalPanel = terminalPanelRef.current;
     if (!terminalPanel) return;
 
-    if (isDrawerOpen) {
-      terminalPanel.resize(30);
-    } else {
-      terminalPanel.collapse();
-    }
+    const frameId = requestAnimationFrame(() => {
+      if (isDrawerOpen) {
+        terminalPanel.resize(30);
+      } else {
+        terminalPanel.collapse();
+      }
+    });
+
+    return () => cancelAnimationFrame(frameId);
   }, [isDrawerOpen]);
 
   const { defaultLayout, onLayoutChange } = useDefaultLayout({
