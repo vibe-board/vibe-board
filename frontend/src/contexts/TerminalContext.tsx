@@ -15,6 +15,40 @@ export type TerminalTabContext =
 
 const STORAGE_KEY = 'vibe-board:terminal-sessions';
 
+function isValidTab(value: unknown): value is TerminalTab {
+  if (!value || typeof value !== 'object') return false;
+  const tab = value as Record<string, unknown>;
+  if (typeof tab.id !== 'string') return false;
+  if (typeof tab.title !== 'string') return false;
+  if (typeof tab.workspaceId !== 'string') return false;
+  if (typeof tab.taskId !== 'string') return false;
+  if (typeof tab.cwd !== 'string') return false;
+  if (tab.sessionId !== null && typeof tab.sessionId !== 'string') return false;
+  // `context` was added in a later schema. Tabs persisted before that lack it,
+  // and rendering them would crash buildEndpointUrl on `context.type`.
+  const ctx = tab.context as { type?: unknown } | undefined;
+  if (
+    !ctx ||
+    (ctx.type !== 'task' && ctx.type !== 'project' && ctx.type !== 'home')
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function sanitizeTabsByWorkspace(raw: unknown): Record<string, TerminalTab[]> {
+  if (!raw || typeof raw !== 'object') return {};
+  const out: Record<string, TerminalTab[]> = {};
+  for (const [workspaceId, tabs] of Object.entries(
+    raw as Record<string, unknown>
+  )) {
+    if (!Array.isArray(tabs)) continue;
+    const valid = tabs.filter(isValidTab);
+    if (valid.length > 0) out[workspaceId] = valid;
+  }
+  return out;
+}
+
 function loadPersistedState(): TerminalState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -29,7 +63,7 @@ function loadPersistedState(): TerminalState {
       };
     const parsed = JSON.parse(raw);
     return {
-      tabsByWorkspace: parsed.tabsByWorkspace || {},
+      tabsByWorkspace: sanitizeTabsByWorkspace(parsed.tabsByWorkspace),
       activeTabByWorkspace: parsed.activeTabByWorkspace || {},
       closedWorkspaces: parsed.closedWorkspaces || [],
       tabCounterByWorkspace: parsed.tabCounterByWorkspace || {},
