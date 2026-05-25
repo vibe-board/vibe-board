@@ -19,11 +19,6 @@ export function NormalLayout() {
   const { isDrawerOpen } = useTerminal();
   const terminalPanelRef = useRef<PanelImperativeHandle>(null);
 
-  const hasEverOpened = useRef(false);
-  if (isDrawerOpen) {
-    hasEverOpened.current = true;
-  }
-
   useEffect(() => {
     const terminalPanel = terminalPanelRef.current;
     if (!terminalPanel) return;
@@ -64,25 +59,21 @@ export function NormalLayout() {
             </div>
           </Panel>
 
-          {hasEverOpened.current && (
-            <>
-              <Separator
-                id="terminal-handle"
-                className="h-1 bg-border cursor-row-resize hover:bg-accent transition-colors"
-              />
-              <Panel
-                id="terminal"
-                panelRef={terminalPanelRef}
-                defaultSize={isDrawerOpen ? 30 : 0}
-                minSize={isDrawerOpen ? 15 : 0}
-                collapsible
-                collapsedSize={0}
-                className="min-h-0"
-              >
-                <TerminalBottomDrawer />
-              </Panel>
-            </>
-          )}
+          <Separator
+            id="terminal-handle"
+            className="h-1 bg-border cursor-row-resize hover:bg-accent transition-colors"
+          />
+          <Panel
+            id="terminal"
+            panelRef={terminalPanelRef}
+            defaultSize={isDrawerOpen ? 30 : 0}
+            minSize={15}
+            collapsible
+            collapsedSize={0}
+            className="min-h-0"
+          >
+            <TerminalBottomDrawer />
+          </Panel>
         </Group>
       </div>
     </div>
