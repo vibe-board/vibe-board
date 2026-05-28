@@ -3,7 +3,9 @@ import { KanbanCard } from '@/components/ui/shadcn-io/kanban';
 import {
   Link,
   Loader2,
+  MessageCircleQuestion,
   Settings2,
+  ShieldQuestion,
   SquareTerminal,
   XCircle,
 } from 'lucide-react';
@@ -17,6 +19,8 @@ import { TaskCardHeader } from './TaskCardHeader';
 import { AgentIcon, getAgentName } from '@/components/agents/AgentIcon';
 import { useTranslation } from 'react-i18next';
 import { useTerminal } from '@/contexts/TerminalContext';
+import { useTaskApprovalsIndex } from '@/contexts/TaskApprovalsContext';
+import { useTaskApprovalIndicator } from '@/hooks/useTaskApprovalIndicator';
 
 interface TaskCardProps {
   task: Task;
@@ -40,11 +44,16 @@ export const TaskCard = memo(
     const { t } = useTranslation('tasks');
     const navigate = useNavigateWithSearch();
     const { hasTerminalForTask } = useTerminal();
+    const { markSeen } = useTaskApprovalsIndex();
+    const approvalIndicator = useTaskApprovalIndicator(task.id);
     const [isNavigatingToParent, setIsNavigatingToParent] = useState(false);
 
     const handleClick = useCallback(() => {
+      if (approvalIndicator) {
+        markSeen(task.id);
+      }
       onViewDetails(task);
-    }, [task, onViewDetails]);
+    }, [task, onViewDetails, markSeen, approvalIndicator]);
 
     const handleParentClick = useCallback(
       async (e: React.MouseEvent) => {
@@ -99,9 +108,53 @@ export const TaskCard = memo(
             title={task.title}
             right={
               <>
-                {task.has_in_progress_attempt && (
+                {approvalIndicator ? (
+                  approvalIndicator.kind === 'question' ? (
+                    <span
+                      title={t(
+                        'approvalIndicator.waitingAnswer',
+                        'Waiting for your answer'
+                      )}
+                      className="inline-flex"
+                    >
+                      <MessageCircleQuestion
+                        className={
+                          approvalIndicator.seen
+                            ? 'h-4 w-4 text-warning/60'
+                            : 'h-4 w-4 text-warning animate-pulse'
+                        }
+                        aria-label={t(
+                          'approvalIndicator.waitingAnswer',
+                          'Waiting for your answer'
+                        )}
+                      />
+                    </span>
+                  ) : (
+                    <span
+                      title={t(
+                        'approvalIndicator.awaitingApproval',
+                        'Awaiting approval: {{tool}}',
+                        { tool: approvalIndicator.toolName }
+                      )}
+                      className="inline-flex"
+                    >
+                      <ShieldQuestion
+                        className={
+                          approvalIndicator.seen
+                            ? 'h-4 w-4 text-warning/60'
+                            : 'h-4 w-4 text-warning animate-pulse'
+                        }
+                        aria-label={t(
+                          'approvalIndicator.awaitingApproval',
+                          'Awaiting approval: {{tool}}',
+                          { tool: approvalIndicator.toolName }
+                        )}
+                      />
+                    </span>
+                  )
+                ) : task.has_in_progress_attempt ? (
                   <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
-                )}
+                ) : null}
                 {task.last_attempt_failed && (
                   <XCircle className="h-4 w-4 text-destructive" />
                 )}

@@ -20,6 +20,7 @@ use uuid::Uuid;
 #[derive(Debug)]
 struct PendingApproval {
     execution_process_id: Uuid,
+    task_id: Uuid,
     tool_name: String,
     is_question: bool,
     created_at: DateTime<Utc>,
@@ -41,6 +42,7 @@ pub struct ApprovalInfo {
     pub approval_id: String,
     pub tool_name: String,
     pub execution_process_id: Uuid,
+    pub task_id: Uuid,
     pub is_question: bool,
     pub created_at: DateTime<Utc>,
     pub timeout_at: DateTime<Utc>,
@@ -87,6 +89,7 @@ impl Approvals {
         &self,
         request: ApprovalRequest,
         is_question: bool,
+        task_id: Uuid,
     ) -> Result<(ApprovalRequest, ApprovalWaiter), ApprovalError> {
         let (tx, rx) = oneshot::channel();
         let default_timeout = ApprovalOutcome::TimedOut;
@@ -100,6 +103,7 @@ impl Approvals {
             approval_id: req_id.clone(),
             tool_name: request.tool_name.clone(),
             execution_process_id: request.execution_process_id,
+            task_id,
             is_question,
             created_at: request.created_at,
             timeout_at: request.timeout_at,
@@ -107,6 +111,7 @@ impl Approvals {
 
         let pending_approval = PendingApproval {
             execution_process_id: request.execution_process_id,
+            task_id,
             tool_name: request.tool_name.clone(),
             is_question,
             created_at: request.created_at,
@@ -281,6 +286,7 @@ impl Approvals {
                     approval_id: entry.key().clone(),
                     tool_name: p.tool_name.clone(),
                     execution_process_id: p.execution_process_id,
+                    task_id: p.task_id,
                     is_question: p.is_question,
                     created_at: p.created_at,
                     timeout_at: p.timeout_at,

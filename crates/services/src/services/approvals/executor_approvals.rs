@@ -43,11 +43,25 @@ impl ExecutorApprovalBridge {
         is_question: bool,
         question_count: Option<usize>,
     ) -> Result<String, ExecutorApprovalError> {
+        let ctx = ExecutionProcess::load_context(&self.db.pool, self.execution_process_id)
+            .await
+            .map_err(|e| {
+                ExecutorApprovalError::request_failed(format!(
+                    "failed to load execution context for approval: {e}"
+                ))
+            })?;
+        let task_id = ctx.task.id;
+        let workspace_name = ctx
+            .workspace
+            .name
+            .clone()
+            .unwrap_or_else(|| ctx.workspace.branch.clone());
+
         let request = ApprovalRequest::new(tool_name.to_string(), self.execution_process_id);
 
         let (request, waiter) = self
             .approvals
-            .create_with_waiter(request, is_question)
+            .create_with_waiter(request, is_question, task_id)
             .await
             .map_err(ExecutorApprovalError::request_failed)?;
 
@@ -58,16 +72,6 @@ impl ExecutorApprovalBridge {
             .lock()
             .await
             .insert(approval_id.clone(), waiter);
-
-        let workspace_name =
-            ExecutionProcess::load_context(&self.db.pool, self.execution_process_id)
-                .await
-                .map(|ctx| {
-                    ctx.workspace
-                        .name
-                        .unwrap_or_else(|| ctx.workspace.branch.clone())
-                })
-                .unwrap_or_else(|_| "Unknown workspace".to_string());
 
         let (title, message) = if let Some(count) = question_count {
             if count == 1 {
