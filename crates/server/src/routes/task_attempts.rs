@@ -12,13 +12,14 @@ use std::{
 
 use axum::{
     Extension, Json, Router,
+    body::Body,
     extract::{
         Path as AxumPath, Query, State,
         ws::{WebSocket, WebSocketUpgrade},
     },
-    http::StatusCode,
+    http::{StatusCode, header},
     middleware::from_fn_with_state,
-    response::{IntoResponse, Json as ResponseJson},
+    response::{IntoResponse, Json as ResponseJson, Response},
     routing::{get, post, put},
 };
 use db::models::{
@@ -44,7 +45,9 @@ use git::{ConflictOp, GitCliError, GitService, GitServiceError};
 use git2::BranchType;
 use serde::{Deserialize, Serialize};
 use services::services::{
-    config::DEFAULT_COMMIT_MESSAGE_PROMPT, container::ContainerService,
+    config::DEFAULT_COMMIT_MESSAGE_PROMPT,
+    container::ContainerService,
+    session_export::{ExportError, build_attempt_export, build_zip_bytes, export_filename},
     workspace_manager::WorkspaceManager,
 };
 use sqlx::Error as SqlxError;
@@ -2281,6 +2284,85 @@ pub async fn mark_seen(
     Ok(ResponseJson(ApiResponse::success(())))
 }
 
+/// Export a task attempt's CodingAgent session as a downloadable zip file
+/// containing one combined HTML view plus per-process raw JSONL.
+#[axum::debug_handler]
+pub async fn export_session_zip(
+    Extension(workspace): Extension<Workspace>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<Response<Body>, ApiError> {
+    let pool = &deployment.db().pool;
+
+    let export = match build_attempt_export(pool, workspace.id).await {
+        Ok(e) => e,
+        Err(ExportError::AttemptNotFound) => {
+            return Ok(json_error(StatusCode::NOT_FOUND, "attempt_not_found"));
+        }
+        Err(ExportError::NoCodingAgentProcesses) => {
+            return Ok(json_error(
+                StatusCode::NOT_FOUND,
+                "no_coding_agent_processes",
+            ));
+        }
+        Err(ExportError::TooLarge { bytes }) => {
+            return Ok(json_error_with(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                serde_json::json!({"error": "export_too_large", "bytes": bytes}),
+            ));
+        }
+        Err(ExportError::Database(e)) => return Err(ApiError::from(e)),
+        Err(ExportError::Io(e)) => {
+            tracing::error!("session export io error: {e}");
+            return Ok(json_error(StatusCode::INTERNAL_SERVER_ERROR, "io_error"));
+        }
+        Err(ExportError::Zip(e)) => {
+            tracing::error!("session export zip error: {e}");
+            return Ok(json_error(StatusCode::INTERNAL_SERVER_ERROR, "zip_error"));
+        }
+    };
+
+    let filename = export_filename(&export);
+    let bytes = match build_zip_bytes(&export) {
+        Ok(b) => b,
+        Err(ExportError::Database(e)) => return Err(ApiError::from(e)),
+        Err(e) => {
+            tracing::error!("session export pack error: {e}");
+            return Ok(json_error(StatusCode::INTERNAL_SERVER_ERROR, "pack_error"));
+        }
+    };
+
+    match Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/zip")
+        .header(
+            header::CONTENT_DISPOSITION,
+            format!(r#"attachment; filename="{filename}""#),
+        )
+        .body(Body::from(bytes))
+    {
+        Ok(response) => Ok(response),
+        Err(e) => {
+            tracing::error!("failed to build export response: {e}");
+            Ok(json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "response_build_error",
+            ))
+        }
+    }
+}
+
+fn json_error(status: StatusCode, code: &str) -> Response<Body> {
+    json_error_with(status, serde_json::json!({"error": code}))
+}
+
+fn json_error_with(status: StatusCode, body: serde_json::Value) -> Response<Body> {
+    Response::builder()
+        .status(status)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(body.to_string()))
+        .expect("static response should always build")
+}
+
 pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
     let task_attempt_id_router = Router::new().merge(
         Router::new()
@@ -2316,6 +2398,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             .route("/repos", get(get_task_attempt_repos))
             .route("/first-message", get(get_first_user_message))
             .route("/mark-seen", put(mark_seen))
+            .route("/export-session", get(export_session_zip))
             .layer(from_fn_with_state(
                 deployment.clone(),
                 load_workspace_middleware,

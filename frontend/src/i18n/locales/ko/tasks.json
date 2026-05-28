@@ -28,6 +28,7 @@
     "duplicate": "Duplicate",
     "editBranchName": "브랜치 이름 편집",
     "copyRunCommand": "실행 명령어 복사",
+    "exportSession": "세션 내보내기",
     "commandCopied": "복사됨!",
     "gitActions": "Git 작업",
     "openInIde": "Open attempt in IDE",

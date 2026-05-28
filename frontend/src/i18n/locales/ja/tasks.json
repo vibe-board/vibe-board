@@ -28,6 +28,7 @@
     "duplicate": "Duplicate",
     "editBranchName": "ブランチ名を編集",
     "copyRunCommand": "実行コマンドをコピー",
+    "exportSession": "セッションをエクスポート",
     "commandCopied": "コピーしました！",
     "gitActions": "Gitアクション",
     "openInIde": "Open attempt in IDE",
