@@ -49,36 +49,64 @@ function sanitizeTabsByWorkspace(raw: unknown): Record<string, TerminalTab[]> {
   return out;
 }
 
+const AUTO_TITLE_RE = /^Terminal \d+$/;
+
+function emptyState(): TerminalState {
+  return {
+    tabsByWorkspace: {},
+    activeTabByWorkspace: {},
+    closedWorkspaces: [],
+    tabCounter: 0,
+    isDrawerOpen: false,
+    globalActiveTabId: null,
+  };
+}
+
 function loadPersistedState(): TerminalState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw)
-      return {
-        tabsByWorkspace: {},
-        activeTabByWorkspace: {},
-        closedWorkspaces: [],
-        tabCounterByWorkspace: {},
-        isDrawerOpen: false,
-        globalActiveTabId: null,
-      };
+    if (!raw) return emptyState();
     const parsed = JSON.parse(raw);
+    const tabsByWorkspace = sanitizeTabsByWorkspace(parsed.tabsByWorkspace);
+
+    // Migration: legacy state used a per-workspace counter, so two workspaces
+    // could each have a "Terminal 1". The unified tab bar (`getAllTabs`) shows
+    // tabs from every workspace in one row, so duplicates are visible. When we
+    // detect the old format, renumber every auto-titled tab sequentially so
+    // titles are globally unique. User-renamed tabs are left untouched.
+    const isLegacy =
+      parsed.tabCounterByWorkspace != null && parsed.tabCounter == null;
+    let tabCounter: number;
+    let migratedTabs = tabsByWorkspace;
+
+    if (isLegacy) {
+      let counter = 0;
+      migratedTabs = Object.fromEntries(
+        Object.entries(tabsByWorkspace).map(([wsId, tabs]) => [
+          wsId,
+          tabs.map((tab) => {
+            if (!AUTO_TITLE_RE.test(tab.title)) return tab;
+            counter += 1;
+            return { ...tab, title: `Terminal ${counter}` };
+          }),
+        ])
+      );
+      tabCounter = counter;
+    } else {
+      tabCounter =
+        typeof parsed.tabCounter === 'number' ? parsed.tabCounter : 0;
+    }
+
     return {
-      tabsByWorkspace: sanitizeTabsByWorkspace(parsed.tabsByWorkspace),
+      tabsByWorkspace: migratedTabs,
       activeTabByWorkspace: parsed.activeTabByWorkspace || {},
       closedWorkspaces: parsed.closedWorkspaces || [],
-      tabCounterByWorkspace: parsed.tabCounterByWorkspace || {},
+      tabCounter,
       isDrawerOpen: false,
       globalActiveTabId: parsed.globalActiveTabId ?? null,
     };
   } catch {
-    return {
-      tabsByWorkspace: {},
-      activeTabByWorkspace: {},
-      closedWorkspaces: [],
-      tabCounterByWorkspace: {},
-      isDrawerOpen: false,
-      globalActiveTabId: null,
-    };
+    return emptyState();
   }
 }
 
@@ -106,8 +134,8 @@ interface TerminalState {
   activeTabByWorkspace: Record<string, string | null>;
   /** Workspaces where the user explicitly closed all terminals */
   closedWorkspaces: string[];
-  /** Monotonically increasing counter per workspace for terminal numbering */
-  tabCounterByWorkspace: Record<string, number>;
+  /** Monotonically increasing counter for terminal numbering across all workspaces */
+  tabCounter: number;
   isDrawerOpen: boolean;
   globalActiveTabId: string | null;
 }
@@ -152,7 +180,7 @@ function terminalReducer(
     case 'CREATE_TAB': {
       const { workspaceId, taskId, cwd, context } = action;
       const existingTabs = state.tabsByWorkspace[workspaceId] || [];
-      const nextCounter = (state.tabCounterByWorkspace[workspaceId] || 0) + 1;
+      const nextCounter = state.tabCounter + 1;
       const newTab: TerminalTab = {
         id: generateTabId(),
         title: `Terminal ${nextCounter}`,
@@ -175,10 +203,7 @@ function terminalReducer(
         closedWorkspaces: state.closedWorkspaces.filter(
           (id) => id !== workspaceId
         ),
-        tabCounterByWorkspace: {
-          ...state.tabCounterByWorkspace,
-          [workspaceId]: nextCounter,
-        },
+        tabCounter: nextCounter,
         globalActiveTabId: newTab.id,
       };
     }
@@ -268,18 +293,13 @@ function terminalReducer(
           ([key]) => key !== workspaceId
         )
       );
-      const restCounter = Object.fromEntries(
-        Object.entries(state.tabCounterByWorkspace).filter(
-          ([key]) => key !== workspaceId
-        )
-      );
       return {
         tabsByWorkspace: restTabs,
         activeTabByWorkspace: restActive,
         closedWorkspaces: state.closedWorkspaces.filter(
           (id) => id !== workspaceId
         ),
-        tabCounterByWorkspace: restCounter,
+        tabCounter: state.tabCounter,
         isDrawerOpen: state.isDrawerOpen,
         globalActiveTabId: state.globalActiveTabId,
       };
