@@ -265,6 +265,17 @@ const VirtualizedList = ({
 
   const showJumpToBottom =
     scrollState === 'tail-browsing' || scrollState === 'anchored';
+  const handleReturnToBottom = useCallback(() => {
+    returnToBottom();
+    requestAnimationFrame(() => {
+      const container = scrollContainerRef.current;
+      if (!container) return;
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: 'smooth',
+      });
+    });
+  }, [returnToBottom]);
 
   return (
     <ApprovalFormProvider>
@@ -330,7 +341,7 @@ const VirtualizedList = ({
 
         {showJumpToBottom && (
           <button
-            onClick={returnToBottom}
+            onClick={handleReturnToBottom}
             className="absolute bottom-4 right-4 z-10 flex items-center justify-center w-10 h-10 rounded-full bg-muted border border-border shadow-lg hover:bg-accent transition-colors"
           >
             <ChevronDown className="h-5 w-5 text-foreground" />

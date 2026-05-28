@@ -1,22 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render } from '@testing-library/react';
+import { fireEvent, render } from '@testing-library/react';
 import VirtualizedList from '../VirtualizedList';
 import type { WorkspaceWithSession } from '@/types/attempt';
 
-// ---------------------------------------------------------------------------
-// Mocks
-// ---------------------------------------------------------------------------
-
-vi.mock('@/contexts/EntriesContext', () => ({
-  useEntries: () => ({
-    setEntries: vi.fn(),
-    reset: vi.fn(),
-    setTokenUsageInfo: vi.fn(),
-  }),
-}));
-
-vi.mock('@/hooks/useConversationHistory', () => ({
-  useConversationWindow: () => ({
+const mocks = vi.hoisted(() => ({
+  conversationWindow: {
     entries: [],
     hasMore: false,
     isLoadingMore: false,
@@ -35,7 +23,23 @@ vi.mock('@/hooks/useConversationHistory', () => ({
     loadAfter: vi.fn(),
     unreadCount: 0,
     isJumping: false,
+  },
+}));
+
+// ---------------------------------------------------------------------------
+// Mocks
+// ---------------------------------------------------------------------------
+
+vi.mock('@/contexts/EntriesContext', () => ({
+  useEntries: () => ({
+    setEntries: vi.fn(),
+    reset: vi.fn(),
+    setTokenUsageInfo: vi.fn(),
   }),
+}));
+
+vi.mock('@/hooks/useConversationHistory', () => ({
+  useConversationWindow: () => mocks.conversationWindow,
 }));
 
 vi.mock('@/contexts/ApprovalFormContext', () => ({
@@ -65,6 +69,26 @@ const mockAttempt = {
 describe('VirtualizedList', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.assign(mocks.conversationWindow, {
+      entries: [],
+      hasMore: false,
+      isLoadingMore: false,
+      isLoadingBefore: false,
+      isLoadingAfter: false,
+      loadMore: vi.fn(),
+      setWantMore: vi.fn(),
+      scrollIntent: 'none',
+      initialLoading: true,
+      onAtBottom: vi.fn(),
+      lastPrependCountRef: { current: 0 },
+      windowMode: { mode: 'tail' },
+      scrollState: 'tail-following',
+      jumpTo: vi.fn(),
+      returnToBottom: vi.fn(),
+      loadAfter: vi.fn(),
+      unreadCount: 0,
+      isJumping: false,
+    });
   });
 
   it('renders loading overlay when initialLoading is true', () => {
@@ -78,5 +102,39 @@ describe('VirtualizedList', () => {
     // Should have a scroll container with overflow-y-auto
     const scrollContainer = container.querySelector('.overflow-y-auto');
     expect(scrollContainer).toBeInTheDocument();
+  });
+
+  it('scrolls the container to the bottom when the jump-to-bottom FAB is clicked', () => {
+    const returnToBottom = vi.fn();
+    Object.assign(mocks.conversationWindow, {
+      initialLoading: false,
+      scrollState: 'tail-browsing',
+      returnToBottom,
+    });
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+      cb(0);
+      return 1;
+    });
+
+    const { container } = render(<VirtualizedList attempt={mockAttempt} />);
+    const scrollContainer = container.querySelector(
+      '.overflow-y-auto'
+    ) as HTMLDivElement;
+    const scrollTo = vi.fn();
+    Object.defineProperty(scrollContainer, 'scrollHeight', {
+      value: 1234,
+      configurable: true,
+    });
+    scrollContainer.scrollTo = scrollTo;
+
+    const button = container.querySelector('button');
+    expect(button).toBeInTheDocument();
+    fireEvent.click(button!);
+
+    expect(returnToBottom).toHaveBeenCalledOnce();
+    expect(scrollTo).toHaveBeenCalledWith({
+      top: 1234,
+      behavior: 'smooth',
+    });
   });
 });
