@@ -20,5 +20,6 @@ pub mod qa_repos;
 pub mod queued_message;
 pub mod raw_log_store;
 pub mod repo;
+pub mod session_export;
 pub mod workspace_manager;
 pub mod worktree_manager;

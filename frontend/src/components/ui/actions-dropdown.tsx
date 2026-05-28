@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useApi } from '@/hooks/useApi';
+import { useExecutionProcesses } from '@/hooks/useExecutionProcesses';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -39,6 +40,14 @@ export function ActionsDropdown({ task, attempt }: ActionsDropdownProps) {
 
   const hasAttemptActions = Boolean(attempt);
   const hasTaskActions = Boolean(task);
+
+  const sessionId = attempt?.session?.id;
+  const { executionProcesses } = useExecutionProcesses(sessionId ?? '', {
+    showSoftDeleted: false,
+  });
+  const hasCodingAgentProcess = Boolean(
+    sessionId && executionProcesses?.some((p) => p.run_reason === 'codingagent')
+  );
 
   const handleEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -150,6 +159,43 @@ export function ActionsDropdown({ task, attempt }: ActionsDropdownProps) {
     }
   };
 
+  const handleExportSession = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!attempt?.id) return;
+    try {
+      const res = await fetch(
+        `/api/task-attempts/${attempt.id}/export-session`
+      );
+      if (!res.ok) {
+        let msg = 'Export failed';
+        try {
+          const body = await res.json();
+          if (body?.error) msg = body.error;
+        } catch {
+          // body is not JSON; keep generic msg
+        }
+        console.warn('export-session failed', res.status, msg);
+        alert(`Export failed: ${msg}`);
+        return;
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get('content-disposition') ?? '';
+      const match = /filename="([^"]+)"/.exec(disposition);
+      const filename = match?.[1] ?? `attempt-${attempt.id}.zip`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.warn('Failed to export session:', err);
+      alert('Export failed');
+    }
+  };
+
   return (
     <>
       <DropdownMenu>
@@ -211,6 +257,12 @@ export function ActionsDropdown({ task, attempt }: ActionsDropdownProps) {
                 {commandCopied
                   ? t('actionsMenu.commandCopied')
                   : t('actionsMenu.copyRunCommand')}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!attempt?.id || !hasCodingAgentProcess}
+                onClick={handleExportSession}
+              >
+                {t('actionsMenu.exportSession')}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
             </>

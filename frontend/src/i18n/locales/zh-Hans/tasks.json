@@ -434,6 +434,7 @@
     "gitActions": "Git 操作",
     "editBranchName": "编辑分支名称",
     "copyRunCommand": "复制运行命令",
+    "exportSession": "导出会话",
     "commandCopied": "已复制！",
     "task": "任务",
     "duplicate": "复制",

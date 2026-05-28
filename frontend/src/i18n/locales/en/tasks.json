@@ -511,6 +511,7 @@
     "gitActions": "Git actions",
     "editBranchName": "Edit branch name",
     "copyRunCommand": "Copy Run Command",
+    "exportSession": "Export session",
     "commandCopied": "Copied!",
     "startReview": "Start Review",
     "startingReview": "Starting Review...",

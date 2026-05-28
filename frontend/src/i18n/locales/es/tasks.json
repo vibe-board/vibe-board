@@ -28,6 +28,7 @@
     "duplicate": "Duplicate",
     "editBranchName": "Editar nombre de rama",
     "copyRunCommand": "Copiar comando de ejecución",
+    "exportSession": "Exportar sesión",
     "commandCopied": "¡Copiado!",
     "gitActions": "Acciones de Git",
     "openInIde": "Open attempt in IDE",

@@ -51,3 +51,6 @@ sha2 = "0.10"
 fst = "0.4"
 moka = { version = "0.12", features = ["future"] }
 zstd = "0.13"
+zip = { workspace = true }
+pulldown-cmark = { workspace = true }
+html-escape = { workspace = true }
