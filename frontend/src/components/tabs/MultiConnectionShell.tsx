@@ -5,6 +5,7 @@ import { TabBar } from './TabBar';
 import { HomeTab } from './HomeTab';
 import { ProjectTab } from './ProjectTab';
 import { MachineProjectsTab } from './MachineProjectsTab';
+import { useTabDocumentTitle } from './tabDocumentTitle';
 
 export function MultiConnectionShell() {
   const { initialized, init, tabs, activeTabId, closeTab, setActiveTab } =
@@ -13,6 +14,8 @@ export function MultiConnectionShell() {
   useEffect(() => {
     init();
   }, [init]);
+
+  useTabDocumentTitle(activeTabId, tabs);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

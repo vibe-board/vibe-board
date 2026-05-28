@@ -6,6 +6,7 @@ import { GatewayHomeTab } from './GatewayHomeTab';
 import { GatewayLoginScreen } from './GatewayLoginScreen';
 import { ProjectTab } from './ProjectTab';
 import { MachineProjectsTab } from './MachineProjectsTab';
+import { useTabDocumentTitle } from './tabDocumentTitle';
 
 export function GatewayShell() {
   const { initialized, init, tabs, activeTabId, closeTab, setActiveTab } =
@@ -14,6 +15,8 @@ export function GatewayShell() {
   useEffect(() => {
     init();
   }, [init]);
+
+  useTabDocumentTitle(activeTabId, tabs);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
