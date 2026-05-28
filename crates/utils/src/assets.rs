@@ -3,8 +3,6 @@ use std::{path::PathBuf, sync::OnceLock};
 use directories::ProjectDirs;
 use rust_embed::RustEmbed;
 
-const PROJECT_ROOT: &str = env!("CARGO_MANIFEST_DIR");
-
 pub(crate) static DATA_DIR_OVERRIDE: OnceLock<PathBuf> = OnceLock::new();
 
 /// Set a custom data directory. Must be called before any `asset_dir()` usage.
@@ -21,13 +19,9 @@ pub fn asset_dir() -> std::path::PathBuf {
         return dir.clone();
     }
 
-    let path = if cfg!(debug_assertions) {
-        std::path::PathBuf::from(PROJECT_ROOT).join("../../dev_assets")
-    } else {
-        dirs::home_dir()
-            .expect("Failed to determine home directory")
-            .join(".vibe-board")
-    };
+    let path = dirs::home_dir()
+        .expect("Failed to determine home directory")
+        .join(".vibe-board");
 
     // Ensure the directory exists
     if !path.exists() {
@@ -88,9 +82,6 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::
 ///
 /// Migration only runs when old path exists AND new path does not.
 pub fn migrate_from_legacy_dir() {
-    if cfg!(debug_assertions) {
-        return;
-    }
     if DATA_DIR_OVERRIDE.get().is_some() {
         return;
     }
@@ -164,5 +155,10 @@ mod tests {
         // Reset is not possible with OnceLock, so test shape only
         let dir = asset_dir();
         assert!(dir.is_absolute());
+    }
+
+    #[test]
+    fn credentials_path_is_under_asset_dir() {
+        assert_eq!(credentials_path(), asset_dir().join("credentials.json"));
     }
 }
