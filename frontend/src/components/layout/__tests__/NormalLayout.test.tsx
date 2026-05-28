@@ -1,5 +1,5 @@
 import React from 'react';
-import { render } from '@testing-library/react';
+import { render, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { NormalLayout } from '../NormalLayout';
@@ -66,7 +66,7 @@ vi.mock('react-resizable-panels', () => {
 });
 
 describe('NormalLayout', () => {
-  it('collapses the terminal panel when the drawer closes', () => {
+  it('collapses the terminal panel when the drawer closes', async () => {
     mocks.isDrawerOpen = true;
     const { rerender } = render(<NormalLayout />);
 
@@ -75,6 +75,8 @@ describe('NormalLayout', () => {
     mocks.isDrawerOpen = false;
     rerender(<NormalLayout />);
 
-    expect(mocks.collapseTerminalPanel).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(mocks.collapseTerminalPanel).toHaveBeenCalledTimes(1);
+    });
   });
 });

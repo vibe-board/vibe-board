@@ -2,6 +2,7 @@ import { CaretDownIcon, PlusIcon, XIcon } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import type { TerminalTab } from '@/contexts/TerminalContext';
 import type { NewTabOption } from './TerminalPanel';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,6 +17,7 @@ interface TerminalTabBarProps {
   onTabClose: (tabId: string) => void;
   newTabOptions: NewTabOption[];
   onNewTab: (option: NewTabOption) => void;
+  onCollapse: () => void;
 }
 
 export function TerminalTabBar({
@@ -25,6 +27,7 @@ export function TerminalTabBar({
   onTabClose,
   newTabOptions,
   onNewTab,
+  onCollapse,
 }: TerminalTabBarProps) {
   const enabledOptions = newTabOptions.filter((o) => !o.disabled);
 
@@ -84,6 +87,15 @@ export function TerminalTabBar({
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="ml-auto h-6 w-6 shrink-0 text-low hover:bg-primary/50 hover:text-normal"
+        onClick={onCollapse}
+        aria-label="Collapse terminal"
+      >
+        <CaretDownIcon className="h-4 w-4" />
+      </Button>
     </div>
   );
 }

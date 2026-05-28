@@ -35,6 +35,7 @@ export function TerminalPanel({ newTabOptions }: TerminalPanelProps) {
     setActiveGlobalTab,
     createTab,
     closeTab,
+    closeDrawer,
     setSessionId,
   } = useTerminal();
 
@@ -62,6 +63,7 @@ export function TerminalPanel({ newTabOptions }: TerminalPanelProps) {
         }}
         newTabOptions={newTabOptions}
         onNewTab={handleNewTab}
+        onCollapse={closeDrawer}
       />
       <div className="flex-1 min-h-0 overflow-hidden">
         {tabs.map((tab) => {
