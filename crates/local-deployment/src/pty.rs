@@ -1,10 +1,10 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     io::{Read, Write},
     path::PathBuf,
     sync::{
-        Arc, Mutex, RwLock,
-        atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering},
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicI64, Ordering},
     },
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -32,61 +32,12 @@ pub enum PtyError {
     AttachFailed(String),
 }
 
-/// Ring buffer for terminal output history with broadcast for live delivery.
-/// Similar to MsgStore but for raw bytes instead of LogMsg.
-struct TerminalBuffer {
-    sender: broadcast::Sender<Vec<u8>>,
-    history: RwLock<VecDeque<Vec<u8>>>,
-    total_bytes: std::sync::atomic::AtomicUsize,
-}
-
-const MAX_TERMINAL_BUFFER_BYTES: usize = 1024 * 1024; // 1 MB
-
-impl TerminalBuffer {
-    fn new() -> Self {
-        let (sender, _) = broadcast::channel(10000);
-        Self {
-            sender,
-            history: RwLock::new(VecDeque::with_capacity(128)),
-            total_bytes: AtomicUsize::new(0),
-        }
-    }
-
-    fn push(&self, data: Vec<u8>) {
-        let _ = self.sender.send(data.clone()); // live listeners
-
-        let bytes = data.len();
-        let mut history = self.history.write().unwrap();
-
-        // Evict old entries if we'd exceed the limit
-        while self
-            .total_bytes
-            .load(Ordering::Relaxed)
-            .saturating_add(bytes)
-            > MAX_TERMINAL_BUFFER_BYTES
-        {
-            if let Some(front) = history.pop_front() {
-                self.total_bytes.fetch_sub(front.len(), Ordering::Relaxed);
-            } else {
-                break;
-            }
-        }
-
-        self.total_bytes.fetch_add(bytes, Ordering::Relaxed);
-        history.push_back(data);
-    }
-
-    fn subscribe(&self) -> broadcast::Receiver<Vec<u8>> {
-        self.sender.subscribe()
-    }
-}
-
 struct PtySession {
     writer: Box<dyn Write + Send>,
     master: Box<dyn portable_pty::MasterPty + Send>,
     _output_handle: thread::JoinHandle<()>,
     closed: bool,
-    buffer: Arc<TerminalBuffer>,
+    output: Arc<broadcast::Sender<Vec<u8>>>,
     vt100_parser: Arc<Mutex<vt100::Parser>>,
     attached: AtomicBool,
     last_activity: AtomicI64,
@@ -174,8 +125,9 @@ impl PtyService {
         rows: u16,
     ) -> Result<(Uuid, broadcast::Receiver<Vec<u8>>, watch::Receiver<bool>), PtyError> {
         let session_id = Uuid::new_v4();
-        let buffer = Arc::new(TerminalBuffer::new());
-        let buffer_clone = buffer.clone();
+        let (output_tx, _output_rx) = broadcast::channel::<Vec<u8>>(10000);
+        let output_tx = Arc::new(output_tx);
+        let output_tx_clone = output_tx.clone();
         let vt100_parser = Arc::new(Mutex::new(vt100::Parser::new(rows, cols, 0)));
         let parser_clone = vt100_parser.clone();
         let (exit_tx, exit_rx) = watch::channel(false);
@@ -283,7 +235,7 @@ impl PtyService {
                         Ok(0) => break,
                         Ok(n) => {
                             let chunk = &buf[..n];
-                            buffer_clone.push(chunk.to_vec());
+                            let _ = output_tx_clone.send(chunk.to_vec());
                             parser_clone.lock().unwrap().process(chunk);
                         }
                         Err(_) => break,
@@ -304,7 +256,7 @@ impl PtyService {
             master,
             _output_handle: output_handle,
             closed: false,
-            buffer,
+            output: output_tx,
             vt100_parser,
             attached: AtomicBool::new(true),
             last_activity: AtomicI64::new(
@@ -329,7 +281,7 @@ impl PtyService {
             .map_err(|e| PtyError::CreateFailed(e.to_string()))?
             .get(&session_id)
             .ok_or(PtyError::SessionNotFound(session_id))?
-            .buffer
+            .output
             .subscribe();
 
         Ok((session_id, rx, exit_rx))
@@ -360,7 +312,7 @@ impl PtyService {
             .unwrap()
             .screen()
             .contents_formatted();
-        let rx = session.buffer.subscribe();
+        let rx = session.output.subscribe();
         session.attached.store(true, Ordering::Relaxed);
         session.update_activity();
         let exit_rx = (*session.exit_tx).subscribe();
@@ -548,6 +500,47 @@ mod tests {
         assert!(
             !service.session_exists(&session_id),
             "session should be removed after close"
+        );
+    }
+
+    /// After the TerminalBuffer cleanup, live PTY output must still reach a
+    /// subscriber via the broadcast channel. The shell prints a prompt at startup,
+    /// which we use as the proof-of-life.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn live_output_reaches_subscriber() {
+        let service = PtyService::new();
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let (session_id, mut rx, _exit_rx) = service
+            .create_session(tmp.path().to_path_buf(), 80, 24)
+            .await
+            .expect("create_session");
+
+        // Trigger a guaranteed write so we don't depend on shell startup chatter.
+        service
+            .write(session_id, b"echo ready\n")
+            .await
+            .expect("write");
+
+        let mut got_bytes = Vec::new();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+        while tokio::time::Instant::now() < deadline {
+            match tokio::time::timeout(Duration::from_millis(500), rx.recv()).await {
+                Ok(Ok(chunk)) => {
+                    got_bytes.extend_from_slice(&chunk);
+                    if got_bytes.windows(5).any(|w| w == b"ready") {
+                        break;
+                    }
+                }
+                Ok(Err(_)) | Err(_) => continue,
+            }
+        }
+
+        service.close_session(session_id).await.expect("close");
+
+        assert!(
+            got_bytes.windows(5).any(|w| w == b"ready"),
+            "subscriber should observe `ready` echoed by the shell, got bytes: {:?}",
+            String::from_utf8_lossy(&got_bytes)
         );
     }
 }

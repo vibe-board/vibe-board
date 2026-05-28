@@ -40,6 +40,10 @@ fn default_rows() -> u16 {
     24
 }
 
+/// Snapshots smaller than this skip gzip — the gzip header + base64
+/// inflation makes them larger than just sending raw.
+const SNAPSHOT_COMPRESS_THRESHOLD: usize = 256;
+
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum TerminalCommand {
@@ -53,6 +57,12 @@ enum TerminalCommand {
 enum TerminalMessage {
     Output {
         data: String,
+    },
+    /// Same as `Output` but `data` is base64(gzip(raw_bytes)).
+    /// Used for the reconnect snapshot only; live chunks stay as `Output`.
+    OutputCompressed {
+        data: String,
+        encoding: String,
     },
     Error {
         message: String,
@@ -189,6 +199,15 @@ pub async fn get_home_dir() -> Result<Json<HomeDirResponse>, ApiError> {
     }))
 }
 
+fn gzip_encode(data: &[u8]) -> std::io::Result<Vec<u8>> {
+    use std::io::Write;
+
+    use flate2::{Compression, write::GzEncoder};
+    let mut enc = GzEncoder::new(Vec::with_capacity(data.len() / 4), Compression::default());
+    enc.write_all(data)?;
+    enc.finish()
+}
+
 async fn handle_terminal_ws(
     socket: WebSocket,
     deployment: DeploymentImpl,
@@ -262,8 +281,23 @@ async fn handle_terminal_ws(
 
     // Send screen snapshot for reconnection
     if !snapshot.is_empty() {
-        let msg = TerminalMessage::Output {
-            data: BASE64.encode(&snapshot),
+        let msg = if snapshot.len() >= SNAPSHOT_COMPRESS_THRESHOLD {
+            match gzip_encode(&snapshot) {
+                Ok(compressed) => TerminalMessage::OutputCompressed {
+                    data: BASE64.encode(&compressed),
+                    encoding: "gzip".to_string(),
+                },
+                Err(e) => {
+                    tracing::warn!("Snapshot gzip failed, sending uncompressed: {}", e);
+                    TerminalMessage::Output {
+                        data: BASE64.encode(&snapshot),
+                    }
+                }
+            }
+        } else {
+            TerminalMessage::Output {
+                data: BASE64.encode(&snapshot),
+            }
         };
         let json = serde_json::to_string(&msg).unwrap_or_default();
         if ws_sender.send(Message::Text(json.into())).await.is_err() {
@@ -393,4 +427,80 @@ pub fn router() -> Router<DeploymentImpl> {
         .route("/terminal/ws", get(terminal_ws))
         .route("/terminal/direct-ws", get(direct_terminal_ws))
         .route("/terminal/home-dir", get(get_home_dir))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Read;
+
+    use flate2::read::GzDecoder;
+
+    use super::*;
+
+    fn gunzip(data: &[u8]) -> Vec<u8> {
+        let mut decoder = GzDecoder::new(data);
+        let mut out = Vec::new();
+        decoder.read_to_end(&mut out).expect("gunzip");
+        out
+    }
+
+    #[test]
+    fn gzip_encode_roundtrip_basic() {
+        let input = b"hello terminal world".to_vec();
+        let compressed = gzip_encode(&input).expect("gzip_encode");
+        let decoded = gunzip(&compressed);
+        assert_eq!(decoded, input);
+    }
+
+    #[test]
+    fn gzip_encode_roundtrip_empty() {
+        let compressed = gzip_encode(&[]).expect("gzip_encode");
+        let decoded = gunzip(&compressed);
+        assert!(decoded.is_empty());
+    }
+
+    #[test]
+    fn output_compressed_serializes_with_encoding_field() {
+        let msg = TerminalMessage::OutputCompressed {
+            data: "abc".to_string(),
+            encoding: "gzip".to_string(),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert_eq!(
+            json,
+            r#"{"type":"output_compressed","data":"abc","encoding":"gzip"}"#
+        );
+    }
+
+    #[test]
+    fn typical_ansi_snapshot_compresses_at_least_2x() {
+        // Build a vt100 emulator and feed it a colorful, repetitive screen —
+        // representative of `git diff` / `cargo build` output. ANSI SGR sequences
+        // and repeated whitespace gzip very well.
+        let mut parser = vt100::Parser::new(24, 80, 0);
+        let red = b"\x1b[31m";
+        let green = b"\x1b[32m";
+        let reset = b"\x1b[0m";
+        for _ in 0..12 {
+            parser.process(red);
+            parser.process(b"-  removed line of code with some content here\r\n");
+            parser.process(reset);
+            parser.process(green);
+            parser.process(b"+  added line of code with some content here\r\n");
+            parser.process(reset);
+        }
+        let snapshot = parser.screen().contents_formatted();
+        assert!(
+            !snapshot.is_empty(),
+            "vt100 snapshot should not be empty after writes"
+        );
+
+        let compressed = gzip_encode(&snapshot).expect("gzip_encode");
+        assert!(
+            compressed.len() * 2 < snapshot.len(),
+            "expected gzip to halve the snapshot at least; got {} -> {} bytes",
+            snapshot.len(),
+            compressed.len()
+        );
+    }
 }
