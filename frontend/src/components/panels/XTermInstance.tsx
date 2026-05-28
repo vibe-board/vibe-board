@@ -15,6 +15,7 @@ import { useTheme } from '@/components/ThemeProvider';
 import { getTerminalTheme } from '@/utils/terminalTheme';
 import { useConnection } from '@/contexts/ConnectionContext';
 import type { WebSocketLike } from '@/lib/connections/types';
+import { decodeBase64Gzip, createWriteChain } from './terminalCompression';
 
 interface XTermInstanceProps {
   endpointUrl: string;
@@ -27,8 +28,15 @@ interface XTermInstanceProps {
 }
 
 interface TerminalMessage {
-  type: 'output' | 'error' | 'exit' | 'session_info' | 'session_expired';
+  type:
+    | 'output'
+    | 'output_compressed'
+    | 'error'
+    | 'exit'
+    | 'session_info'
+    | 'session_expired';
   data?: string;
+  encoding?: string;
   message?: string;
   code?: number;
   session_id?: string;
@@ -227,6 +235,11 @@ export const XTermInstance = forwardRef<
         }
       };
 
+      const enqueueWrite = createWriteChain(
+        (text) => writeOrBuffer(text),
+        (err) => console.error('Terminal write failed:', err)
+      );
+
       // Create WebSocket via the tab's connection
       const parsed = new URL(endpoint, window.location.origin);
       const ws: WebSocketLike = conn.openWs(
@@ -241,16 +254,28 @@ export const XTermInstance = forwardRef<
           switch (msg.type) {
             case 'output':
               if (msg.data) {
-                writeOrBuffer(decodeBase64(msg.data));
+                const data = msg.data;
+                enqueueWrite(() => decodeBase64(data));
               }
               break;
-            case 'error':
-              writeOrBuffer(
-                `\r\n\x1b[31mError: ${msg.message || 'Unknown'}\x1b[0m\r\n`
-              );
+            case 'output_compressed':
+              if (msg.data && msg.encoding === 'gzip') {
+                const data = msg.data;
+                enqueueWrite(() => decodeBase64Gzip(data));
+              } else if (msg.data) {
+                console.warn(
+                  'Unsupported output_compressed encoding:',
+                  msg.encoding
+                );
+              }
               break;
+            case 'error': {
+              const message = msg.message || 'Unknown';
+              enqueueWrite(() => `\r\n\x1b[31mError: ${message}\x1b[0m\r\n`);
+              break;
+            }
             case 'exit':
-              writeOrBuffer('\r\n\x1b[33mProcess exited\x1b[0m\r\n');
+              enqueueWrite(() => '\r\n\x1b[33mProcess exited\x1b[0m\r\n');
               onClose?.();
               break;
             case 'session_info':
@@ -289,13 +314,14 @@ export const XTermInstance = forwardRef<
       };
 
       ws.onerror = () => {
-        writeOrBuffer('\r\n\x1b[31mWebSocket connection error\x1b[0m\r\n');
+        enqueueWrite(() => '\r\n\x1b[31mWebSocket connection error\x1b[0m\r\n');
       };
 
       ws.onclose = (event) => {
         if (!event.wasClean) {
-          writeOrBuffer(
-            `\r\n\x1b[33mConnection closed (code: ${event.code})\x1b[0m\r\n`
+          const code = event.code;
+          enqueueWrite(
+            () => `\r\n\x1b[33mConnection closed (code: ${code})\x1b[0m\r\n`
           );
         }
       };
