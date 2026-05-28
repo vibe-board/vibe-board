@@ -36,6 +36,7 @@ import { paths } from '@/lib/paths';
 import { ExecutionProcessesProvider } from '@/contexts/ExecutionProcessesContext';
 import { ClickedElementsProvider } from '@/contexts/ClickedElementsProvider';
 import { ReviewProvider } from '@/contexts/ReviewProvider';
+import { TaskApprovalsProvider } from '@/contexts/TaskApprovalsContext';
 import {
   GitOperationsProvider,
   useGitOperationsError,
@@ -887,14 +888,16 @@ export function ProjectTasks() {
       </div>
     ) : (
       <div className="w-full h-full overflow-x-auto overflow-y-auto overscroll-x-contain">
-        <TaskKanbanBoard
-          columns={kanbanColumns}
-          onDragEnd={handleDragEnd}
-          onViewTaskDetails={handleViewTaskDetails}
-          selectedTaskId={selectedTask?.id}
-          onCreateTask={handleCreateNewTask}
-          projectId={projectId!}
-        />
+        <TaskApprovalsProvider pendingApprovals={pendingApprovals}>
+          <TaskKanbanBoard
+            columns={kanbanColumns}
+            onDragEnd={handleDragEnd}
+            onViewTaskDetails={handleViewTaskDetails}
+            selectedTaskId={selectedTask?.id}
+            onCreateTask={handleCreateNewTask}
+            projectId={projectId!}
+          />
+        </TaskApprovalsProvider>
       </div>
     );
 
