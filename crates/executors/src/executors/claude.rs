@@ -1550,9 +1550,13 @@ impl ClaudeLogProcessor {
                     }
                 }
                 ClaudeStreamEvent::MessageStop => {
-                    if let Some(id) = self.streaming_message_id.take() {
-                        self.streaming_messages.remove(&id);
-                    }
+                    // Only clear the current message_id reference; keep the
+                    // streaming_messages entry so the top-level Assistant
+                    // message that arrives after MessageStop can still locate
+                    // its streaming entry indices and emit a Replace patch
+                    // (instead of a duplicate Add). The entry is naturally
+                    // overwritten by the next MessageStart with the same id.
+                    self.streaming_message_id.take();
                 }
                 ClaudeStreamEvent::Unknown => {}
             },
@@ -2610,6 +2614,241 @@ mod tests {
             NormalizedEntryType::AssistantMessage
         ));
         assert_eq!(entries[0].content, "Final result");
+    }
+
+    #[test]
+    fn test_result_repro_assistant_then_result_same_text() {
+        // Reproducer for user-reported duplication bug:
+        // assistant emits the final text, then result echoes the same text.
+        // We expect ONE AssistantMessage entry, not two.
+        let mut processor = ClaudeLogProcessor::new();
+
+        let assistant_json = r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Hello world"}],"stop_reason":null},"session_id":"s1"}"#;
+        let parsed_assistant: ClaudeJson = serde_json::from_str(assistant_json).unwrap();
+        let _ = normalize_helper(&mut processor, &parsed_assistant, "");
+
+        let result_json = r#"{"type":"result","subtype":"success","is_error":false,"duration_ms":1000,"result":"Hello world"}"#;
+        let parsed_result: ClaudeJson = serde_json::from_str(result_json).unwrap();
+        let result_entries = normalize_helper(&mut processor, &parsed_result, "");
+
+        let assistant_entries: Vec<_> = result_entries
+            .iter()
+            .filter(|e| matches!(e.entry_type, NormalizedEntryType::AssistantMessage))
+            .collect();
+        assert!(
+            assistant_entries.is_empty(),
+            "Result message should NOT emit a duplicate AssistantMessage when text matches the previous assistant message; got {:?}",
+            assistant_entries
+        );
+    }
+
+    #[test]
+    fn test_result_repro_streaming_partials_then_result() {
+        // Reproducer variant: streaming partial assistant messages, then result.
+        // last_assistant_message tracks the last partial. If result.result is the
+        // full final text and not a substring of the last partial, dedup fails.
+        let mut processor = ClaudeLogProcessor::new();
+        let worktree = "/tmp/test";
+        let provider = EntryIndexProvider::test_new();
+        let msg_id = "msg-streaming-1";
+
+        // message_start
+        let message_start = ClaudeJson::StreamEvent {
+            event: ClaudeStreamEvent::MessageStart {
+                message: ClaudeMessage {
+                    id: Some(msg_id.to_string()),
+                    message_type: None,
+                    role: "assistant".to_string(),
+                    model: Some("claude-test".to_string()),
+                    content: ClaudeMessageContent::Array(vec![]),
+                    stop_reason: None,
+                },
+            },
+            session_id: None,
+            parent_tool_use_id: None,
+            uuid: None,
+        };
+        processor.normalize_entries(&message_start, worktree, &provider);
+
+        // content_block_start (text)
+        let text_start = ClaudeJson::StreamEvent {
+            event: ClaudeStreamEvent::ContentBlockStart {
+                index: 0,
+                content_block: ClaudeContentItem::Text {
+                    text: String::new(),
+                },
+            },
+            session_id: None,
+            parent_tool_use_id: None,
+            uuid: None,
+        };
+        processor.normalize_entries(&text_start, worktree, &provider);
+
+        // delta with full text "Hello world"
+        let delta = ClaudeJson::StreamEvent {
+            event: ClaudeStreamEvent::ContentBlockDelta {
+                index: 0,
+                delta: ClaudeContentBlockDelta::TextDelta {
+                    text: "Hello world".to_string(),
+                },
+            },
+            session_id: None,
+            parent_tool_use_id: None,
+            uuid: None,
+        };
+        processor.normalize_entries(&delta, worktree, &provider);
+
+        // assistant final message with full text
+        let assistant_final = ClaudeJson::Assistant {
+            message: ClaudeMessage {
+                id: Some(msg_id.to_string()),
+                message_type: None,
+                role: "assistant".to_string(),
+                model: None,
+                content: ClaudeMessageContent::Array(vec![ClaudeContentItem::Text {
+                    text: "Hello world".to_string(),
+                }]),
+                stop_reason: Some("end_turn".to_string()),
+            },
+            session_id: None,
+            uuid: None,
+        };
+        processor.normalize_entries(&assistant_final, worktree, &provider);
+
+        // result with same text
+        let result_msg = ClaudeJson::Result {
+            subtype: Some("success".to_string()),
+            is_error: Some(false),
+            duration_ms: Some(1000),
+            result: Some(serde_json::Value::String("Hello world".to_string())),
+            error: None,
+            num_turns: Some(1),
+            session_id: None,
+            model_usage: None,
+            usage: None,
+        };
+        let patches = processor.normalize_entries(&result_msg, worktree, &provider);
+        let entries = patches_to_entries(&patches);
+
+        let assistant_entries: Vec<_> = entries
+            .iter()
+            .filter(|e| matches!(e.entry_type, NormalizedEntryType::AssistantMessage))
+            .collect();
+        assert!(
+            assistant_entries.is_empty(),
+            "After streaming + final assistant + result with same text, result should not emit a duplicate AssistantMessage; got {:?}",
+            assistant_entries
+        );
+    }
+
+    #[test]
+    fn test_result_repro_message_stop_before_final_assistant() {
+        // Realistic Claude stream order: MessageStop fires BEFORE the top-level
+        // Assistant message, so streaming state is already removed by the time
+        // the final Assistant arrives. The final assistant text should still
+        // REPLACE the streaming entry (not ADD a new one).
+        let mut processor = ClaudeLogProcessor::new();
+        let worktree = "/tmp/test";
+        let provider = EntryIndexProvider::test_new();
+        let msg_id = "msg-stop-1";
+
+        let message_start = ClaudeJson::StreamEvent {
+            event: ClaudeStreamEvent::MessageStart {
+                message: ClaudeMessage {
+                    id: Some(msg_id.to_string()),
+                    message_type: None,
+                    role: "assistant".to_string(),
+                    model: Some("claude-test".to_string()),
+                    content: ClaudeMessageContent::Array(vec![]),
+                    stop_reason: None,
+                },
+            },
+            session_id: None,
+            parent_tool_use_id: None,
+            uuid: None,
+        };
+        processor.normalize_entries(&message_start, worktree, &provider);
+
+        let text_start = ClaudeJson::StreamEvent {
+            event: ClaudeStreamEvent::ContentBlockStart {
+                index: 0,
+                content_block: ClaudeContentItem::Text {
+                    text: String::new(),
+                },
+            },
+            session_id: None,
+            parent_tool_use_id: None,
+            uuid: None,
+        };
+        processor.normalize_entries(&text_start, worktree, &provider);
+
+        let delta = ClaudeJson::StreamEvent {
+            event: ClaudeStreamEvent::ContentBlockDelta {
+                index: 0,
+                delta: ClaudeContentBlockDelta::TextDelta {
+                    text: "Hello world".to_string(),
+                },
+            },
+            session_id: None,
+            parent_tool_use_id: None,
+            uuid: None,
+        };
+        processor.normalize_entries(&delta, worktree, &provider);
+
+        let block_stop = ClaudeJson::StreamEvent {
+            event: ClaudeStreamEvent::ContentBlockStop { index: 0 },
+            session_id: None,
+            parent_tool_use_id: None,
+            uuid: None,
+        };
+        processor.normalize_entries(&block_stop, worktree, &provider);
+
+        // MessageStop arrives BEFORE the final assistant message.
+        let message_stop = ClaudeJson::StreamEvent {
+            event: ClaudeStreamEvent::MessageStop,
+            session_id: None,
+            parent_tool_use_id: None,
+            uuid: None,
+        };
+        processor.normalize_entries(&message_stop, worktree, &provider);
+
+        let assistant_final = ClaudeJson::Assistant {
+            message: ClaudeMessage {
+                id: Some(msg_id.to_string()),
+                message_type: None,
+                role: "assistant".to_string(),
+                model: None,
+                content: ClaudeMessageContent::Array(vec![ClaudeContentItem::Text {
+                    text: "Hello world".to_string(),
+                }]),
+                stop_reason: Some("end_turn".to_string()),
+            },
+            session_id: None,
+            uuid: None,
+        };
+        let final_patches = processor.normalize_entries(&assistant_final, worktree, &provider);
+
+        let mut adds_with_assistant_text = 0;
+        for patch in &final_patches {
+            let v = serde_json::to_value(patch).unwrap();
+            for op in v.as_array().unwrap() {
+                if op.get("op").and_then(|o| o.as_str()) == Some("add")
+                    && let Some(value) = op.get("value")
+                    && let Some(entry_type) = value
+                        .get("content")
+                        .and_then(|c| c.get("entry_type"))
+                        .and_then(|et| et.get("type"))
+                    && entry_type.as_str() == Some("assistant_message")
+                {
+                    adds_with_assistant_text += 1;
+                }
+            }
+        }
+        assert_eq!(
+            adds_with_assistant_text, 0,
+            "After MessageStop, the final Assistant message should REPLACE the streaming entry, not ADD a new one. Got {} ADD ops in patches: {:?}",
+            adds_with_assistant_text, final_patches
+        );
     }
 
     #[test]
