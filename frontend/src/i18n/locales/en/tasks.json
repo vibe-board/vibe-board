@@ -402,7 +402,8 @@
       "forcePush": "Force Push",
       "forcePushing": "Force Pushing...",
       "creating": "Creating...",
-      "createPr": "Create PR"
+      "createPr": "Create PR",
+      "createMr": "Create MR"
     },
     "errors": {
       "changeTargetBranch": "Failed to change target branch",
@@ -417,10 +418,16 @@
       "number": "PR #{{number}}",
       "merged": "Merged PR #{{prNumber}}"
     },
+    "mr": {
+      "open": "Open MR !{{number}}",
+      "number": "MR !{{number}}",
+      "merged": "Merged MR !{{prNumber}}"
+    },
     "actions": {
       "title": "Git Actions",
       "changeTarget": "Change target",
       "prMerged": "PR #{{number}} is already merged",
+      "mrMerged": "MR !{{number}} is already merged",
       "loginRequired": {
         "title": "Sign in to manage git actions",
         "description": "Sign in to Vibe Board so you can push branches, merge changes, or open pull requests for this task.",
@@ -590,6 +597,27 @@
       "title": "Sign in to create a pull request",
       "description": "You need to sign in before you can open a pull request for this task. We'll take you to the sign-in page.",
       "action": "Sign in"
+    }
+  },
+  "createMrDialog": {
+    "title": "Create Merge Request",
+    "description": "Create a merge request for this task attempt.",
+    "titleLabel": "Title",
+    "titlePlaceholder": "Enter MR title",
+    "descriptionLabel": "Description (optional)",
+    "descriptionPlaceholder": "Enter MR description",
+    "baseBranchLabel": "Target Branch",
+    "loadingBranches": "Loading branches...",
+    "selectBaseBranch": "Select target branch",
+    "draftLabel": "Create as draft",
+    "autoGenerateLabel": "Auto-generate MR description with AI",
+    "creating": "Creating...",
+    "createButton": "Create MR",
+    "errors": {
+      "insufficientPermissions": "Insufficient permissions. Please ensure the glab CLI has the necessary permissions.",
+      "repoNotFoundOrNoAccess": "Repository not found or no access. Please check your repository access and ensure you are authenticated.",
+      "failedToCreate": "Failed to create MR",
+      "targetBranchNotFound": "Target branch '{{branch}}' does not exist on remote. Please ensure the branch exists before creating a merge request."
     }
   },
   "showcases": {

@@ -15,7 +15,7 @@ pub fn detect_provider_from_url(url: &str) -> ProviderKind {
         return ProviderKind::GitHub;
     }
 
-    // Check Azure patterns before GHE to avoid false positives
+    // Check Azure patterns first to avoid false positives with GHE
     if url_lower.contains("dev.azure.com")
         || url_lower.contains(".visualstudio.com")
         || url_lower.contains("ssh.dev.azure.com")
@@ -28,9 +28,20 @@ pub fn detect_provider_from_url(url: &str) -> ProviderKind {
         return ProviderKind::AzureDevOps;
     }
 
-    // GitHub Enterprise (contains "github." but not the Azure patterns above)
+    // GitHub Enterprise — must run before the GitLab heuristic so that
+    // GitHub Pages URLs like gitlab.github.io route to GitHub.
     if url_lower.contains("github.") {
         return ProviderKind::GitHub;
+    }
+
+    // GitLab.com or self-hosted GitLab. Anchored to host boundaries to
+    // avoid false positives on path components (gitlab.tar.gz) or
+    // hostnames that merely embed "gitlab" (my-gitlab.tools).
+    if url_lower.contains("//gitlab.")
+        || url_lower.contains("@gitlab.")
+        || url_lower.contains(".gitlab.")
+    {
+        return ProviderKind::GitLab;
     }
 
     ProviderKind::Unknown
@@ -52,6 +63,11 @@ fn detect_provider_from_pr_url(pr_url: &str) -> ProviderKind {
         if url_lower.contains("github.com") || url_lower.contains("github.") {
             return ProviderKind::GitHub;
         }
+    }
+
+    // GitLab pattern: contains /-/merge_requests/ in the path
+    if url_lower.contains("/-/merge_requests/") {
+        return ProviderKind::GitLab;
     }
 
     // Azure DevOps pattern: contains /pullrequest/ in the path
@@ -138,10 +154,7 @@ mod tests {
 
     #[test]
     fn test_unknown_provider() {
-        assert_eq!(
-            detect_provider_from_url("https://gitlab.com/owner/repo"),
-            ProviderKind::Unknown
-        );
+        // gitlab.com handled in test_gitlab_com — leave only truly unknown hosts here
         assert_eq!(
             detect_provider_from_url("https://bitbucket.org/owner/repo"),
             ProviderKind::Unknown
@@ -173,6 +186,83 @@ mod tests {
                 "https://org.visualstudio.com/project/_git/repo/pullrequest/456"
             ),
             ProviderKind::AzureDevOps
+        );
+    }
+
+    #[test]
+    fn test_gitlab_com() {
+        assert_eq!(
+            detect_provider_from_url("https://gitlab.com/group/repo"),
+            ProviderKind::GitLab
+        );
+        assert_eq!(
+            detect_provider_from_url("https://gitlab.com/group/repo.git"),
+            ProviderKind::GitLab
+        );
+        assert_eq!(
+            detect_provider_from_url("git@gitlab.com:group/repo.git"),
+            ProviderKind::GitLab
+        );
+    }
+
+    #[test]
+    fn test_gitlab_self_hosted() {
+        assert_eq!(
+            detect_provider_from_url("https://gitlab.company.com/group/repo"),
+            ProviderKind::GitLab
+        );
+        assert_eq!(
+            detect_provider_from_url("https://gitlab.internal.io/team/sub/project"),
+            ProviderKind::GitLab
+        );
+        assert_eq!(
+            detect_provider_from_url("git@gitlab.example.org:group/repo.git"),
+            ProviderKind::GitLab
+        );
+    }
+
+    #[test]
+    fn test_pr_url_gitlab_mr() {
+        assert_eq!(
+            detect_provider_from_pr_url("https://gitlab.com/group/repo/-/merge_requests/123"),
+            ProviderKind::GitLab
+        );
+        assert_eq!(
+            detect_provider_from_pr_url(
+                "https://gitlab.company.com/group/sub/repo/-/merge_requests/45"
+            ),
+            ProviderKind::GitLab
+        );
+    }
+
+    #[test]
+    fn test_gitlab_github_pages_routes_to_github() {
+        // gitlab.github.io is a GitHub Pages host, not GitLab.
+        // The GHE check must run before the GitLab heuristic to catch this.
+        assert_eq!(
+            detect_provider_from_url("https://gitlab.github.io/x/y"),
+            ProviderKind::GitHub
+        );
+    }
+
+    #[test]
+    fn test_gitlab_heuristic_rejects_path_components() {
+        assert_eq!(
+            detect_provider_from_url("https://example.com/gitlab.tar.gz"),
+            ProviderKind::Unknown
+        );
+        assert_eq!(
+            detect_provider_from_url("https://example.com/path/with/gitlab.txt"),
+            ProviderKind::Unknown
+        );
+    }
+
+    #[test]
+    fn test_gitlab_heuristic_rejects_substring_hostnames() {
+        // "my-gitlab.tools" embeds "gitlab" but isn't GitLab.
+        assert_eq!(
+            detect_provider_from_url("https://my-gitlab.tools/owner/repo"),
+            ProviderKind::Unknown
         );
     }
 }

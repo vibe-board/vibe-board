@@ -266,20 +266,21 @@ pub async fn create_pr(
         }
     }
 
-    let git_host = match git_host::GitHostService::from_url(&target_remote.url) {
-        Ok(host) => host,
-        Err(GitHostError::UnsupportedProvider) => {
-            return Ok(ResponseJson(ApiResponse::error_with_data(
-                PrError::UnsupportedProvider,
-            )));
-        }
-        Err(GitHostError::CliNotInstalled { provider }) => {
-            return Ok(ResponseJson(ApiResponse::error_with_data(
-                PrError::CliNotInstalled { provider },
-            )));
-        }
-        Err(e) => return Err(ApiError::GitHost(e)),
-    };
+    let git_host =
+        match git_host::GitHostService::from_url_with_probe(&target_remote.url, &repo_path) {
+            Ok(host) => host,
+            Err(GitHostError::UnsupportedProvider) => {
+                return Ok(ResponseJson(ApiResponse::error_with_data(
+                    PrError::UnsupportedProvider,
+                )));
+            }
+            Err(GitHostError::CliNotInstalled { provider }) => {
+                return Ok(ResponseJson(ApiResponse::error_with_data(
+                    PrError::CliNotInstalled { provider },
+                )));
+            }
+            Err(e) => return Err(ApiError::GitHost(e)),
+        };
 
     let provider = git_host.provider_kind();
 

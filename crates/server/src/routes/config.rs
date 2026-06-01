@@ -62,6 +62,10 @@ pub fn router() -> Router<DeploymentImpl> {
 #[derive(Debug, Serialize, Deserialize, TS)]
 pub struct Environment {
     pub os_type: String,
+    /// Stable compile-time OS family: "macos", "linux", "windows", "freebsd", etc.
+    /// Prefer this over `os_type` for platform branching — `os_type` returns
+    /// distro names on Linux ("Ubuntu", "Debian", ...) which is brittle to match.
+    pub os_family: String,
     pub os_version: String,
     pub os_architecture: String,
     pub bitness: String,
@@ -78,6 +82,7 @@ impl Environment {
         let info = os_info::get();
         Environment {
             os_type: info.os_type().to_string(),
+            os_family: std::env::consts::OS.to_string(),
             os_version: info.version().to_string(),
             os_architecture: info.architecture().unwrap_or("unknown").to_string(),
             bitness: info.bitness().to_string(),

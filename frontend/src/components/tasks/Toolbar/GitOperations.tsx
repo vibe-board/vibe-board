@@ -140,6 +140,9 @@ function GitOperations({
     [getSelectedRepoStatus]
   );
 
+  const prProvider = selectedRepoStatus?.host_provider ?? null;
+  const isGitLab = prProvider === 'git_lab';
+
   const hasConflictsCalculated =
     (selectedRepoStatus?.conflicted_files?.length ?? 0) > 0;
 
@@ -199,8 +202,8 @@ function GitOperations({
           ? t('git.states.pushing')
           : t('git.states.push');
     }
-    return t('git.states.createPr');
-  }, [mergeInfo.hasOpenPR, pushSuccess, pushing, t]);
+    return t(isGitLab ? 'git.states.createMr' : 'git.states.createPr');
+  }, [mergeInfo.hasOpenPR, pushSuccess, pushing, isGitLab, t]);
 
   const handleMergeClick = async () => {
     // Directly perform merge without checking branch status
@@ -302,6 +305,7 @@ function GitOperations({
       task,
       repoId: getSelectedRepoId(),
       targetBranch: getSelectedRepoStatus()?.target_branch_name,
+      provider: prProvider ?? undefined,
     });
   };
 
@@ -360,12 +364,12 @@ function GitOperations({
             <button
               onClick={() => window.open(prMerge.pr_info.url, '_blank')}
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-100/60 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 hover:underline truncate max-w-[180px] sm:max-w-none"
-              aria-label={t('git.pr.open', {
+              aria-label={t(isGitLab ? 'git.mr.open' : 'git.pr.open', {
                 number: Number(prMerge.pr_info.number),
               })}
             >
               <GitPullRequest className="h-3.5 w-3.5" />
-              {t('git.pr.number', {
+              {t(isGitLab ? 'git.mr.number' : 'git.pr.number', {
                 number: Number(prMerge.pr_info.number),
               })}
               <ExternalLink className="h-3.5 w-3.5" />

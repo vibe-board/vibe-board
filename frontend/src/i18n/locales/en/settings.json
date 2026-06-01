@@ -625,6 +625,39 @@
           }
         }
       }
+    },
+    "gitlab": {
+      "cliSetup": {
+        "title": "GitLab CLI Setup",
+        "description": "GitLab CLI (glab) authentication is required to create merge requests and interact with GitLab repositories.",
+        "setupWillTitle": "This setup will:",
+        "steps": {
+          "checkInstalled": "Check if GitLab CLI (glab) is installed",
+          "installHomebrew": "Install it via Homebrew if needed (macOS / Linux)",
+          "authenticate": "Authenticate with gitlab.com using OAuth"
+        },
+        "setupNote": "The setup will run in the chat window. You'll need to complete the authentication in your browser. Self-hosted GitLab users must run `glab auth login --hostname <your-domain> --web` manually.",
+        "runSetup": "Run Setup",
+        "running": "Running...",
+        "errors": {
+          "brewMissing": "Homebrew is not installed. Install it to enable automatic setup.",
+          "notSupported": "Automatic setup is not supported on this platform. Install GitLab CLI manually.",
+          "setupFailed": "Failed to run GitLab CLI setup."
+        },
+        "help": {
+          "homebrew": {
+            "description": "Automatic installation requires Homebrew. Install Homebrew from",
+            "brewSh": "brew.sh",
+            "manualInstall": "and then rerun the setup. Alternatively, install GitLab CLI manually with:",
+            "afterInstall": "After installation, authenticate with (replace HOSTNAME with your self-hosted domain, or omit for gitlab.com):"
+          },
+          "manual": {
+            "description": "Install GitLab CLI from the",
+            "officialDocs": "official documentation",
+            "andAuthenticate": "and then authenticate with your GitLab account using:"
+          }
+        }
+      }
     }
   }
 }
