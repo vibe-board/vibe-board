@@ -555,6 +555,14 @@
           "useCurrent": "Use current branch"
         }
       },
+      "gitHost": {
+        "label": "Git Host",
+        "auto": "Auto (detect from remote URL)",
+        "github": "GitHub",
+        "gitlab": "GitLab",
+        "azure": "Azure DevOps",
+        "helper": "Override automatic detection. Use this for self-hosted GitLab instances on uncommon domains (e.g., code.company.com)."
+      },
       "scripts": {
         "title": "Scripts & Configuration",
         "description": "Configure dev server, setup, cleanup, and copy files for this repository. These scripts run whenever the repository is used in any workspace.",

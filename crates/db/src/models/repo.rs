@@ -30,6 +30,9 @@ pub struct Repo {
     pub dev_server_script: Option<String>,
     pub default_target_branch: Option<String>,
     pub default_working_dir: Option<String>,
+    /// Snake-case ProviderKind ('git_hub' | 'azure_dev_ops' | 'git_lab') set by the user;
+    /// NULL = auto-detect via URL heuristic + glab probe. Validated at the server layer.
+    pub host_provider_override: Option<String>,
     #[ts(type = "Date")]
     pub created_at: DateTime<Utc>,
     #[ts(type = "Date")]
@@ -110,6 +113,14 @@ pub struct UpdateRepo {
     )]
     #[ts(optional, type = "string | null")]
     pub default_working_dir: Option<Option<String>>,
+
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "double_option"
+    )]
+    #[ts(optional, type = "string | null")]
+    pub host_provider_override: Option<Option<String>>,
 }
 
 impl Repo {
@@ -130,6 +141,7 @@ impl Repo {
                       dev_server_script,
                       default_target_branch,
                       default_working_dir,
+                      host_provider_override,
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM repos
@@ -171,6 +183,7 @@ impl Repo {
                       dev_server_script,
                       default_target_branch,
                       default_working_dir,
+                      host_provider_override,
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM repos
@@ -229,6 +242,7 @@ impl Repo {
                          dev_server_script,
                          default_target_branch,
                          default_working_dir,
+                         host_provider_override,
                          created_at as "created_at!: DateTime<Utc>",
                          updated_at as "updated_at!: DateTime<Utc>""#,
             id,
@@ -266,6 +280,7 @@ impl Repo {
                       dev_server_script,
                       default_target_branch,
                       default_working_dir,
+                      host_provider_override,
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM repos
@@ -292,6 +307,7 @@ impl Repo {
                       r.dev_server_script,
                       r.default_target_branch,
                       r.default_working_dir,
+                      r.host_provider_override,
                       r.created_at as "created_at!: DateTime<Utc>",
                       r.updated_at as "updated_at!: DateTime<Utc>"
                FROM repos r
@@ -354,6 +370,10 @@ impl Repo {
             None => existing.default_working_dir,
             Some(v) => v.clone(),
         };
+        let host_provider_override = match &payload.host_provider_override {
+            None => existing.host_provider_override,
+            Some(v) => v.clone(),
+        };
 
         sqlx::query_as!(
             Repo,
@@ -367,8 +387,9 @@ impl Repo {
                    dev_server_script = $7,
                    default_target_branch = $8,
                    default_working_dir = $9,
+                   host_provider_override = $10,
                    updated_at = datetime('now', 'subsec')
-               WHERE id = $10
+               WHERE id = $11
                RETURNING id as "id!: Uuid",
                          path,
                          name,
@@ -381,6 +402,7 @@ impl Repo {
                          dev_server_script,
                          default_target_branch,
                          default_working_dir,
+                         host_provider_override,
                          created_at as "created_at!: DateTime<Utc>",
                          updated_at as "updated_at!: DateTime<Utc>""#,
             display_name,
@@ -392,6 +414,7 @@ impl Repo {
             dev_server_script,
             default_target_branch,
             default_working_dir,
+            host_provider_override,
             id
         )
         .fetch_one(pool)

@@ -262,7 +262,11 @@ pub async fn list_open_prs(
         None => deployment.git().get_default_remote(&repo.path)?,
     };
 
-    let git_host = match GitHostService::from_url(&remote.url) {
+    let git_host = match GitHostService::from_repo_or_url(
+        repo.host_provider_override.as_deref(),
+        &remote.url,
+        &repo.path,
+    ) {
         Ok(host) => host,
         Err(GitHostError::UnsupportedProvider) => {
             return Ok(ResponseJson(ApiResponse::error_with_data(

@@ -555,6 +555,14 @@
           "useCurrent": "使用当前分支"
         }
       },
+      "gitHost": {
+        "label": "Git 托管",
+        "auto": "自动（从 remote URL 检测）",
+        "github": "GitHub",
+        "gitlab": "GitLab",
+        "azure": "Azure DevOps",
+        "helper": "覆盖自动检测。在使用非常规域名的自托管 GitLab 实例（如 code.company.com）时使用。"
+      },
       "scripts": {
         "title": "脚本和配置",
         "description": "配置此仓库的设置脚本、清理脚本和要复制的文件。这些脚本在仓库用于任何工作区时都会运行。",

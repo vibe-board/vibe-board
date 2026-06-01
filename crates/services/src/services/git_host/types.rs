@@ -23,6 +23,22 @@ impl std::fmt::Display for ProviderKind {
     }
 }
 
+impl ProviderKind {
+    /// Parse a snake-case string (`git_hub` / `azure_dev_ops` / `git_lab` /
+    /// `unknown`). Returns `None` for invalid strings. This matches the
+    /// `serde(rename_all = "snake_case")` serialization used when persisting
+    /// `host_provider_override` on the `repos` table.
+    pub fn from_snake_case(s: &str) -> Option<Self> {
+        match s {
+            "git_hub" => Some(Self::GitHub),
+            "azure_dev_ops" => Some(Self::AzureDevOps),
+            "git_lab" => Some(Self::GitLab),
+            "unknown" => Some(Self::Unknown),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct CreatePrRequest {
     pub title: String,
@@ -159,5 +175,28 @@ mod tests {
     fn provider_kind_gitlab_serializes_to_snake_case() {
         let s = serde_json::to_string(&ProviderKind::GitLab).unwrap();
         assert_eq!(s, "\"git_lab\"");
+    }
+
+    #[test]
+    fn provider_kind_from_snake_case_roundtrip() {
+        for kind in [
+            ProviderKind::GitHub,
+            ProviderKind::AzureDevOps,
+            ProviderKind::GitLab,
+            ProviderKind::Unknown,
+        ] {
+            let s = serde_json::to_string(&kind).unwrap();
+            // strip the surrounding quotes
+            let raw = s.trim_matches('"');
+            assert_eq!(ProviderKind::from_snake_case(raw), Some(kind));
+        }
+    }
+
+    #[test]
+    fn provider_kind_from_snake_case_invalid_returns_none() {
+        assert_eq!(ProviderKind::from_snake_case(""), None);
+        assert_eq!(ProviderKind::from_snake_case("GitHub"), None);
+        assert_eq!(ProviderKind::from_snake_case("github"), None);
+        assert_eq!(ProviderKind::from_snake_case("gitlab"), None);
     }
 }

@@ -36,6 +36,8 @@ interface RepoScriptsFormState {
   cleanup_script: string;
   copy_files: string;
   dev_server_script: string;
+  /** Empty string = "auto" (will be sent as null on save). */
+  host_provider_override: string;
 }
 
 function repoToFormState(repo: Repo): RepoScriptsFormState {
@@ -46,6 +48,7 @@ function repoToFormState(repo: Repo): RepoScriptsFormState {
     cleanup_script: repo.cleanup_script ?? '',
     copy_files: repo.copy_files ?? '',
     dev_server_script: repo.dev_server_script ?? '',
+    host_provider_override: repo.host_provider_override ?? '',
   };
 }
 
@@ -183,6 +186,10 @@ export function ReposSettings() {
         copy_files: draft.copy_files.trim() || null,
         parallel_setup_script: draft.parallel_setup_script,
         dev_server_script: draft.dev_server_script.trim() || null,
+        host_provider_override:
+          draft.host_provider_override === ''
+            ? null
+            : draft.host_provider_override,
       };
 
       const updatedRepo = await repoApi.update(selectedRepo.id, updateData);
@@ -325,6 +332,41 @@ export function ReposSettings() {
                 <div className="text-sm text-muted-foreground font-mono bg-muted px-3 py-2 rounded-md">
                   {selectedRepo.path}
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="git-host-override">
+                  {t('settings.repos.gitHost.label')}
+                </Label>
+                <Select
+                  value={draft.host_provider_override || 'auto'}
+                  onValueChange={(value) =>
+                    updateDraft({
+                      host_provider_override: value === 'auto' ? '' : value,
+                    })
+                  }
+                >
+                  <SelectTrigger id="git-host-override">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">
+                      {t('settings.repos.gitHost.auto')}
+                    </SelectItem>
+                    <SelectItem value="git_hub">
+                      {t('settings.repos.gitHost.github')}
+                    </SelectItem>
+                    <SelectItem value="git_lab">
+                      {t('settings.repos.gitHost.gitlab')}
+                    </SelectItem>
+                    <SelectItem value="azure_dev_ops">
+                      {t('settings.repos.gitHost.azure')}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-sm text-muted-foreground">
+                  {t('settings.repos.gitHost.helper')}
+                </p>
               </div>
             </CardContent>
           </Card>
