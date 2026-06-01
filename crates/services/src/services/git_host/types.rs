@@ -8,6 +8,7 @@ use ts_rs::TS;
 pub enum ProviderKind {
     GitHub,
     AzureDevOps,
+    GitLab,
     Unknown,
 }
 
@@ -16,6 +17,7 @@ impl std::fmt::Display for ProviderKind {
         match self {
             ProviderKind::GitHub => write!(f, "GitHub"),
             ProviderKind::AzureDevOps => write!(f, "Azure DevOps"),
+            ProviderKind::GitLab => write!(f, "GitLab"),
             ProviderKind::Unknown => write!(f, "Unknown"),
         }
     }
@@ -142,4 +144,20 @@ pub struct OpenPrInfo {
     pub title: String,
     pub head_branch: String,
     pub base_branch: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn provider_kind_gitlab_display() {
+        assert_eq!(format!("{}", ProviderKind::GitLab), "GitLab");
+    }
+
+    #[test]
+    fn provider_kind_gitlab_serializes_to_snake_case() {
+        let s = serde_json::to_string(&ProviderKind::GitLab).unwrap();
+        assert_eq!(s, "\"git_lab\"");
+    }
 }

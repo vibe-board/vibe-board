@@ -1,6 +1,7 @@
 pub mod codex_setup;
 pub mod cursor_setup;
 pub mod gh_cli_setup;
+pub mod glab_cli_setup;
 pub mod images;
 pub mod pr;
 pub mod workspace_summary;
@@ -47,6 +48,7 @@ use serde::{Deserialize, Serialize};
 use services::services::{
     config::DEFAULT_COMMIT_MESSAGE_PROMPT,
     container::ContainerService,
+    git_host::{ProviderKind, detection::detect_provider_from_url},
     session_export::{ExportError, build_attempt_export, build_zip_bytes, export_filename},
     workspace_manager::WorkspaceManager,
 };
@@ -59,7 +61,7 @@ use crate::{
     DeploymentImpl,
     error::ApiError,
     middleware::{load_workspace_middleware, load_workspace_middleware_with_extra_param},
-    routes::task_attempts::gh_cli_setup::GhCliSetupError,
+    routes::task_attempts::{gh_cli_setup::GhCliSetupError, glab_cli_setup::GlabCliSetupError},
 };
 
 #[derive(Debug, Deserialize, Serialize, TS)]
@@ -1015,6 +1017,8 @@ pub struct RepoBranchStatus {
     pub repo_name: String,
     #[serde(flatten)]
     pub status: BranchStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host_provider: Option<ProviderKind>,
 }
 
 pub async fn get_task_attempt_branch_status(
@@ -1146,6 +1150,17 @@ pub async fn get_task_attempt_branch_status(
             (None, None)
         };
 
+        let host_provider = match deployment
+            .git()
+            .resolve_remote_for_branch(&repo.path, &target_branch)
+        {
+            Ok(remote) => match detect_provider_from_url(&remote.url) {
+                ProviderKind::Unknown => None,
+                kind => Some(kind),
+            },
+            Err(_) => None,
+        };
+
         results.push(RepoBranchStatus {
             repo_id: repo.id,
             repo_name: repo.name.clone(),
@@ -1165,6 +1180,7 @@ pub async fn get_task_attempt_branch_status(
                 conflicted_files,
                 is_target_remote: target_branch_type == BranchType::Remote,
             },
+            host_provider,
         });
     }
 
@@ -2117,6 +2133,43 @@ pub async fn gh_cli_setup_handler(
     }
 }
 
+#[axum::debug_handler]
+pub async fn glab_cli_setup_handler(
+    Extension(workspace): Extension<Workspace>,
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<ExecutionProcess, GlabCliSetupError>>, ApiError> {
+    match glab_cli_setup::run_glab_cli_setup(&deployment, &workspace).await {
+        Ok(execution_process) => {
+            deployment
+                .track_if_analytics_allowed(
+                    "glab_cli_setup_executed",
+                    serde_json::json!({
+                        "workspace_id": workspace.id.to_string(),
+                    }),
+                )
+                .await;
+
+            Ok(ResponseJson(ApiResponse::success(execution_process)))
+        }
+        Err(ApiError::Executor(ExecutorError::ExecutableNotFound { program }))
+            if program == "brew" =>
+        {
+            Ok(ResponseJson(ApiResponse::error_with_data(
+                GlabCliSetupError::BrewMissing,
+            )))
+        }
+        Err(ApiError::Executor(ExecutorError::SetupHelperNotSupported)) => Ok(ResponseJson(
+            ApiResponse::error_with_data(GlabCliSetupError::SetupHelperNotSupported),
+        )),
+        Err(ApiError::Executor(err)) => Ok(ResponseJson(ApiResponse::error_with_data(
+            GlabCliSetupError::Other {
+                message: err.to_string(),
+            },
+        ))),
+        Err(err) => Err(err),
+    }
+}
+
 pub async fn get_task_attempt_repos(
     Extension(workspace): Extension<Workspace>,
     State(deployment): State<DeploymentImpl>,
@@ -2374,6 +2427,7 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
             )
             .route("/run-agent-setup", post(run_agent_setup))
             .route("/gh-cli-setup", post(gh_cli_setup_handler))
+            .route("/glab-cli-setup", post(glab_cli_setup_handler))
             .route("/start-dev-server", post(start_dev_server))
             .route("/run-setup-script", post(run_setup_script))
             .route("/run-cleanup-script", post(run_cleanup_script))

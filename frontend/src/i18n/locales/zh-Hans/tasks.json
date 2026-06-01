@@ -338,7 +338,8 @@
       "forcePush": "强制推送",
       "forcePushing": "强制推送中...",
       "creating": "创建中...",
-      "createPr": "创建 PR"
+      "createPr": "创建 PR",
+      "createMr": "创建 MR"
     },
     "errors": {
       "changeTargetBranch": "更改目标分支失败",
@@ -353,10 +354,16 @@
       "number": "PR #{{number}}",
       "merged": "已合并PR #{{prNumber}}"
     },
+    "mr": {
+      "open": "打开 MR !{{number}}",
+      "number": "MR !{{number}}",
+      "merged": "已合并 MR !{{prNumber}}"
+    },
     "actions": {
       "title": "Git 操作",
       "changeTarget": "更改目标",
       "prMerged": "PR #{{number}} 已合并",
+      "mrMerged": "MR !{{number}} 已合并",
       "loginRequired": {
         "title": "登录以管理 git 操作",
         "description": "登录 Vibe Board，以便您可以推送分支、合并更改或为此任务打开拉取请求。",
@@ -513,6 +520,27 @@
       "title": "登录以创建拉取请求",
       "description": "您需要登录才能为此任务打开拉取请求。我们将带您到登录页面。",
       "action": "登录"
+    }
+  },
+  "createMrDialog": {
+    "title": "创建合并请求",
+    "description": "为此任务尝试创建合并请求。",
+    "titleLabel": "标题",
+    "titlePlaceholder": "输入 MR 标题",
+    "descriptionLabel": "描述（可选）",
+    "descriptionPlaceholder": "输入 MR 描述",
+    "baseBranchLabel": "目标分支",
+    "loadingBranches": "加载分支中...",
+    "selectBaseBranch": "选择目标分支",
+    "draftLabel": "创建为草稿",
+    "autoGenerateLabel": "请求 AI 代理生成 MR 描述",
+    "creating": "创建中...",
+    "createButton": "创建 MR",
+    "errors": {
+      "insufficientPermissions": "权限不足。请确保 glab CLI 具有必要的权限。",
+      "repoNotFoundOrNoAccess": "未找到仓库或无访问权限。请检查您的仓库访问权限并确保您已通过身份验证。",
+      "failedToCreate": "创建 MR 失败",
+      "targetBranchNotFound": "远程上不存在目标分支 {{branch}}。请在创建合并请求之前确保该分支存在。"
     }
   },
   "showcases": {

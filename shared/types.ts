@@ -268,7 +268,13 @@ export type UserSystemInfo = { config: Config, analytics_user_id: string, login_
  */
 capabilities: { [key in string]?: Array<BaseAgentCapability> }, executors: { [key in BaseCodingAgent]?: ExecutorConfig }, };
 
-export type Environment = { os_type: string, os_version: string, os_architecture: string, bitness: string, };
+export type Environment = { os_type: string, 
+/**
+ * Stable compile-time OS family: "macos", "linux", "windows", "freebsd", etc.
+ * Prefer this over `os_type` for platform branching — `os_type` returns
+ * distro names on Linux ("Ubuntu", "Debian", ...) which is brittle to match.
+ */
+os_family: string, os_version: string, os_architecture: string, bitness: string, };
 
 export type McpServerQuery = { executor: BaseCodingAgent, };
 
@@ -331,6 +337,8 @@ export type RunAgentSetupResponse = Record<string, never>;
 
 export type GhCliSetupError = "BREW_MISSING" | "SETUP_HELPER_NOT_SUPPORTED" | { "OTHER": { message: string, } };
 
+export type GlabCliSetupError = "BREW_MISSING" | "SETUP_HELPER_NOT_SUPPORTED" | { "OTHER": { message: string, } };
+
 export type RebaseTaskAttemptRequest = { repo_id: string, old_base_branch: string | null, new_base_branch: string | null, };
 
 export type ContinueRebaseRequest = { repo_id: string, };
@@ -357,7 +365,7 @@ export type GetPrCommentsQuery = { repo_id: string, };
 
 export type UnifiedPrComment = { "comment_type": "general", id: string, author: string, author_association: string | null, body: string, created_at: string, url: string | null, } | { "comment_type": "review", id: bigint, author: string, author_association: string | null, body: string, created_at: string, url: string | null, path: string, line: bigint | null, side: string | null, diff_hunk: string | null, };
 
-export type ProviderKind = "git_hub" | "azure_dev_ops" | "unknown";
+export type ProviderKind = "git_hub" | "azure_dev_ops" | "git_lab" | "unknown";
 
 export type OpenPrInfo = { number: bigint, url: string, title: string, head_branch: string, base_branch: string, };
 
@@ -371,7 +379,7 @@ export type CreateWorkspaceFromPrResponse = { workspace: Workspace, task: Task, 
 
 export type CreateFromPrError = { "type": "pr_not_found" } | { "type": "branch_fetch_failed", message: string, } | { "type": "cli_not_installed", provider: ProviderKind, } | { "type": "auth_failed", message: string, } | { "type": "unsupported_provider" } | { "type": "repo_not_in_project" };
 
-export type RepoBranchStatus = { repo_id: string, repo_name: string, commits_behind: number | null, commits_ahead: number | null, has_uncommitted_changes: boolean | null, head_oid: string | null, uncommitted_count: number | null, untracked_count: number | null, target_branch_name: string, remote_commits_behind: number | null, remote_commits_ahead: number | null, merges: Array<Merge>, 
+export type RepoBranchStatus = { repo_id: string, repo_name: string, host_provider: ProviderKind | null, commits_behind: number | null, commits_ahead: number | null, has_uncommitted_changes: boolean | null, head_oid: string | null, uncommitted_count: number | null, untracked_count: number | null, target_branch_name: string, remote_commits_behind: number | null, remote_commits_ahead: number | null, merges: Array<Merge>, 
 /**
  * True if a `git rebase` is currently in progress in this worktree
  */

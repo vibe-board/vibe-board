@@ -52,6 +52,7 @@ import {
   RunAgentSetupRequest,
   RunAgentSetupResponse,
   GhCliSetupError,
+  GlabCliSetupError,
   RunScriptError,
   StatusResponse,
   OpenEditorResponse,
@@ -566,6 +567,16 @@ export function createApi(makeReq: MakeRequestFn, uploadFd: UploadFormDataFn) {
         }
       );
       return handleApiResponse<ExecutionProcess, GhCliSetupError>(response);
+    },
+
+    setupGlabCli: async (attemptId: string): Promise<ExecutionProcess> => {
+      const response = await makeReq(
+        `/api/task-attempts/${attemptId}/glab-cli-setup`,
+        {
+          method: 'POST',
+        }
+      );
+      return handleApiResponse<ExecutionProcess, GlabCliSetupError>(response);
     },
 
     runSetupScript: async (

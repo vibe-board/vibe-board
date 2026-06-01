@@ -625,6 +625,39 @@
           }
         }
       }
+    },
+    "gitlab": {
+      "cliSetup": {
+        "title": "GitLab CLI 设置",
+        "description": "需要 GitLab CLI (glab) 认证才能创建合并请求并与 GitLab 仓库交互。",
+        "setupWillTitle": "此设置将：",
+        "steps": {
+          "checkInstalled": "检查是否已安装 GitLab CLI (glab)",
+          "installHomebrew": "如有需要，通过 Homebrew 安装（macOS / Linux）",
+          "authenticate": "使用 OAuth 认证 gitlab.com"
+        },
+        "setupNote": "设置将在聊天窗口中运行。您需要在浏览器中完成身份验证。自托管 GitLab 用户需手动运行 `glab auth login --hostname <你的域名> --web`。",
+        "runSetup": "运行设置",
+        "running": "运行中...",
+        "errors": {
+          "brewMissing": "未安装 Homebrew。安装它以启用自动设置。",
+          "notSupported": "当前平台不支持自动设置。请手动安装 GitLab CLI。",
+          "setupFailed": "运行 GitLab CLI 设置失败。"
+        },
+        "help": {
+          "homebrew": {
+            "description": "自动安装需要 Homebrew。请从以下位置安装 Homebrew：",
+            "brewSh": "brew.sh",
+            "manualInstall": "然后重新运行设置。或者，您也可以手动安装 GitLab CLI：",
+            "afterInstall": "安装后，使用以下命令进行身份验证（将 HOSTNAME 替换为自托管域名，gitlab.com 可省略）："
+          },
+          "manual": {
+            "description": "请从以下位置安装 GitLab CLI：",
+            "officialDocs": "官方文档",
+            "andAuthenticate": "然后使用以下命令使用您的 GitLab 帐户进行身份验证："
+          }
+        }
+      }
     }
   }
 }
