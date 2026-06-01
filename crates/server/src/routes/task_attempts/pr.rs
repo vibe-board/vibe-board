@@ -266,21 +266,28 @@ pub async fn create_pr(
         }
     }
 
-    let git_host =
-        match git_host::GitHostService::from_url_with_probe(&target_remote.url, &repo_path) {
-            Ok(host) => host,
-            Err(GitHostError::UnsupportedProvider) => {
-                return Ok(ResponseJson(ApiResponse::error_with_data(
-                    PrError::UnsupportedProvider,
-                )));
-            }
-            Err(GitHostError::CliNotInstalled { provider }) => {
-                return Ok(ResponseJson(ApiResponse::error_with_data(
-                    PrError::CliNotInstalled { provider },
-                )));
-            }
-            Err(e) => return Err(ApiError::GitHost(e)),
-        };
+    // Honor the user-set repo override first; otherwise fall back to URL
+    // heuristic + glab probe. Both paths share the same error mapping.
+    let git_host_result = git_host::GitHostService::from_repo_or_url(
+        repo.host_provider_override.as_deref(),
+        &target_remote.url,
+        &repo_path,
+    );
+
+    let git_host = match git_host_result {
+        Ok(host) => host,
+        Err(GitHostError::UnsupportedProvider) => {
+            return Ok(ResponseJson(ApiResponse::error_with_data(
+                PrError::UnsupportedProvider,
+            )));
+        }
+        Err(GitHostError::CliNotInstalled { provider }) => {
+            return Ok(ResponseJson(ApiResponse::error_with_data(
+                PrError::CliNotInstalled { provider },
+            )));
+        }
+        Err(e) => return Err(ApiError::GitHost(e)),
+    };
 
     let provider = git_host.provider_kind();
 
@@ -404,7 +411,11 @@ pub async fn attach_existing_pr(
     let git = deployment.git();
     let remote = git.resolve_remote_for_branch(&repo.path, &workspace_repo.target_branch)?;
 
-    let git_host = match git_host::GitHostService::from_url(&remote.url) {
+    let git_host = match git_host::GitHostService::from_repo_or_url(
+        repo.host_provider_override.as_deref(),
+        &remote.url,
+        &repo.path,
+    ) {
         Ok(host) => host,
         Err(GitHostError::UnsupportedProvider) => {
             return Ok(ResponseJson(ApiResponse::error_with_data(
@@ -523,7 +534,11 @@ pub async fn get_pr_comments(
     let git = deployment.git();
     let remote = git.resolve_remote_for_branch(&repo.path, &workspace_repo.target_branch)?;
 
-    let git_host = match git_host::GitHostService::from_url(&remote.url) {
+    let git_host = match git_host::GitHostService::from_repo_or_url(
+        repo.host_provider_override.as_deref(),
+        &remote.url,
+        &repo.path,
+    ) {
         Ok(host) => host,
         Err(GitHostError::CliNotInstalled { provider }) => {
             return Ok(ResponseJson(ApiResponse::error_with_data(

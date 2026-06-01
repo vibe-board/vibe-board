@@ -1150,15 +1150,27 @@ pub async fn get_task_attempt_branch_status(
             (None, None)
         };
 
-        let host_provider = match deployment
-            .git()
-            .resolve_remote_for_branch(&repo.path, &target_branch)
-        {
-            Ok(remote) => match detect_provider_from_url(&remote.url) {
-                ProviderKind::Unknown => None,
-                kind => Some(kind),
-            },
-            Err(_) => None,
+        let host_provider = {
+            // 1. Explicit user override wins (when it parses to a real provider).
+            let override_kind = repo
+                .host_provider_override
+                .as_deref()
+                .and_then(ProviderKind::from_snake_case)
+                .filter(|k| !matches!(k, ProviderKind::Unknown));
+
+            // 2. Otherwise fall back to the URL heuristic on the resolved remote.
+            override_kind.or_else(|| {
+                match deployment
+                    .git()
+                    .resolve_remote_for_branch(&repo.path, &target_branch)
+                {
+                    Ok(remote) => match detect_provider_from_url(&remote.url) {
+                        ProviderKind::Unknown => None,
+                        kind => Some(kind),
+                    },
+                    Err(_) => None,
+                }
+            })
         };
 
         results.push(RepoBranchStatus {

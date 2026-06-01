@@ -87,6 +87,41 @@ impl GitHostService {
         }
         Err(GitHostError::UnsupportedProvider)
     }
+
+    /// Construct a provider directly from a known kind, bypassing URL
+    /// detection. Used when the user has set a `host_provider_override` on the
+    /// repo. Returns `UnsupportedProvider` for `ProviderKind::Unknown` to
+    /// keep the contract symmetric with `from_url`.
+    pub fn from_provider_kind(kind: ProviderKind) -> Result<Self, GitHostError> {
+        match kind {
+            ProviderKind::GitHub => Ok(Self::GitHub(GitHubProvider::new()?)),
+            ProviderKind::AzureDevOps => Ok(Self::AzureDevOps(AzureDevOpsProvider::new()?)),
+            ProviderKind::GitLab => Ok(Self::GitLab(GitLabProvider::new()?)),
+            ProviderKind::Unknown => Err(GitHostError::UnsupportedProvider),
+        }
+    }
+
+    /// Resolve the right provider for a repo:
+    /// override → URL heuristic → glab probe → UnsupportedProvider.
+    ///
+    /// Use this everywhere code needs to choose a provider for a one-shot
+    /// operation on a known repo (create_pr, list_open_prs, attach_pr,
+    /// get_pr_comments). Hot/polling paths (e.g. branch-status display)
+    /// should keep their own override + heuristic-only fast path because
+    /// the probe spawns a `glab` subprocess.
+    pub fn from_repo_or_url(
+        override_kind: Option<&str>,
+        url: &str,
+        repo_path: &Path,
+    ) -> Result<Self, GitHostError> {
+        if let Some(kind) = override_kind
+            .and_then(ProviderKind::from_snake_case)
+            .filter(|k| !matches!(k, ProviderKind::Unknown))
+        {
+            return Self::from_provider_kind(kind);
+        }
+        Self::from_url_with_probe(url, repo_path)
+    }
 }
 
 #[cfg(test)]
@@ -120,5 +155,84 @@ mod factory_tests {
             matches!(result, Err(GitHostError::UnsupportedProvider)),
             "expected UnsupportedProvider, got {err_kind}"
         );
+    }
+
+    #[test]
+    fn from_provider_kind_unknown_is_unsupported() {
+        assert!(matches!(
+            GitHostService::from_provider_kind(ProviderKind::Unknown),
+            Err(GitHostError::UnsupportedProvider)
+        ));
+    }
+
+    #[test]
+    fn from_provider_kind_constructs_known_providers() {
+        // If a provider CLI is genuinely missing, this returns CliNotInstalled.
+        // Either way the variant we get back must match the requested kind
+        // (or be a CliNotInstalled with the right `provider` field).
+        for kind in [
+            ProviderKind::GitHub,
+            ProviderKind::AzureDevOps,
+            ProviderKind::GitLab,
+        ] {
+            match GitHostService::from_provider_kind(kind) {
+                Ok(svc) => assert_eq!(svc.provider_kind(), kind),
+                Err(GitHostError::CliNotInstalled { provider }) => {
+                    assert_eq!(provider, kind);
+                }
+                Err(e) => panic!("unexpected error for {kind:?}: {e:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn from_repo_or_url_prefers_override() {
+        // Override "git_lab" beats a github.com URL.
+        let tmp = std::env::temp_dir();
+        let result = GitHostService::from_repo_or_url(
+            Some("git_lab"),
+            "https://github.com/owner/repo",
+            &tmp,
+        );
+        // Either Ok(GitLab) or Err(CliNotInstalled { provider: GitLab }) in CI.
+        match result {
+            Ok(svc) => assert_eq!(svc.provider_kind(), ProviderKind::GitLab),
+            Err(GitHostError::CliNotInstalled { provider }) => {
+                assert_eq!(provider, ProviderKind::GitLab);
+            }
+            Err(e) => panic!("unexpected error: {e:?}"),
+        }
+    }
+
+    #[test]
+    fn from_repo_or_url_falls_back_to_url_detection_when_no_override() {
+        // No override → URL heuristic → returns GitHub for github.com URL.
+        let tmp = std::env::temp_dir();
+        let result = GitHostService::from_repo_or_url(None, "https://github.com/owner/repo", &tmp);
+        match result {
+            Ok(svc) => assert_eq!(svc.provider_kind(), ProviderKind::GitHub),
+            Err(GitHostError::CliNotInstalled { provider }) => {
+                assert_eq!(provider, ProviderKind::GitHub);
+            }
+            Err(e) => panic!("unexpected error: {e:?}"),
+        }
+    }
+
+    #[test]
+    fn from_repo_or_url_ignores_unknown_override_string() {
+        // An unrecognized override snake-case string falls back to URL detection.
+        let tmp = std::env::temp_dir();
+        let result = GitHostService::from_repo_or_url(
+            Some("bogus_value"),
+            "https://github.com/owner/repo",
+            &tmp,
+        );
+        match result {
+            Ok(svc) => assert_eq!(svc.provider_kind(), ProviderKind::GitHub),
+            Err(GitHostError::CliNotInstalled { provider }) => {
+                assert_eq!(provider, ProviderKind::GitHub);
+            }
+            Err(e) => panic!("unexpected error: {e:?}"),
+        }
     }
 }
