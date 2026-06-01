@@ -4,11 +4,14 @@ use json_patch::Patch;
 use serde::{Deserialize, Serialize};
 use serde_json::{from_value, json, to_value};
 use ts_rs::TS;
-use workspace_utils::{diff::Diff, msg_store::MsgStore};
+use workspace_utils::diff::Diff;
 
 use crate::{
     executors::SlashCommandDescription,
-    logs::{NormalizedEntry, utils::EntryIndexProvider},
+    logs::{
+        NormalizedEntry,
+        utils::{ConversationSink, EntryIndexProvider},
+    },
 };
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, TS)]
@@ -146,7 +149,7 @@ pub fn extract_normalized_entry_from_patch(patch: &Patch) -> Option<(usize, Norm
 }
 
 pub fn upsert_normalized_entry(
-    msg_store: &Arc<MsgStore>,
+    msg_store: &Arc<dyn ConversationSink>,
     index: usize,
     normalized_entry: NormalizedEntry,
     is_new: bool,
@@ -162,7 +165,7 @@ pub fn upsert_normalized_entry(
 }
 
 pub fn add_normalized_entry(
-    msg_store: &Arc<MsgStore>,
+    msg_store: &Arc<dyn ConversationSink>,
     index_provider: &EntryIndexProvider,
     normalized_entry: NormalizedEntry,
 ) -> usize {
@@ -172,7 +175,7 @@ pub fn add_normalized_entry(
 }
 
 pub fn replace_normalized_entry(
-    msg_store: &Arc<MsgStore>,
+    msg_store: &Arc<dyn ConversationSink>,
     index: usize,
     normalized_entry: NormalizedEntry,
 ) {

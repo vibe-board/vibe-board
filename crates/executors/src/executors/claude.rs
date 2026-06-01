@@ -24,7 +24,6 @@ use workspace_utils::{
     approvals::{ApprovalStatus, QuestionStatus},
     diff::create_unified_diff,
     log_msg::LogMsg,
-    msg_store::MsgStore,
     path::make_path_relative,
 };
 
@@ -46,7 +45,7 @@ use crate::{
         NormalizedEntry, NormalizedEntryError, NormalizedEntryType, TodoItem, ToolStatus,
         plain_text_processor::PlainTextLogProcessor,
         utils::{
-            EntryIndexProvider,
+            ConversationSink, EntryIndexProvider,
             patch::{self, ConversationPatch},
         },
     },
@@ -64,11 +63,11 @@ fn base_command(claude_code_router: bool) -> &'static str {
 }
 
 fn normalize_claude_stderr_logs(
-    msg_store: Arc<MsgStore>,
+    msg_store: Arc<dyn ConversationSink>,
     entry_index_provider: EntryIndexProvider,
 ) {
     tokio::spawn(async move {
-        let mut stderr = msg_store.stderr_chunked_stream();
+        let mut stderr = msg_store.raw().stderr_chunked_stream();
 
         let mut processor = PlainTextLogProcessor::builder()
             .normalized_entry_producer(|content: String| NormalizedEntry {
@@ -298,8 +297,8 @@ impl StandardCodingAgentExecutor for ClaudeCode {
             .await
     }
 
-    fn normalize_logs(&self, msg_store: Arc<MsgStore>, current_dir: &Path) {
-        let entry_index_provider = EntryIndexProvider::start_from(&msg_store);
+    fn normalize_logs(&self, msg_store: Arc<dyn ConversationSink>, current_dir: &Path) {
+        let entry_index_provider = EntryIndexProvider::start_from(msg_store.as_ref());
 
         // Process stdout logs (Claude's JSON output)
         ClaudeLogProcessor::process_logs(
@@ -524,14 +523,14 @@ impl ClaudeLogProcessor {
 
     /// Process raw logs and convert them to normalized entries with patches
     pub fn process_logs(
-        msg_store: Arc<MsgStore>,
+        msg_store: Arc<dyn ConversationSink>,
         current_dir: &Path,
         entry_index_provider: EntryIndexProvider,
         strategy: HistoryStrategy,
     ) {
         let current_dir_clone = current_dir.to_owned();
         tokio::spawn(async move {
-            let mut stream = msg_store.history_plus_stream();
+            let mut stream = msg_store.raw().history_plus_stream();
             let mut buffer = String::new();
             let worktree_path = current_dir_clone.to_string_lossy().to_string();
             let mut session_id_extracted = false;
@@ -753,6 +752,9 @@ impl ClaudeLogProcessor {
                 tool_name,
                 action_type,
                 status,
+                started_at: None,
+                approved_at: None,
+                completed_at: None,
             },
             content,
             metadata: None,
@@ -2982,7 +2984,8 @@ mod tests {
         msg_store.push_finished();
 
         // Start normalization (this spawns async task)
-        executor.normalize_logs(msg_store.clone(), &current_dir);
+        let sink: Arc<dyn crate::logs::utils::ConversationSink> = Arc::new(msg_store.clone());
+        executor.normalize_logs(sink, &current_dir);
 
         // Give some time for async processing
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;

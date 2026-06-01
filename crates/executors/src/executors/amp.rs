@@ -6,7 +6,6 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio::{io::AsyncWriteExt, process::Command};
 use ts_rs::TS;
-use workspace_utils::msg_store::MsgStore;
 
 use crate::{
     command::{CmdOverrides, CommandBuildError, CommandBuilder, apply_overrides},
@@ -15,7 +14,10 @@ use crate::{
         AppendPrompt, ExecutorError, SpawnedChild, StandardCodingAgentExecutor,
         claude::{ClaudeLogProcessor, HistoryStrategy},
     },
-    logs::{stderr_processor::normalize_stderr_logs, utils::EntryIndexProvider},
+    logs::{
+        stderr_processor::normalize_stderr_logs,
+        utils::{ConversationSink, EntryIndexProvider},
+    },
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS, JsonSchema)]
@@ -167,8 +169,8 @@ impl StandardCodingAgentExecutor for Amp {
         Ok(child.into())
     }
 
-    fn normalize_logs(&self, msg_store: Arc<MsgStore>, current_dir: &Path) {
-        let entry_index_provider = EntryIndexProvider::start_from(&msg_store);
+    fn normalize_logs(&self, msg_store: Arc<dyn ConversationSink>, current_dir: &Path) {
+        let entry_index_provider = EntryIndexProvider::start_from(msg_store.as_ref());
 
         // Process stdout logs (Amp's stream JSON output) using Claude's log processor
         ClaudeLogProcessor::process_logs(

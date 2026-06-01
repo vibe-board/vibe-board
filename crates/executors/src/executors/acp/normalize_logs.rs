@@ -8,7 +8,7 @@ use agent_client_protocol::{self as acp, SessionNotification};
 use futures::StreamExt;
 use regex::Regex;
 use serde::Deserialize;
-use workspace_utils::{approvals::ApprovalStatus, msg_store::MsgStore};
+use workspace_utils::approvals::ApprovalStatus;
 
 pub use super::AcpAgentHarness;
 use super::AcpEvent;
@@ -18,13 +18,13 @@ use crate::{
         ActionType, FileChange, NormalizedEntry, NormalizedEntryError, NormalizedEntryType,
         TodoItem, ToolResult, ToolResultValueType, ToolStatus as LogToolStatus,
         stderr_processor::normalize_stderr_logs,
-        utils::{ConversationPatch, EntryIndexProvider},
+        utils::{ConversationPatch, ConversationSink, EntryIndexProvider},
     },
 };
 
-pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
+pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path) {
     // stderr normalization
-    let entry_index = EntryIndexProvider::start_from(&msg_store);
+    let entry_index = EntryIndexProvider::start_from(msg_store.as_ref());
     normalize_stderr_logs(msg_store.clone(), entry_index.clone());
 
     // stdout normalization (main loop)
@@ -37,7 +37,7 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
         let mut streaming: StreamingState = StreamingState::default();
         let mut tool_states: ToolStates = HashMap::new();
 
-        let mut stdout_lines = msg_store.stdout_lines_stream();
+        let mut stdout_lines = msg_store.raw().stdout_lines_stream();
         while let Some(Ok(line)) = stdout_lines.next().await {
             if let Some(parsed) = AcpEventParser::parse_line(&line) {
                 tracing::trace!("Parsed ACP line: {:?}", parsed);
@@ -151,6 +151,9 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                                     operation: "update".to_string(),
                                 },
                                 status: LogToolStatus::Success,
+                                started_at: None,
+                                approved_at: None,
+                                completed_at: None,
                             },
                             content: "Plan updated".to_string(),
                             metadata: None,
@@ -235,6 +238,9 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                                     tool_name: tool_data.title.clone(),
                                     action_type: action,
                                     status: LogToolStatus::PendingApproval { approval_id },
+                                    started_at: None,
+                                    approved_at: None,
+                                    completed_at: None,
                                 },
                                 content: get_tool_content(tool_data),
                                 metadata: None,
@@ -255,6 +261,9 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                                         tool_name: tool_data.title.clone(),
                                         action_type: action,
                                         status,
+                                        started_at: None,
+                                        approved_at: None,
+                                        completed_at: None,
                                     },
                                     content: get_tool_content(tool_data),
                                     metadata: serde_json::to_value(ToolCallMetadata {
@@ -304,7 +313,7 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
             streaming: &mut StreamingState,
             tool_states: &mut ToolStates,
             entry_index: &EntryIndexProvider,
-            msg_store: &Arc<MsgStore>,
+            msg_store: &Arc<dyn ConversationSink>,
         ) {
             streaming.assistant_text = None;
             streaming.thinking_text = None;
@@ -322,6 +331,9 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
                     tool_name: tool_data.title.clone(),
                     action_type: action,
                     status: convert_tool_status(&tool_data.status),
+                    started_at: None,
+                    approved_at: None,
+                    completed_at: None,
                 },
                 content: get_tool_content(tool_data),
                 metadata: serde_json::to_value(ToolCallMetadata {

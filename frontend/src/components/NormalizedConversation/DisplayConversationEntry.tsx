@@ -43,6 +43,7 @@ import RawLogText from '../common/RawLogText';
 import UserMessage from './UserMessage';
 import PendingApprovalEntry from './PendingApprovalEntry';
 import { NextActionCard } from './NextActionCard';
+import { ToolUsageStatsCard } from './ToolUsageStatsCard';
 import { AskUserQuestionBanner } from '@/components/AskUserQuestionBanner';
 import { cn } from '@/lib/utils';
 import { useRetryUi } from '@/contexts/RetryUiContext';
@@ -1041,6 +1042,10 @@ function DisplayConversationEntry({
         <LoadingCard />
       </div>
     );
+  }
+
+  if (entry.entry_type.type === 'tool_usage_stats') {
+    return <ToolUsageStatsCard stats={entry.entry_type} />;
   }
 
   if (entry.entry_type.type === 'task_duration') {

@@ -5,7 +5,6 @@ use derivative::Derivative;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
-use workspace_utils::msg_store::MsgStore;
 
 pub use super::acp::AcpAgentHarness;
 use crate::{
@@ -15,6 +14,7 @@ use crate::{
     executors::{
         AppendPrompt, AvailabilityInfo, ExecutorError, SpawnedChild, StandardCodingAgentExecutor,
     },
+    logs::utils::ConversationSink,
 };
 
 #[derive(Derivative, Clone, Serialize, Deserialize, TS, JsonSchema)]
@@ -105,7 +105,7 @@ impl StandardCodingAgentExecutor for CorustAgent {
             .await
     }
 
-    fn normalize_logs(&self, msg_store: Arc<MsgStore>, worktree_path: &Path) {
+    fn normalize_logs(&self, msg_store: Arc<dyn ConversationSink>, worktree_path: &Path) {
         super::acp::normalize_logs(msg_store, worktree_path);
     }
 

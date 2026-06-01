@@ -25,7 +25,7 @@ use db::models::{
 use executors::{
     actions::{ExecutorAction, ExecutorActionType},
     executors::{BaseCodingAgent, StandardCodingAgentExecutor},
-    logs::NormalizedEntry,
+    logs::{NormalizedEntry, utils::ConversationSink},
     profile::{ExecutorConfigs, ExecutorProfileId},
 };
 use sqlx::SqlitePool;
@@ -143,7 +143,8 @@ pub async fn replay_normalize(
     }
     store.push_finished();
 
-    executor.normalize_logs(store.clone(), &worktree_path);
+    let sink: Arc<dyn ConversationSink> = Arc::new(store.clone());
+    executor.normalize_logs(sink, &worktree_path);
 
     let status = wait_for_patches_to_stabilize(&store).await;
 
@@ -509,6 +510,7 @@ pub fn render_entry(entry: &NormalizedEntry) -> String {
             tool_name,
             action_type,
             status,
+            ..
         } => {
             let summary = format!(
                 "{} · {:?}",
@@ -560,6 +562,7 @@ pub fn render_entry(entry: &NormalizedEntry) -> String {
         }
         NormalizedEntryType::TaskDuration { .. }
         | NormalizedEntryType::TokenUsageInfo(_)
+        | NormalizedEntryType::ToolUsageStats(_)
         | NormalizedEntryType::Loading
         | NormalizedEntryType::NextAction { .. } => String::new(),
     }
@@ -692,6 +695,9 @@ mod tests {
                     changes: vec![],
                 },
                 status: ToolStatus::Success,
+                started_at: None,
+                approved_at: None,
+                completed_at: None,
             },
             content: "patch body".to_string(),
             metadata: None,

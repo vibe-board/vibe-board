@@ -692,9 +692,44 @@ export type CommandRunResult = { exit_status: CommandExitStatus | null, output: 
 
 export type NormalizedEntry = { timestamp: string | null, entry_type: NormalizedEntryType, content: string, };
 
-export type NormalizedEntryType = { "type": "user_message" } | { "type": "user_feedback", denied_tool: string, } | { "type": "assistant_message" } | { "type": "tool_use", tool_name: string, action_type: ActionType, status: ToolStatus, } | { "type": "system_message" } | { "type": "error_message", error_type: NormalizedEntryError, } | { "type": "thinking" } | { "type": "loading" } | { "type": "next_action", failed: boolean, execution_processes: number, needs_setup: boolean, } | { "type": "token_usage_info" } & TokenUsageInfo | { "type": "task_duration", started_at: string, completed_at: string, duration_seconds: number, } | { "type": "user_answered_questions", answers: Array<AnsweredQuestion>, };
+export type NormalizedEntryType = { "type": "user_message" } | { "type": "user_feedback", denied_tool: string, } | { "type": "assistant_message" } | { "type": "tool_use", tool_name: string, action_type: ActionType, status: ToolStatus, 
+/**
+ * Wall-clock instant the wrapper first observed this entry index
+ * carrying a ToolUse value.
+ */
+started_at?: string | null, 
+/**
+ * Wall-clock instant the wrapper observed `status` transitioning out
+ * of `PendingApproval`. Stays `None` for tools that never entered
+ * `PendingApproval`.
+ */
+approved_at?: string | null, 
+/**
+ * Wall-clock instant the wrapper observed `status` becoming terminal
+ * (Success / Failed / Denied / TimedOut).
+ */
+completed_at?: string | null, } | { "type": "system_message" } | { "type": "error_message", error_type: NormalizedEntryError, } | { "type": "thinking" } | { "type": "loading" } | { "type": "next_action", failed: boolean, execution_processes: number, needs_setup: boolean, } | { "type": "token_usage_info" } & TokenUsageInfo | { "type": "task_duration", started_at: string, completed_at: string, duration_seconds: number, } | { "type": "tool_usage_stats" } & ToolUsageStats | { "type": "user_answered_questions", answers: Array<AnsweredQuestion>, };
 
 export type TokenUsageInfo = { total_tokens: number, model_name: string | null, input_tokens: bigint | null, output_tokens: bigint | null, reasoning_tokens: bigint | null, cache_read_input_tokens: bigint | null, cache_creation_input_tokens: bigint | null, cost_usd: number | null, context_window: number | null, model_context_window: number | null, max_output_tokens: number | null, };
+
+export type ToolUsageStats = { per_tool: Array<ToolStat>, total_calls: number, total_seconds: number, 
+/**
+ * `None` hides the "% of task" display in the card header.
+ */
+task_duration_seconds: number | null, };
+
+export type ToolStat = { tool_name: string, count: number, success: number, failed: number, denied: number, timed_out: number, 
+/**
+ * Calls with `started_at` present and `completed_at` absent.
+ */
+in_progress: number, total_seconds: number, avg_seconds: number, max_seconds: number, 
+/**
+ * Sum of `(approved_at - started_at)` across calls that passed
+ * through `PendingApproval`. Always 0 for tools that never required
+ * approval; the front-end uses this to decide whether to render a
+ * per-tool footnote.
+ */
+awaiting_approval_seconds: number, approved_call_count: number, };
 
 export type FileChange = { "action": "write", content: string, } | { "action": "delete" } | { "action": "rename", new_path: string, } | { "action": "edit", 
 /**

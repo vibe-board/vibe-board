@@ -6,7 +6,7 @@ use std::sync::{
 };
 
 use json_patch::PatchOperation;
-use workspace_utils::{log_msg::LogMsg, msg_store::MsgStore};
+use workspace_utils::log_msg::LogMsg;
 
 /// Thread-safe provider for monotonically increasing entry indexes
 #[derive(Debug, Clone)]
@@ -34,10 +34,10 @@ impl EntryIndexProvider {
 
     /// Create a provider starting from the maximum existing normalized-entry index
     /// observed in prior JSON patches in `MsgStore`.
-    pub fn start_from(msg_store: &MsgStore) -> Self {
+    pub fn start_from(sink: &dyn crate::logs::utils::ConversationSink) -> Self {
         let provider = EntryIndexProvider::new();
 
-        let max_index: Option<usize> = msg_store
+        let max_index: Option<usize> = sink
             .get_history()
             .iter()
             .filter_map(|msg| {

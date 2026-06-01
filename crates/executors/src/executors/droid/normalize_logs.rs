@@ -7,22 +7,20 @@ use std::{
 use futures::{StreamExt, future::ready};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use workspace_utils::{
-    diff::normalize_unified_diff, msg_store::MsgStore, path::make_path_relative,
-};
+use workspace_utils::{diff::normalize_unified_diff, path::make_path_relative};
 
 use crate::logs::{
     ActionType, CommandExitStatus, CommandRunResult, FileChange, NormalizedEntry,
     NormalizedEntryError, NormalizedEntryType, TodoItem, ToolResult, ToolStatus,
     plain_text_processor::PlainTextLogProcessor,
     utils::{
-        EntryIndexProvider,
+        ConversationSink, EntryIndexProvider,
         patch::{add_normalized_entry, replace_normalized_entry},
     },
 };
 
 pub fn normalize_logs(
-    msg_store: Arc<MsgStore>,
+    msg_store: Arc<dyn ConversationSink>,
     worktree_path: &Path,
     entry_index_provider: EntryIndexProvider,
 ) {
@@ -37,6 +35,7 @@ pub fn normalize_logs(
         let worktree_path_str = worktree_path.to_string_lossy();
 
         let mut lines_stream = msg_store
+            .raw()
             .stdout_lines_stream()
             .filter_map(|res| ready(res.ok()));
 
@@ -668,9 +667,12 @@ pub fn normalize_logs(
     });
 }
 
-fn normalize_stderr_logs(msg_store: Arc<MsgStore>, entry_index_provider: EntryIndexProvider) {
+fn normalize_stderr_logs(
+    msg_store: Arc<dyn ConversationSink>,
+    entry_index_provider: EntryIndexProvider,
+) {
     tokio::spawn(async move {
-        let mut stderr = msg_store.stderr_chunked_stream();
+        let mut stderr = msg_store.raw().stderr_chunked_stream();
 
         let mut processor = PlainTextLogProcessor::builder()
             .normalized_entry_producer(Box::new(|content: String| NormalizedEntry {
@@ -1022,6 +1024,9 @@ impl ToNormalizedEntry for FileReadState {
                     path: self.path.clone(),
                 },
                 status: self.status.clone(),
+                started_at: None,
+                approved_at: None,
+                completed_at: None,
             },
             content: self.path.clone(),
             metadata: None,
@@ -1048,6 +1053,9 @@ impl ToNormalizedEntry for FileEditState {
                     changes: self.changes.clone(),
                 },
                 status: self.status.clone(),
+                started_at: None,
+                approved_at: None,
+                completed_at: None,
             },
             content: self.path.clone(),
             metadata: None,
@@ -1090,6 +1098,9 @@ impl ToNormalizedEntry for CommandRunState {
                     result,
                 },
                 status: self.status.clone(),
+                started_at: None,
+                approved_at: None,
+                completed_at: None,
             },
             content: self.command.clone(),
             metadata: None,
@@ -1121,6 +1132,9 @@ impl ToNormalizedEntry for TodoManagementState {
                     operation: "update".to_string(),
                 },
                 status: self.status.clone(),
+                started_at: None,
+                approved_at: None,
+                completed_at: None,
             },
             content,
             metadata: None,
@@ -1145,6 +1159,9 @@ impl ToNormalizedEntry for SearchState {
                     query: self.query.clone(),
                 },
                 status: self.status.clone(),
+                started_at: None,
+                approved_at: None,
+                completed_at: None,
             },
             content: self.query.clone(),
             metadata: None,
@@ -1169,6 +1186,9 @@ impl ToNormalizedEntry for WebFetchState {
                     url: self.url.clone(),
                 },
                 status: self.status.clone(),
+                started_at: None,
+                approved_at: None,
+                completed_at: None,
             },
             content: self.url.clone(),
             metadata: None,
@@ -1203,6 +1223,9 @@ impl ToNormalizedEntry for GenericToolState {
                     }),
                 },
                 status: self.status.clone(),
+                started_at: None,
+                approved_at: None,
+                completed_at: None,
             },
             content: self.name.clone(),
             metadata: None,

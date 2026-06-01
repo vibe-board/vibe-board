@@ -14,7 +14,6 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 use ts_rs::TS;
-use workspace_utils::msg_store::MsgStore;
 
 use crate::{
     env::ExecutionEnv,
@@ -24,7 +23,7 @@ use crate::{
             ClaudeContentItem, ClaudeJson, ClaudeMessage, ClaudeMessageContent, ClaudeToolData,
         },
     },
-    logs::utils::EntryIndexProvider,
+    logs::utils::{ConversationSink, EntryIndexProvider},
 };
 
 /// Mock executor for QA testing
@@ -87,9 +86,9 @@ impl StandardCodingAgentExecutor for QaMockExecutor {
         self.spawn(current_dir, prompt, env).await
     }
 
-    fn normalize_logs(&self, msg_store: Arc<MsgStore>, current_dir: &Path) {
+    fn normalize_logs(&self, msg_store: Arc<dyn ConversationSink>, current_dir: &Path) {
         // Reuse Claude's log processor since we output ClaudeJson format
-        let entry_index_provider = EntryIndexProvider::start_from(&msg_store);
+        let entry_index_provider = EntryIndexProvider::start_from(msg_store.as_ref());
         crate::executors::claude::ClaudeLogProcessor::process_logs(
             msg_store,
             current_dir,
@@ -424,6 +423,97 @@ mod tests {
             }
         } else {
             panic!("Expected Assistant variant");
+        }
+    }
+
+    /// Pushes a synthetic Claude-format JSON line through the qa_mock executor's
+    /// log normalizer (which delegates to the Claude processor) and asserts the
+    /// resulting ToolUse entries carry timing data.
+    #[tokio::test]
+    async fn qa_mock_normalize_stamps_tool_timing() {
+        use std::time::Duration;
+
+        use workspace_utils::{log_msg::LogMsg, msg_store::MsgStore};
+
+        use crate::logs::{
+            NormalizedEntryType, ToolStatus,
+            utils::{ConversationMsgStore, ConversationSink, extract_normalized_entry_from_patch},
+        };
+
+        let inner = Arc::new(MsgStore::new());
+        let sink: Arc<dyn ConversationSink> = ConversationMsgStore::wrap(inner.clone());
+
+        // Push a synthetic ClaudeJson assistant turn with one tool_use entry,
+        // then a tool_result entry. The exact JSON shape is what claude.rs emits
+        // for stream-json. Use Bash so the parser produces a Created -> Success
+        // transition (the Read tool result handler doesn't change status, but
+        // Bash explicitly maps `is_error` to Success/Failed).
+        let assistant_json = serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "id": "msg_1",
+                "role": "assistant",
+                "content": [{
+                    "type": "tool_use",
+                    "id": "toolu_1",
+                    "name": "Bash",
+                    "input": {"command": "echo ok"}
+                }],
+                "stop_reason": null,
+                "usage": {"input_tokens": 0, "output_tokens": 0}
+            }
+        });
+        let result_json = serde_json::json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_1",
+                    "content": "ok",
+                    "is_error": false
+                }]
+            }
+        });
+
+        sink.push_stdout(format!("{assistant_json}\n"));
+        sink.push_stdout(format!("{result_json}\n"));
+        sink.push_finished();
+
+        let executor = QaMockExecutor;
+        executor.normalize_logs(sink.clone(), std::path::Path::new("/tmp"));
+
+        // Allow normalizer tasks to drain
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        let history = inner.get_history();
+        let tool_use = history
+            .into_iter()
+            .filter_map(|m| match m {
+                LogMsg::JsonPatch(p) => extract_normalized_entry_from_patch(&p),
+                _ => None,
+            })
+            .filter_map(|(_, entry)| match entry.entry_type {
+                NormalizedEntryType::ToolUse { .. } => Some(entry),
+                _ => None,
+            })
+            .last()
+            .expect("expected at least one ToolUse entry in history");
+
+        match tool_use.entry_type {
+            NormalizedEntryType::ToolUse {
+                status,
+                started_at,
+                completed_at,
+                approved_at,
+                ..
+            } => {
+                assert!(matches!(status, ToolStatus::Success | ToolStatus::Failed));
+                assert!(started_at.is_some(), "started_at should be stamped");
+                assert!(completed_at.is_some(), "completed_at should be stamped");
+                assert_eq!(approved_at, None, "no approval phase, should stay None");
+            }
+            other => panic!("expected ToolUse, got {other:?}"),
         }
     }
 }

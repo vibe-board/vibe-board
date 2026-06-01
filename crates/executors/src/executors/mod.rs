@@ -11,7 +11,6 @@ use sqlx::Type;
 use strum_macros::{Display, EnumDiscriminants, EnumString, VariantNames};
 use thiserror::Error;
 use ts_rs::TS;
-use workspace_utils::msg_store::MsgStore;
 
 #[cfg(feature = "qa-mode")]
 use crate::executors::qa_mock::QaMockExecutor;
@@ -474,7 +473,11 @@ pub trait StandardCodingAgentExecutor {
         }
     }
 
-    fn normalize_logs(&self, _raw_logs_event_store: Arc<MsgStore>, _worktree_path: &Path);
+    fn normalize_logs(
+        &self,
+        _sink: std::sync::Arc<dyn crate::logs::utils::ConversationSink>,
+        _worktree_path: &Path,
+    );
 
     // MCP configuration methods
     fn default_mcp_config_path(&self) -> Option<std::path::PathBuf>;

@@ -9,7 +9,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use tokio::{io::AsyncBufReadExt, process::Command};
 use ts_rs::TS;
-use workspace_utils::msg_store::MsgStore;
 
 use crate::{
     approvals::ExecutorApprovalService,
@@ -19,7 +18,7 @@ use crate::{
         AppendPrompt, AvailabilityInfo, ExecutorError, ExecutorExitResult, SpawnedChild,
         StandardCodingAgentExecutor, mimo_code::types::MiMoCodeExecutorEvent,
     },
-    logs::utils::patch,
+    logs::utils::{ConversationSink, patch},
     stdout_dup::create_stdout_pipe_writer,
 };
 
@@ -371,7 +370,7 @@ impl StandardCodingAgentExecutor for MiMoCode {
             .await
     }
 
-    fn normalize_logs(&self, msg_store: Arc<MsgStore>, worktree_path: &Path) {
+    fn normalize_logs(&self, msg_store: Arc<dyn ConversationSink>, worktree_path: &Path) {
         normalize_logs::normalize_logs(msg_store, worktree_path);
     }
 

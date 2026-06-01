@@ -39,7 +39,6 @@ use serde_json::Value;
 use workspace_utils::{
     approvals::{ApprovalStatus, QuestionStatus},
     diff::normalize_unified_diff,
-    msg_store::MsgStore,
     path::make_path_relative,
 };
 
@@ -51,7 +50,7 @@ use crate::{
         NormalizedEntryType, TodoItem, ToolResult, ToolResultValueType, ToolStatus,
         plain_text_processor::PlainTextLogProcessor,
         utils::{
-            ConversationPatch, EntryIndexProvider,
+            ConversationPatch, ConversationSink, EntryIndexProvider,
             patch::{add_normalized_entry, replace_normalized_entry, upsert_normalized_entry},
             shell_command_parsing::unwrap_shell_command,
         },
@@ -113,6 +112,9 @@ impl ToNormalizedEntry for CommandState {
                     }),
                 },
                 status: self.status.clone(),
+                started_at: None,
+                approved_at: None,
+                completed_at: None,
             },
             content,
             metadata: serde_json::to_value(ToolCallMetadata {
@@ -151,6 +153,9 @@ impl ToNormalizedEntry for DynamicToolState {
                     result: self.result.clone(),
                 },
                 status: self.status.clone(),
+                started_at: None,
+                approved_at: None,
+                completed_at: None,
             },
             content: self.tool.clone(),
             metadata: serde_json::to_value(ToolCallMetadata {
@@ -174,6 +179,9 @@ impl ToNormalizedEntry for McpToolState {
                     result: self.result.clone(),
                 },
                 status: self.status.clone(),
+                started_at: None,
+                approved_at: None,
+                completed_at: None,
             },
             content: self.invocation.tool.clone(),
             metadata: None,
@@ -204,6 +212,9 @@ impl ToNormalizedEntry for WebSearchState {
                     url: self.query.clone().unwrap_or_else(|| "...".to_string()),
                 },
                 status: self.status.clone(),
+                started_at: None,
+                approved_at: None,
+                completed_at: None,
             },
             content: self
                 .query
@@ -231,6 +242,9 @@ impl ToNormalizedEntry for UserInputRequestState {
                     questions: self.questions.clone(),
                 },
                 status: self.status.clone(),
+                started_at: None,
+                approved_at: None,
+                completed_at: None,
             },
             content: self.content.clone(),
             metadata: None,
@@ -254,6 +268,9 @@ impl ToNormalizedEntry for PlanState {
                     plan: self.text.clone(),
                 },
                 status: self.status.clone(),
+                started_at: None,
+                approved_at: None,
+                completed_at: None,
             },
             content: "Plan".to_string(),
             metadata: None,
@@ -324,6 +341,9 @@ impl ToNormalizedEntry for ReviewState {
                     result: self.result.clone(),
                 },
                 status: self.status.clone(),
+                started_at: None,
+                approved_at: None,
+                completed_at: None,
             },
             content: String::new(),
             metadata: None,
@@ -358,6 +378,9 @@ impl ToNormalizedEntry for PatchEntry {
                     changes: self.changes.clone(),
                 },
                 status: self.status.clone(),
+                started_at: None,
+                approved_at: None,
+                completed_at: None,
             },
             content,
             metadata: serde_json::to_value(ToolCallMetadata {
@@ -489,7 +512,7 @@ impl LogState {
         call_id: &str,
         status: ToolStatus,
         clear_awaiting: bool,
-        msg_store: &Arc<MsgStore>,
+        msg_store: &Arc<dyn ConversationSink>,
     ) {
         if let Some(cmd) = self.commands.get_mut(call_id) {
             cmd.status = status.clone();
@@ -696,7 +719,7 @@ struct DynamicToolUpdate {
 
 fn upsert_dynamic_tool_state(
     state: &mut LogState,
-    msg_store: &Arc<MsgStore>,
+    msg_store: &Arc<dyn ConversationSink>,
     entry_index: &EntryIndexProvider,
     update: DynamicToolUpdate,
 ) {
@@ -738,7 +761,7 @@ fn upsert_dynamic_tool_state(
 
 fn add_thread_token_usage(
     notification: ThreadTokenUsageUpdatedNotification,
-    msg_store: &Arc<MsgStore>,
+    msg_store: &Arc<dyn ConversationSink>,
     entry_index: &EntryIndexProvider,
 ) {
     add_normalized_entry(
@@ -863,7 +886,7 @@ fn question_state_from_questions<T: QuestionLike>(questions: &[T]) -> UserInputR
 
 fn upsert_question_request_state(
     state: &mut LogState,
-    msg_store: &Arc<MsgStore>,
+    msg_store: &Arc<dyn ConversationSink>,
     entry_index: &EntryIndexProvider,
     call_id: String,
     questions: &[impl QuestionLike],
@@ -891,7 +914,7 @@ fn upsert_question_request_state(
 fn handle_direct_item_started(
     notification: AppItemStartedNotification,
     state: &mut LogState,
-    msg_store: &Arc<MsgStore>,
+    msg_store: &Arc<dyn ConversationSink>,
     entry_index: &EntryIndexProvider,
     worktree_path: &str,
 ) {
@@ -1035,7 +1058,7 @@ fn handle_direct_item_started(
 fn handle_direct_item_completed(
     notification: AppItemCompletedNotification,
     state: &mut LogState,
-    msg_store: &Arc<MsgStore>,
+    msg_store: &Arc<dyn ConversationSink>,
     entry_index: &EntryIndexProvider,
     worktree_path: &str,
 ) {
@@ -1195,6 +1218,9 @@ fn handle_direct_item_completed(
                             path: relative_path.clone(),
                         },
                         status: ToolStatus::Success,
+                        started_at: None,
+                        approved_at: None,
+                        completed_at: None,
                     },
                     content: relative_path,
                     metadata: None,
@@ -1229,7 +1255,7 @@ fn handle_direct_item_completed(
 fn handle_direct_request(
     request: ServerRequest,
     state: &mut LogState,
-    msg_store: &Arc<MsgStore>,
+    msg_store: &Arc<dyn ConversationSink>,
     entry_index: &EntryIndexProvider,
 ) -> bool {
     match request {
@@ -1291,7 +1317,7 @@ fn handle_direct_request(
 fn handle_direct_notification(
     notification: ServerNotification,
     state: &mut LogState,
-    msg_store: &Arc<MsgStore>,
+    msg_store: &Arc<dyn ConversationSink>,
     entry_index: &EntryIndexProvider,
     worktree_path: &str,
 ) -> bool {
@@ -1454,11 +1480,11 @@ const SUPPRESSED_STDERR_PATTERNS: &[&str] = &[
 
 /// Codex-specific stderr normalizer that filters noisy internal messages.
 fn normalize_codex_stderr_logs(
-    msg_store: Arc<MsgStore>,
+    msg_store: Arc<dyn ConversationSink>,
     entry_index_provider: EntryIndexProvider,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let mut stderr = msg_store.stderr_chunked_stream();
+        let mut stderr = msg_store.raw().stderr_chunked_stream();
         let mut processor = PlainTextLogProcessor::builder()
             .normalized_entry_producer(|content: String| NormalizedEntry {
                 timestamp: None,
@@ -1488,16 +1514,16 @@ fn normalize_codex_stderr_logs(
 }
 
 pub fn normalize_logs(
-    msg_store: Arc<MsgStore>,
+    msg_store: Arc<dyn ConversationSink>,
     worktree_path: &Path,
 ) -> Vec<tokio::task::JoinHandle<()>> {
-    let entry_index = EntryIndexProvider::start_from(&msg_store);
+    let entry_index = EntryIndexProvider::start_from(msg_store.as_ref());
     let h1 = normalize_codex_stderr_logs(msg_store.clone(), entry_index.clone());
 
     let worktree_path_str = worktree_path.to_string_lossy().to_string();
     let h2 = tokio::spawn(async move {
         let mut state = LogState::new(entry_index.clone());
-        let mut stdout_lines = msg_store.stdout_lines_stream();
+        let mut stdout_lines = msg_store.raw().stdout_lines_stream();
 
         while let Some(Ok(line)) = stdout_lines.next().await {
             if let Ok(error) = serde_json::from_str::<Error>(&line) {
@@ -2145,6 +2171,9 @@ pub fn normalize_logs(
                                     path: relative_path.clone(),
                                 },
                                 status: ToolStatus::Success,
+                                started_at: None,
+                                approved_at: None,
+                                completed_at: None,
                             },
                             content: relative_path.to_string(),
                             metadata: None,
@@ -2185,6 +2214,9 @@ pub fn normalize_logs(
                                     operation: "update".to_string(),
                                 },
                                 status: ToolStatus::Success,
+                                started_at: None,
+                                approved_at: None,
+                                completed_at: None,
                             },
                             content,
                             metadata: None,
@@ -2438,7 +2470,7 @@ pub fn normalize_logs(
 
 fn handle_jsonrpc_response(
     response: JSONRPCResponse,
-    msg_store: &Arc<MsgStore>,
+    msg_store: &Arc<dyn ConversationSink>,
     entry_index: &EntryIndexProvider,
     model_params: &mut ModelParamsState,
 ) {
@@ -2469,7 +2501,7 @@ fn handle_jsonrpc_response(
 fn handle_model_params(
     model: Option<String>,
     reasoning_effort: Option<ReasoningEffort>,
-    msg_store: &Arc<MsgStore>,
+    msg_store: &Arc<dyn ConversationSink>,
     entry_index: &EntryIndexProvider,
     state: &mut ModelParamsState,
 ) {
@@ -2732,7 +2764,8 @@ mod tests {
         }
         msg_store.push_finished();
 
-        for handle in normalize_logs(msg_store.clone(), Path::new("/tmp/test-worktree")) {
+        let sink: Arc<dyn ConversationSink> = Arc::new(msg_store.clone());
+        for handle in normalize_logs(sink, Path::new("/tmp/test-worktree")) {
             handle.await.unwrap();
         }
 
