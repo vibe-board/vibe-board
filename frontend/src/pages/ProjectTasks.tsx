@@ -33,7 +33,10 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useBranchStatus, useAttemptExecution } from '@/hooks';
 import { useAttemptRepo } from '@/hooks/useAttemptRepo';
 import { paths } from '@/lib/paths';
-import { ExecutionProcessesProvider } from '@/contexts/ExecutionProcessesContext';
+import {
+  ExecutionProcessesProvider,
+  useExecutionProcessesContext,
+} from '@/contexts/ExecutionProcessesContext';
 import { ClickedElementsProvider } from '@/contexts/ClickedElementsProvider';
 import { ReviewProvider } from '@/contexts/ReviewProvider';
 import { TaskApprovalsProvider } from '@/contexts/TaskApprovalsContext';
@@ -144,8 +147,14 @@ function DiffsPanelContainer({
   repoId?: string | null;
 }) {
   const { isAttemptRunning } = useAttemptExecution(attempt?.id);
+  const { diffSignalByWorkspaceId } = useExecutionProcessesContext();
   const queryClient = useQueryClient();
   const wasRunningRef = useRef(isAttemptRunning);
+  const workspaceId = attempt?.id ?? null;
+  const diffSignal = workspaceId
+    ? diffSignalByWorkspaceId[workspaceId]
+    : undefined;
+  const lastSignalRef = useRef<number | undefined>(diffSignal);
 
   useEffect(() => {
     const wasRunning = wasRunningRef.current;
@@ -156,6 +165,21 @@ function DiffsPanelContainer({
       queryClient.invalidateQueries({ queryKey: ['commitDiff'] });
     }
   }, [isAttemptRunning, queryClient]);
+
+  // Server pushes a fresh timestamp on /diff_signal/<workspace_id> whenever the
+  // worktree HEAD advances (auto-commits, cleanup-script commits, etc.). When that
+  // value changes, refetch the workspace diff so the panel reflects post-commit state.
+  useEffect(() => {
+    if (diffSignal === undefined) {
+      lastSignalRef.current = undefined;
+      return;
+    }
+    if (lastSignalRef.current === diffSignal) return;
+    lastSignalRef.current = diffSignal;
+    queryClient.invalidateQueries({ queryKey: ['workspaceDiff'] });
+    queryClient.invalidateQueries({ queryKey: ['commitHistory'] });
+    queryClient.invalidateQueries({ queryKey: ['commitDiff'] });
+  }, [diffSignal, queryClient]);
 
   return (
     <DiffsPanel

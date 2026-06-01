@@ -215,6 +215,32 @@ pub mod scratch_patch {
     }
 }
 
+/// Helper for signaling that a workspace's diff (worktree-vs-base) may have changed.
+/// Frontend listens for these and invalidates the workspaceDiff/commitHistory queries.
+/// The path is keyed by workspace_id; the value is a monotonically increasing timestamp
+/// so each emit produces a distinct JSON Patch state change.
+pub mod workspace_diff_signal_patch {
+    use chrono::Utc;
+
+    use super::*;
+
+    fn diff_signal_path(workspace_id: Uuid) -> String {
+        format!(
+            "/diff_signal/{}",
+            escape_pointer_segment(&workspace_id.to_string())
+        )
+    }
+
+    pub fn touch(workspace_id: Uuid) -> Patch {
+        Patch(vec![PatchOperation::Replace(ReplaceOperation {
+            path: diff_signal_path(workspace_id)
+                .try_into()
+                .expect("Diff signal path should be valid"),
+            value: serde_json::Value::Number(Utc::now().timestamp_millis().into()),
+        })])
+    }
+}
+
 /// Helper functions for creating approval-specific patches.
 pub mod approvals_patch {
     use super::*;
