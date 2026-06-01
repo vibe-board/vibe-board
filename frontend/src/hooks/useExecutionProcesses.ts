@@ -4,12 +4,14 @@ import type { ExecutionProcess } from 'shared/types';
 
 type ExecutionProcessState = {
   execution_processes: Record<string, ExecutionProcess>;
+  diff_signal: Record<string, number>;
 };
 
 interface UseExecutionProcessesResult {
   executionProcesses: ExecutionProcess[];
   executionProcessesById: Record<string, ExecutionProcess>;
   isAttemptRunning: boolean;
+  diffSignal: Record<string, number>;
   isLoading: boolean;
   isConnected: boolean;
   error: string | null;
@@ -19,6 +21,10 @@ interface UseExecutionProcessesResult {
  * Stream execution processes for a session via WebSocket (JSON Patch) and expose as array + map.
  * Server sends initial snapshot: replace /execution_processes with an object keyed by id.
  * Live updates arrive at /execution_processes/<id> via add/replace/remove operations.
+ *
+ * Server may also push /diff_signal/<workspace_id> = <timestamp> updates whenever the
+ * workspace's worktree HEAD advances; consumers should watch the corresponding entry
+ * to invalidate diff-derived caches.
  */
 export const useExecutionProcesses = (
   sessionId: string | undefined,
@@ -36,7 +42,7 @@ export const useExecutionProcesses = (
   }
 
   const initialData = useCallback(
-    (): ExecutionProcessState => ({ execution_processes: {} }),
+    (): ExecutionProcessState => ({ execution_processes: {}, diff_signal: {} }),
     []
   );
 
@@ -48,6 +54,7 @@ export const useExecutionProcesses = (
     );
 
   const executionProcessesById = data?.execution_processes ?? {};
+  const diffSignal = data?.diff_signal ?? {};
   const executionProcesses = Object.values(executionProcessesById).sort(
     (a, b) =>
       new Date(a.created_at as unknown as string).getTime() -
@@ -68,6 +75,7 @@ export const useExecutionProcesses = (
     executionProcesses,
     executionProcessesById,
     isAttemptRunning,
+    diffSignal,
     isLoading,
     isConnected,
     error,

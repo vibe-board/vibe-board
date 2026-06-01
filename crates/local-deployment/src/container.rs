@@ -51,7 +51,7 @@ use services::services::{
     approvals::{Approvals, executor_approvals::ExecutorApprovalBridge},
     config::{Config, DEFAULT_COMMIT_REMINDER_PROMPT, DEFAULT_LINTER_FIX_FOLLOW_UP_PROMPT},
     container::{ContainerError, ContainerRef, ContainerService},
-    events::patches::{execution_process_patch, task_patch},
+    events::patches::{execution_process_patch, task_patch, workspace_diff_signal_patch},
     image::ImageService,
     normalized_entry_store::NormalizedEntryStore,
     notification::NotificationService,
@@ -300,18 +300,26 @@ impl LocalContainerService {
     async fn update_after_head_commits(&self, exec_id: Uuid) {
         if let Ok(ctx) = ExecutionProcess::load_context(&self.db.pool, exec_id).await {
             let workspace_root = self.workspace_to_current_dir(&ctx.workspace);
+            let mut any_recorded = false;
             for repo in &ctx.repos {
                 let repo_path =
                     repo_worktree_path(&workspace_root, &ctx.workspace, &ctx.repos, repo);
-                if let Ok(head) = self.git().get_head_info(&repo_path) {
-                    let _ = ExecutionProcessRepoState::update_after_head_commit(
+                if let Ok(head) = self.git().get_head_info(&repo_path)
+                    && ExecutionProcessRepoState::update_after_head_commit(
                         &self.db.pool,
                         exec_id,
                         repo.id,
                         &head.oid,
                     )
-                    .await;
+                    .await
+                    .is_ok()
+                {
+                    any_recorded = true;
                 }
+            }
+            if any_recorded {
+                self.events
+                    .push_patch(workspace_diff_signal_patch::touch(ctx.workspace.id));
             }
         }
     }
@@ -517,7 +525,46 @@ impl LocalContainerService {
                 Err(_) => (None, ExecutionProcessStatus::Failed),
             };
 
-            if !ExecutionProcess::was_stopped(&db.pool, exec_id).await
+            // Compute success/cleanup_done from the locally-determined status (not the DB).
+            // We commit BEFORE flipping the EP to Completed so the frontend's diff
+            // invalidation, triggered by the completion patch, observes the post-commit state.
+            let success =
+                matches!(status, ExecutionProcessStatus::Completed) && exit_code == Some(0);
+            let was_stopped = ExecutionProcess::was_stopped(&db.pool, exec_id).await;
+
+            // Pre-completion: load context (EP still 'running' in DB) and run try_commit_changes.
+            let pre_commit_ctx = if !was_stopped {
+                ExecutionProcess::load_context(&db.pool, exec_id).await.ok()
+            } else {
+                None
+            };
+
+            let cleanup_done = pre_commit_ctx.as_ref().is_some_and(|ctx| {
+                matches!(
+                    ctx.execution_process.run_reason,
+                    ExecutionProcessRunReason::CleanupScript
+                )
+            }) && !matches!(status, ExecutionProcessStatus::Running);
+
+            let changes_committed = if (success || cleanup_done)
+                && let Some(ctx) = pre_commit_ctx.as_ref()
+            {
+                match container.try_commit_changes(ctx).await {
+                    Ok(committed) => committed,
+                    Err(e) => {
+                        tracing::error!("Failed to commit changes after execution: {}", e);
+                        // Treat commit failures as if changes were made to be safe
+                        true
+                    }
+                }
+            } else {
+                false
+            };
+
+            // Now mark the EP completed. The SQLite update hook + manual push fire the
+            // execution_process_patch; the frontend recomputes isAttemptRunning and
+            // invalidates the diff query against the post-commit worktree.
+            if !was_stopped
                 && let Err(e) = container
                     .update_completion_and_push(exec_id, status, exit_code)
                     .await
@@ -531,30 +578,7 @@ impl LocalContainerService {
                     tracing::warn!("Failed to update executor session summary: {}", e);
                 }
 
-                let success = matches!(
-                    ctx.execution_process.status,
-                    ExecutionProcessStatus::Completed
-                ) && exit_code == Some(0);
-
-                let cleanup_done = matches!(
-                    ctx.execution_process.run_reason,
-                    ExecutionProcessRunReason::CleanupScript
-                ) && !matches!(
-                    ctx.execution_process.status,
-                    ExecutionProcessStatus::Running
-                );
-
                 if success || cleanup_done {
-                    // Commit changes (if any) and get feedback about whether changes were made
-                    let changes_committed = match container.try_commit_changes(&ctx).await {
-                        Ok(committed) => committed,
-                        Err(e) => {
-                            tracing::error!("Failed to commit changes after execution: {}", e);
-                            // Treat commit failures as if changes were made to be safe
-                            true
-                        }
-                    };
-
                     let should_start_next = if matches!(
                         ctx.execution_process.run_reason,
                         ExecutionProcessRunReason::CodingAgent

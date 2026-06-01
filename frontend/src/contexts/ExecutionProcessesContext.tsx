@@ -11,6 +11,14 @@ type ExecutionProcessesContextType = {
   executionProcessesByIdVisible: Record<string, ExecutionProcess>;
   isAttemptRunningVisible: boolean;
 
+  /**
+   * Server-pushed signals indicating that a workspace's worktree HEAD has advanced.
+   * Map keys are workspace ids; values are millisecond timestamps that monotonically
+   * increase. Consumers can subscribe to a specific workspace's value and invalidate
+   * diff-derived caches whenever it changes.
+   */
+  diffSignalByWorkspaceId: Record<string, number>;
+
   isLoading: boolean;
   isConnected: boolean;
   error: string | null;
@@ -28,6 +36,7 @@ export const ExecutionProcessesProvider: React.FC<{
     executionProcesses,
     executionProcessesById,
     isAttemptRunning,
+    diffSignal,
     isLoading,
     isConnected,
     error,
@@ -66,6 +75,7 @@ export const ExecutionProcessesProvider: React.FC<{
       executionProcessesVisible: visible,
       executionProcessesByIdVisible,
       isAttemptRunningVisible,
+      diffSignalByWorkspaceId: diffSignal,
       isLoading,
       isConnected,
       error,
@@ -77,6 +87,7 @@ export const ExecutionProcessesProvider: React.FC<{
       visible,
       executionProcessesByIdVisible,
       isAttemptRunningVisible,
+      diffSignal,
       isLoading,
       isConnected,
       error,

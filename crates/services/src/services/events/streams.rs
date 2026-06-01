@@ -252,13 +252,28 @@ impl EventService {
                 })
                 .collect();
 
-            let patch = json!([{
-                "op": "replace",
-                "path": "/execution_processes",
-                "value": processes_map
-            }]);
+            let patch = json!([
+                {
+                    "op": "replace",
+                    "path": "/execution_processes",
+                    "value": processes_map,
+                },
+                {
+                    "op": "replace",
+                    "path": "/diff_signal",
+                    "value": serde_json::Map::<String, serde_json::Value>::new(),
+                },
+            ]);
             LogMsg::JsonPatch(serde_json::from_value(patch).unwrap())
         }
+
+        // Resolve the session's workspace so we can forward diff_signal patches scoped to it.
+        let workspace_id = db::models::session::Session::find_by_id(&self.db.pool, session_id)
+            .await?
+            .map(|s| s.workspace_id);
+        let diff_signal_path = workspace_id
+            .map(|wid| format!("/diff_signal/{}", wid))
+            .unwrap_or_default();
 
         // Get execution processes for this session
         let processes =
@@ -272,11 +287,18 @@ impl EventService {
         let filtered_stream =
             BroadcastStream::new(self.msg_store.get_receiver()).filter_map(move |msg_result| {
                 let db_pool = db_pool.clone();
+                let diff_signal_path = diff_signal_path.clone();
                 async move {
                     match msg_result {
                         Ok(LogMsg::JsonPatch(patch)) => {
                             // Filter events based on session_id
                             if let Some(patch_op) = patch.0.first() {
+                                // Diff signal is workspace-scoped; pass through if it matches.
+                                if !diff_signal_path.is_empty()
+                                    && patch_op.path() == diff_signal_path.as_str()
+                                {
+                                    return Some(Ok(LogMsg::JsonPatch(patch)));
+                                }
                                 // Check if this is a modern execution process patch
                                 if patch_op.path().starts_with("/execution_processes/") {
                                     match patch_op {
