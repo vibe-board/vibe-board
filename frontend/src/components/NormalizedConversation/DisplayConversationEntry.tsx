@@ -547,6 +547,16 @@ const ToolCallCard: React.FC<{
     'w-full flex items-center gap-1.5 text-left text-secondary-foreground'
   );
 
+  const durationSeconds = (() => {
+    const startedAt = entryType?.started_at;
+    const completedAt = entryType?.completed_at;
+    if (!startedAt || !completedAt) return null;
+    const start = new Date(startedAt).getTime();
+    const end = new Date(completedAt).getTime();
+    const sec = (end - start) / 1000;
+    return sec >= 0 ? sec : 0;
+  })();
+
   return (
     <div className="inline-block w-full flex flex-col gap-4">
       <HeaderWrapper {...headerProps} className={headerClassName}>
@@ -561,6 +571,14 @@ const ToolCallCard: React.FC<{
             <span className="text-sm font-mono">{label}</span>
           )}
         </span>
+        {durationSeconds !== null && (
+          <span
+            className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums"
+            title={`Duration: ${formatDuration(durationSeconds)}`}
+          >
+            {formatDuration(durationSeconds)}
+          </span>
+        )}
       </HeaderWrapper>
 
       {effectiveExpanded && (
