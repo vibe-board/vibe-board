@@ -11,13 +11,12 @@
 use std::{sync::Arc, time::Duration};
 
 use futures::StreamExt;
-use workspace_utils::msg_store::MsgStore;
 
 use super::{
     NormalizedEntry, NormalizedEntryError, NormalizedEntryType,
     plain_text_processor::PlainTextLogProcessor,
 };
-use crate::logs::utils::EntryIndexProvider;
+use crate::logs::utils::{ConversationSink, EntryIndexProvider};
 
 /// Standard stderr log normalizer that uses PlainTextLogProcessor to stream error logs.
 ///
@@ -36,9 +35,12 @@ use crate::logs::utils::EntryIndexProvider;
 /// # Arguments
 /// * `msg_store` - the message store providing a stream of stderr chunks and accepting patches.
 /// * `entry_index_provider` - provider of incremental entry indices for patch ordering.
-pub fn normalize_stderr_logs(msg_store: Arc<MsgStore>, entry_index_provider: EntryIndexProvider) {
+pub fn normalize_stderr_logs(
+    msg_store: Arc<dyn ConversationSink>,
+    entry_index_provider: EntryIndexProvider,
+) {
     tokio::spawn(async move {
-        let mut stderr = msg_store.stderr_chunked_stream();
+        let mut stderr = msg_store.raw().stderr_chunked_stream();
 
         // Create a processor with time-based emission for stderr
         let mut processor = PlainTextLogProcessor::builder()

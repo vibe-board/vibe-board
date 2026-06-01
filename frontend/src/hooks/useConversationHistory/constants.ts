@@ -1,3 +1,4 @@
+import type { ToolUsageStats } from 'shared/types';
 import type { PatchTypeWithKey } from './types';
 
 export const MIN_INITIAL_ENTRIES = 10;
@@ -64,5 +65,19 @@ export const taskDurationPatch = (
     timestamp: null,
   },
   patchKey: `${executionProcessId}:duration`,
+  executionProcessId,
+});
+
+export const toolUsageStatsPatch = (
+  executionProcessId: string,
+  stats: ToolUsageStats
+): PatchTypeWithKey => ({
+  type: 'NORMALIZED_ENTRY',
+  content: {
+    entry_type: { type: 'tool_usage_stats', ...stats },
+    content: '',
+    timestamp: null,
+  },
+  patchKey: `${executionProcessId}:tool-usage-stats`,
   executionProcessId,
 });

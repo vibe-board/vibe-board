@@ -5,7 +5,6 @@ use serde::Deserialize;
 use serde_json::Value;
 use workspace_utils::{
     approvals::{ApprovalStatus, QuestionStatus},
-    msg_store::MsgStore,
     path::make_path_relative,
 };
 
@@ -21,7 +20,7 @@ use crate::{
         NormalizedEntryType, TodoItem, TokenUsageInfo, ToolResult, ToolStatus,
         stderr_processor::normalize_stderr_logs,
         utils::{
-            EntryIndexProvider,
+            ConversationSink, EntryIndexProvider,
             patch::{add_normalized_entry, replace_normalized_entry, upsert_normalized_entry},
         },
     },
@@ -36,8 +35,8 @@ fn system_message(content: String) -> NormalizedEntry {
     }
 }
 
-pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
-    let entry_index = EntryIndexProvider::start_from(&msg_store);
+pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path) {
+    let entry_index = EntryIndexProvider::start_from(msg_store.as_ref());
     normalize_stderr_logs(msg_store.clone(), entry_index.clone());
 
     let worktree_path = worktree_path.to_path_buf();
@@ -45,7 +44,7 @@ pub fn normalize_logs(msg_store: Arc<MsgStore>, worktree_path: &Path) {
         let mut stored_session_id = false;
         let mut state = LogState::new(entry_index.clone(), msg_store.clone());
 
-        let mut stdout_lines = msg_store.stdout_lines_stream();
+        let mut stdout_lines = msg_store.raw().stdout_lines_stream();
         while let Some(Ok(line)) = stdout_lines.next().await {
             let Some(event) = parse_event(&line) else {
                 let trimmed = line.trim();
@@ -217,10 +216,9 @@ enum UpdateMode {
     Set,
 }
 
-#[derive(Default)]
 struct LogState {
     entry_index: EntryIndexProvider,
-    msg_store: Arc<MsgStore>,
+    msg_store: Arc<dyn ConversationSink>,
     message_roles: HashMap<String, MessageRole>,
     assistant_text: HashMap<String, StreamingText>,
     thinking_text: HashMap<String, StreamingText>,
@@ -233,7 +231,7 @@ struct LogState {
 }
 
 impl LogState {
-    fn new(entry_index: EntryIndexProvider, msg_store: Arc<MsgStore>) -> Self {
+    fn new(entry_index: EntryIndexProvider, msg_store: Arc<dyn ConversationSink>) -> Self {
         Self {
             entry_index,
             msg_store,
@@ -249,7 +247,12 @@ impl LogState {
         }
     }
 
-    fn handle_sdk_event(&mut self, raw: &Value, worktree_path: &Path, msg_store: &Arc<MsgStore>) {
+    fn handle_sdk_event(
+        &mut self,
+        raw: &Value,
+        worktree_path: &Path,
+        msg_store: &Arc<dyn ConversationSink>,
+    ) {
         let Some(event) = SdkEvent::parse(raw) else {
             let raw_text = raw.to_string();
             if !raw_text.trim().is_empty() {
@@ -362,7 +365,7 @@ impl LogState {
         }
     }
 
-    fn handle_todo_updated(&mut self, todos: &[SdkTodo], msg_store: &Arc<MsgStore>) {
+    fn handle_todo_updated(&mut self, todos: &[SdkTodo], msg_store: &Arc<dyn ConversationSink>) {
         let fingerprint = fingerprint_todos(todos);
         if self.todo_update_fingerprint.as_deref() == Some(fingerprint.as_str()) {
             return;
@@ -387,6 +390,9 @@ impl LogState {
                     operation: "update".to_string(),
                 },
                 status: ToolStatus::Success,
+                started_at: None,
+                approved_at: None,
+                completed_at: None,
             },
             content: "TODO list updated".to_string(),
             metadata: None,
@@ -423,7 +429,7 @@ impl LogState {
         part: Part,
         delta: Option<&str>,
         worktree_path: &Path,
-        msg_store: &Arc<MsgStore>,
+        msg_store: &Arc<dyn ConversationSink>,
     ) {
         match part {
             Part::Text(part) => {
@@ -504,7 +510,7 @@ impl LogState {
         tool_call_id: &str,
         approval_id: String,
         worktree_path: &Path,
-        msg_store: &Arc<MsgStore>,
+        msg_store: &Arc<dyn ConversationSink>,
     ) {
         let Some(tool_state) = self.tool_states.get_mut(tool_call_id) else {
             return;
@@ -529,7 +535,7 @@ impl LogState {
         tool_call_id: &str,
         status: ApprovalStatus,
         worktree_path: &Path,
-        msg_store: &Arc<MsgStore>,
+        msg_store: &Arc<dyn ConversationSink>,
     ) {
         self.approvals
             .insert(tool_call_id.to_string(), status.clone());
@@ -581,7 +587,7 @@ impl LogState {
         tool_call_id: &str,
         status: QuestionStatus,
         worktree_path: &Path,
-        msg_store: &Arc<MsgStore>,
+        msg_store: &Arc<dyn ConversationSink>,
     ) {
         if let Some(tool_state) = self.tool_states.get_mut(tool_call_id) {
             tool_state.set_question_status(status.clone());
@@ -620,7 +626,7 @@ impl LogState {
         &mut self,
         event: PermissionAskedEvent,
         worktree_path: &Path,
-        msg_store: &Arc<MsgStore>,
+        msg_store: &Arc<dyn ConversationSink>,
     ) {
         let Some(tool) = event.tool else {
             self.add_normalized_entry(system_message(format!(
@@ -689,7 +695,7 @@ impl LogState {
         &mut self,
         event: super::types::QuestionAskedEvent,
         worktree_path: &Path,
-        msg_store: &Arc<MsgStore>,
+        msg_store: &Arc<dyn ConversationSink>,
     ) {
         let call_id = event
             .tool
@@ -742,7 +748,7 @@ fn update_streaming_text(
     entry_type: NormalizedEntryType,
     message_id: &str,
     map: &mut HashMap<String, StreamingText>,
-    msg_store: &Arc<MsgStore>,
+    msg_store: &Arc<dyn ConversationSink>,
     mode: UpdateMode,
 ) {
     if text.is_empty() {
@@ -1189,6 +1195,9 @@ impl ToolCallState {
                 tool_name: self.tool_name.clone(),
                 action_type,
                 status: self.tool_status(),
+                started_at: None,
+                approved_at: None,
+                completed_at: None,
             },
             content,
             metadata: serde_json::to_value(ToolCallMetadata {

@@ -10,7 +10,6 @@ use tokio::{io::AsyncWriteExt, process::Command};
 use ts_rs::TS;
 use workspace_utils::{
     diff::{create_unified_diff, normalize_unified_diff},
-    msg_store::MsgStore,
     path::make_path_relative,
     shell::resolve_executable_path_blocking,
 };
@@ -25,7 +24,7 @@ use crate::{
         ActionType, FileChange, NormalizedEntry, NormalizedEntryError, NormalizedEntryType,
         TodoItem, ToolStatus,
         plain_text_processor::PlainTextLogProcessor,
-        utils::{ConversationPatch, EntryIndexProvider},
+        utils::{ConversationPatch, ConversationSink, EntryIndexProvider},
     },
 };
 
@@ -169,14 +168,14 @@ impl StandardCodingAgentExecutor for CursorAgent {
         Ok(child.into())
     }
 
-    fn normalize_logs(&self, msg_store: Arc<MsgStore>, worktree_path: &Path) {
-        let entry_index_provider = EntryIndexProvider::start_from(&msg_store);
+    fn normalize_logs(&self, msg_store: Arc<dyn ConversationSink>, worktree_path: &Path) {
+        let entry_index_provider = EntryIndexProvider::start_from(msg_store.as_ref());
 
         // Custom stderr processor for Cursor that detects login errors
         let msg_store_stderr = msg_store.clone();
         let entry_index_provider_stderr = entry_index_provider.clone();
         tokio::spawn(async move {
-            let mut stderr = msg_store_stderr.stderr_chunked_stream();
+            let mut stderr = msg_store_stderr.raw().stderr_chunked_stream();
             let mut processor = PlainTextLogProcessor::builder()
                 .normalized_entry_producer(Box::new(|content: String| {
                     let content = strip_ansi_escapes::strip_str(&content);
@@ -220,7 +219,7 @@ impl StandardCodingAgentExecutor for CursorAgent {
         // Process Cursor stdout JSONL with typed serde models
         let current_dir = worktree_path.to_path_buf();
         tokio::spawn(async move {
-            let mut lines = msg_store.stdout_lines_stream();
+            let mut lines = msg_store.raw().stdout_lines_stream();
 
             // Assistant streaming coalescer state
             let mut model_reported = false;
@@ -360,6 +359,9 @@ impl StandardCodingAgentExecutor for CursorAgent {
                                     tool_name,
                                     action_type,
                                     status: ToolStatus::Created,
+                                    started_at: None,
+                                    approved_at: None,
+                                    completed_at: None,
                                 },
                                 content,
                                 metadata: None,
@@ -481,6 +483,9 @@ impl StandardCodingAgentExecutor for CursorAgent {
                                     },
                                     action_type: new_action,
                                     status: ToolStatus::Success,
+                                    started_at: None,
+                                    approved_at: None,
+                                    completed_at: None,
                                 },
                                 content: content_str,
                                 metadata: None,
@@ -1268,7 +1273,8 @@ mod tests {
         ));
         msg_store.push_finished();
 
-        executor.normalize_logs(msg_store.clone(), &current_dir);
+        let sink: Arc<dyn crate::logs::utils::ConversationSink> = Arc::new(msg_store.clone());
+        executor.normalize_logs(sink, &current_dir);
 
         tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
 

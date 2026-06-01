@@ -39,7 +39,10 @@ use executors::{
         StandardCodingAgentExecutor,
     },
     logs::{
-        NormalizedEntry, NormalizedEntryType, utils::patch::extract_normalized_entry_from_patch,
+        NormalizedEntry, NormalizedEntryType,
+        utils::{
+            ConversationMsgStore, ConversationSink, patch::extract_normalized_entry_from_patch,
+        },
     },
     profile::{ExecutorConfigs, ExecutorProfileId},
 };
@@ -1149,7 +1152,8 @@ impl LocalContainerService {
         }
 
         // 5. Start normalizer (background tasks that push JsonPatch into msg_store)
-        executor.normalize_logs(msg_store.clone(), working_dir);
+        let sink: Arc<dyn ConversationSink> = ConversationMsgStore::wrap(msg_store.clone());
+        executor.normalize_logs(sink, working_dir);
 
         // 6. Wait for process completion with 90s timeout
         const TIMEOUT: Duration = Duration::from_secs(90);

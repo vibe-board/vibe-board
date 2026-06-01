@@ -34,7 +34,9 @@ import {
   MIN_INITIAL_ENTRIES,
   nextActionPatch,
   taskDurationPatch,
+  toolUsageStatsPatch,
 } from './constants';
+import { aggregateToolUsageStats } from './aggregateToolUsageStats';
 
 function parseEntryJson(entryJson: string): PatchType | null {
   try {
@@ -412,6 +414,17 @@ export const useConversationHistoryOld = ({
                 liveProcess.completed_at as string
               ).getTime();
               const durationSeconds = (endMs - startMs) / 1000;
+              const usageStats = aggregateToolUsageStats(
+                p.entries
+                  .filter((e) => e.type === 'NORMALIZED_ENTRY')
+                  .map((e) => e.content),
+                durationSeconds
+              );
+              if (usageStats) {
+                entries.push(
+                  toolUsageStatsPatch(p.executionProcess.id, usageStats)
+                );
+              }
               entries.push(
                 taskDurationPatch(
                   p.executionProcess.id,
@@ -912,12 +925,22 @@ export const useConversationHistoryOld = ({
       ) {
         const startMs = new Date(live.started_at as string).getTime();
         const endMs = new Date(live.completed_at as string).getTime();
+        const flatDuration = (endMs - startMs) / 1000;
+        const flatUsageStats = aggregateToolUsageStats(
+          proc.entries
+            .filter((e) => e.type === 'NORMALIZED_ENTRY')
+            .map((e) => e.content),
+          flatDuration
+        );
+        if (flatUsageStats) {
+          flat.push(toolUsageStatsPatch(ep.id, flatUsageStats));
+        }
         flat.push(
           taskDurationPatch(
             ep.id,
             live.started_at as string,
             live.completed_at as string,
-            (endMs - startMs) / 1000
+            flatDuration
           )
         );
       }

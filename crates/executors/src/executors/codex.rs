@@ -65,7 +65,6 @@ use serde_json::Value;
 use strum_macros::AsRefStr;
 use tokio::process::Command;
 use ts_rs::TS;
-use workspace_utils::msg_store::MsgStore;
 
 use self::{
     client::{AppServerClient, LogWriter},
@@ -80,7 +79,7 @@ use crate::{
         AppendPrompt, AvailabilityInfo, ExecutorError, ExecutorExitResult, SlashCommandDescription,
         SpawnedChild, StandardCodingAgentExecutor,
     },
-    logs::utils::patch,
+    logs::utils::{ConversationSink, patch},
     stdout_dup::create_stdout_pipe_writer,
 };
 
@@ -249,7 +248,7 @@ impl StandardCodingAgentExecutor for Codex {
             .await
     }
 
-    fn normalize_logs(&self, msg_store: Arc<MsgStore>, worktree_path: &Path) {
+    fn normalize_logs(&self, msg_store: Arc<dyn ConversationSink>, worktree_path: &Path) {
         normalize_logs(msg_store, worktree_path);
     }
 

@@ -38,7 +38,10 @@ use executors::{
     executors::{ExecutorError, StandardCodingAgentExecutor},
     logs::{
         NormalizedEntry,
-        utils::{ConversationPatch, extract_normalized_entry_from_patch},
+        utils::{
+            ConversationMsgStore, ConversationPatch, ConversationSink,
+            extract_normalized_entry_from_patch,
+        },
     },
     profile::ExecutorProfileId,
 };
@@ -1404,14 +1407,16 @@ pub trait ContainerService {
             #[cfg(feature = "qa-mode")]
             {
                 let executor = QaMockExecutor;
-                executor.normalize_logs(msg_store, &working_dir);
+                let sink: Arc<dyn ConversationSink> = ConversationMsgStore::wrap(msg_store);
+                executor.normalize_logs(sink, &working_dir);
             }
             #[cfg(not(feature = "qa-mode"))]
             {
                 if let Some(executor) =
                     ExecutorConfigs::get_cached().get_coding_agent(executor_profile_id)
                 {
-                    executor.normalize_logs(msg_store, &working_dir);
+                    let sink: Arc<dyn ConversationSink> = ConversationMsgStore::wrap(msg_store);
+                    executor.normalize_logs(sink, &working_dir);
                 } else {
                     tracing::error!(
                         "Failed to resolve profile '{:?}' for normalization",

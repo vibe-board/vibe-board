@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use workspace_utils::approvals::{ApprovalStatus, QuestionStatus};
@@ -82,6 +83,19 @@ pub enum NormalizedEntryType {
         tool_name: String,
         action_type: ActionType,
         status: ToolStatus,
+        /// Wall-clock instant the wrapper first observed this entry index
+        /// carrying a ToolUse value.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        started_at: Option<DateTime<Utc>>,
+        /// Wall-clock instant the wrapper observed `status` transitioning out
+        /// of `PendingApproval`. Stays `None` for tools that never entered
+        /// `PendingApproval`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        approved_at: Option<DateTime<Utc>>,
+        /// Wall-clock instant the wrapper observed `status` becoming terminal
+        /// (Success / Failed / Denied / TimedOut).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        completed_at: Option<DateTime<Utc>>,
     },
     SystemMessage,
     ErrorMessage {
@@ -100,6 +114,7 @@ pub enum NormalizedEntryType {
         completed_at: String,
         duration_seconds: f64,
     },
+    ToolUsageStats(ToolUsageStats),
     UserAnsweredQuestions {
         answers: Vec<AnsweredQuestion>,
     },
@@ -139,6 +154,38 @@ pub struct TokenUsageInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct ToolStat {
+    pub tool_name: String,
+    pub count: u32,
+    pub success: u32,
+    pub failed: u32,
+    pub denied: u32,
+    pub timed_out: u32,
+    /// Calls with `started_at` present and `completed_at` absent.
+    pub in_progress: u32,
+    pub total_seconds: f64,
+    pub avg_seconds: f64,
+    pub max_seconds: f64,
+    /// Sum of `(approved_at - started_at)` across calls that passed
+    /// through `PendingApproval`. Always 0 for tools that never required
+    /// approval; the front-end uses this to decide whether to render a
+    /// per-tool footnote.
+    pub awaiting_approval_seconds: f64,
+    pub approved_call_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct ToolUsageStats {
+    pub per_tool: Vec<ToolStat>,
+    pub total_calls: u32,
+    pub total_seconds: f64,
+    /// `None` hides the "% of task" display in the card header.
+    pub task_duration_seconds: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct NormalizedEntry {
     pub timestamp: Option<String>,
     pub entry_type: NormalizedEntryType,
@@ -152,6 +199,9 @@ impl NormalizedEntry {
         if let NormalizedEntryType::ToolUse {
             tool_name,
             action_type,
+            started_at,
+            approved_at,
+            completed_at,
             ..
         } = &self.entry_type
         {
@@ -160,6 +210,9 @@ impl NormalizedEntry {
                     tool_name: tool_name.clone(),
                     action_type: action_type.clone(),
                     status,
+                    started_at: *started_at,
+                    approved_at: *approved_at,
+                    completed_at: *completed_at,
                 },
                 ..self.clone()
             })

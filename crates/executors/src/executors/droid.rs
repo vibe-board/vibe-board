@@ -7,13 +7,12 @@ use serde::{Deserialize, Serialize};
 use strum_macros::AsRefStr;
 use tokio::{io::AsyncWriteExt, process::Command};
 use ts_rs::TS;
-use workspace_utils::msg_store::MsgStore;
 
 use crate::{
     command::{CommandBuildError, CommandBuilder, CommandParts},
     env::ExecutionEnv,
     executors::{AppendPrompt, ExecutorError, SpawnedChild, StandardCodingAgentExecutor},
-    logs::utils::EntryIndexProvider,
+    logs::utils::{ConversationSink, EntryIndexProvider},
 };
 
 pub mod normalize_logs;
@@ -184,11 +183,11 @@ impl StandardCodingAgentExecutor for Droid {
         spawn_droid(continue_cmd, &combined_prompt, current_dir, env, &self.cmd).await
     }
 
-    fn normalize_logs(&self, msg_store: Arc<MsgStore>, current_dir: &Path) {
+    fn normalize_logs(&self, msg_store: Arc<dyn ConversationSink>, current_dir: &Path) {
         normalize_logs(
             msg_store.clone(),
             current_dir,
-            EntryIndexProvider::start_from(&msg_store),
+            EntryIndexProvider::start_from(msg_store.as_ref()),
         );
     }
 
