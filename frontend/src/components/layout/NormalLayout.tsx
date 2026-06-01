@@ -1,11 +1,13 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Outlet, useSearchParams } from 'react-router-dom';
 import {
   Group,
   Panel,
   Separator,
   useDefaultLayout,
+  type Layout,
   type PanelImperativeHandle,
+  type PanelSize,
 } from 'react-resizable-panels';
 import { DevBanner } from '@/components/DevBanner';
 import { Navbar } from '@/components/layout/Navbar';
@@ -16,8 +18,10 @@ export function NormalLayout() {
   const [searchParams] = useSearchParams();
   const view = searchParams.get('view');
   const shouldHideNavbar = view === 'preview' || view === 'diffs';
-  const { isDrawerOpen } = useTerminal();
+  const { isDrawerOpen, openDrawer, closeDrawer } = useTerminal();
   const terminalPanelRef = useRef<PanelImperativeHandle>(null);
+  const isDrawerOpenRef = useRef(isDrawerOpen);
+  isDrawerOpenRef.current = isDrawerOpen;
 
   useEffect(() => {
     const terminalPanel = terminalPanelRef.current;
@@ -25,7 +29,12 @@ export function NormalLayout() {
 
     const frameId = requestAnimationFrame(() => {
       if (isDrawerOpen) {
-        terminalPanel.resize(30);
+        // Only resize to the default 30% when the panel is currently collapsed.
+        // If the panel is already at a non-zero size (e.g. user dragged it open
+        // or auto-sync flipped isDrawerOpen via onResize), preserve that size.
+        if (terminalPanel.isCollapsed?.() ?? true) {
+          terminalPanel.resize(30);
+        }
       } else {
         terminalPanel.collapse();
       }
@@ -34,10 +43,36 @@ export function NormalLayout() {
     return () => cancelAnimationFrame(frameId);
   }, [isDrawerOpen]);
 
-  const { defaultLayout, onLayoutChange } = useDefaultLayout({
+  const { defaultLayout: persistedLayout, onLayoutChange } = useDefaultLayout({
     groupId: 'normalLayout-terminal',
     storage: localStorage,
   });
+
+  // Captured at mount: when the drawer is closed at mount, force the terminal
+  // panel to 0 in the initial layout. Otherwise the persisted layout (saved by
+  // another tab while its drawer was open) would render the terminal at its
+  // old size before useEffect's collapse() runs, leaving the panel visually
+  // open while isDrawerOpen=false.
+  const [initialDefaultLayout] = useState<Layout | undefined>(() => {
+    if (!persistedLayout) return undefined;
+    return isDrawerOpen ? persistedLayout : { content: 100, terminal: 0 };
+  });
+
+  // Auto-sync isDrawerOpen with the actual terminal panel visibility. Without
+  // this, the state can desync (e.g. user drags the separator to open the
+  // panel) and the ↓ collapse button becomes a no-op because closeDrawer()
+  // sets isDrawerOpen=false but the value didn't change, so the useEffect
+  // never re-runs to call terminalPanel.collapse().
+  const handleTerminalResize = useCallback(
+    (size: PanelSize) => {
+      const isVisible = size.asPercentage > 0;
+      if (isVisible !== isDrawerOpenRef.current) {
+        if (isVisible) openDrawer();
+        else closeDrawer();
+      }
+    },
+    [openDrawer, closeDrawer]
+  );
 
   return (
     <div className="flex flex-col h-full">
@@ -46,7 +81,7 @@ export function NormalLayout() {
         <Group
           orientation="vertical"
           className="h-full"
-          defaultLayout={defaultLayout}
+          defaultLayout={initialDefaultLayout}
           onLayoutChange={onLayoutChange}
         >
           <Panel
@@ -74,6 +109,7 @@ export function NormalLayout() {
             minSize={15}
             collapsible
             collapsedSize={0}
+            onResize={handleTerminalResize}
             className="min-h-0"
           >
             <TerminalBottomDrawer />
