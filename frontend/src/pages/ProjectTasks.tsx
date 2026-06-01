@@ -875,18 +875,6 @@ export function ProjectTasks() {
     return <Loader message={t('loading')} size={32} className="py-8" />;
   }
 
-  const truncateTitle = (title: string | undefined, maxLength = 20) => {
-    if (!title) return 'Task';
-    if (title.length <= maxLength) return title;
-
-    const truncated = title.substring(0, maxLength);
-    const lastSpace = truncated.lastIndexOf(' ');
-
-    return lastSpace > 0
-      ? `${truncated.substring(0, lastSpace)}...`
-      : `${truncated}...`;
-  };
-
   const kanbanContent =
     tasks.length === 0 ? (
       <div className="max-w-7xl mx-auto mt-8">
@@ -955,9 +943,7 @@ export function ProjectTasks() {
           <BreadcrumbList>
             <BreadcrumbItem>
               {isTaskView ? (
-                <BreadcrumbPage>
-                  {truncateTitle(selectedTask?.title)}
-                </BreadcrumbPage>
+                <BreadcrumbPage>{selectedTask?.title || 'Task'}</BreadcrumbPage>
               ) : (
                 <BreadcrumbLink
                   className="cursor-pointer hover:underline"
@@ -965,7 +951,7 @@ export function ProjectTasks() {
                     navigateWithSearch(paths.task(projectId!, taskId!))
                   }
                 >
-                  {truncateTitle(selectedTask?.title)}
+                  {selectedTask?.title || 'Task'}
                 </BreadcrumbLink>
               )}
             </BreadcrumbItem>
