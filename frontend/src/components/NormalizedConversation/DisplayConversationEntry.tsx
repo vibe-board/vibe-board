@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import WYSIWYGEditor from '@/components/ui/wysiwyg';
+import ReadOnlyMarkdown from '@/components/ui/read-only-markdown';
 import {
   ActionType,
   NormalizedEntry,
@@ -312,26 +312,16 @@ const CollapsibleEntry: React.FC<{
   expansionKey: string;
   variant: CollapsibleVariant;
   contentClassName: string;
-  taskAttemptId?: string;
-}> = ({
-  content,
-  markdown,
-  expansionKey,
-  variant,
-  contentClassName,
-  taskAttemptId,
-}) => {
+}> = ({ content, markdown, expansionKey, variant, contentClassName }) => {
   const multiline = content.includes('\n');
   const [expanded, toggle] = useExpandable(`entry:${expansionKey}`, false);
 
   const Inner = (
     <div className={contentClassName}>
       {markdown ? (
-        <WYSIWYGEditor
-          value={content}
-          disabled
+        <ReadOnlyMarkdown
+          content={content}
           className="whitespace-pre-wrap break-words"
-          taskAttemptId={taskAttemptId}
         />
       ) : (
         content
@@ -343,11 +333,9 @@ const CollapsibleEntry: React.FC<{
   const PreviewInner = (
     <div className={contentClassName}>
       {markdown ? (
-        <WYSIWYGEditor
-          value={firstLine}
-          disabled
+        <ReadOnlyMarkdown
+          content={firstLine}
           className="whitespace-pre-wrap break-words"
-          taskAttemptId={taskAttemptId}
         />
       ) : (
         firstLine
@@ -410,13 +398,11 @@ const PlanPresentationCard: React.FC<{
   expansionKey: string;
   defaultExpanded?: boolean;
   statusAppearance?: ToolStatusAppearance;
-  taskAttemptId?: string;
 }> = ({
   plan,
   expansionKey,
   defaultExpanded = false,
   statusAppearance = 'default',
-  taskAttemptId,
 }) => {
   const { t } = useTranslation('common');
   const [expanded, toggle] = useExpandable(
@@ -462,11 +448,9 @@ const PlanPresentationCard: React.FC<{
         {expanded && (
           <div className={cn('px-3 py-2', tone.contentBg)}>
             <div className={cn('text-sm', tone.contentText)}>
-              <WYSIWYGEditor
-                value={plan}
-                disabled
+              <ReadOnlyMarkdown
+                content={plan}
                 className="whitespace-pre-wrap break-words"
-                taskAttemptId={taskAttemptId}
               />
             </div>
           </div>
@@ -480,8 +464,7 @@ const ToolCallCard: React.FC<{
   entry: NormalizedEntry | ProcessStartPayload;
   expansionKey: string;
   forceExpanded?: boolean;
-  taskAttemptId?: string;
-}> = ({ entry, expansionKey, forceExpanded = false, taskAttemptId }) => {
+}> = ({ entry, expansionKey, forceExpanded = false }) => {
   const { t } = useTranslation('common');
 
   // Determine if this is a NormalizedEntry with tool_use
@@ -625,10 +608,8 @@ const ToolCallCard: React.FC<{
                   <div className="px-2 py-1">
                     {actionType.result?.type.type === 'markdown' &&
                       actionType.result.value && (
-                        <WYSIWYGEditor
-                          value={actionType.result.value?.toString()}
-                          disabled
-                          taskAttemptId={taskAttemptId}
+                        <ReadOnlyMarkdown
+                          content={actionType.result.value?.toString() ?? ''}
                         />
                       )}
                     {actionType.result?.type.type === 'json' &&
@@ -702,7 +683,6 @@ const ScriptToolCallCard: React.FC<{
           entry={entry}
           expansionKey={expansionKey}
           forceExpanded={forceExpanded}
-          taskAttemptId={taskAttemptId}
         />
       </div>
       {canFix && (
@@ -774,11 +754,7 @@ function DisplayConversationEntry({
   if (isProcessStart(entry)) {
     return (
       <div className={greyed ? 'opacity-50 pointer-events-none' : undefined}>
-        <ToolCallCard
-          entry={entry}
-          expansionKey={expansionKey}
-          taskAttemptId={taskAttempt?.id}
-        />
+        <ToolCallCard entry={entry} expansionKey={expansionKey} />
       </div>
     );
   }
@@ -834,11 +810,9 @@ function DisplayConversationEntry({
               toolName: feedbackEntry.denied_tool,
             })}
           </div>
-          <WYSIWYGEditor
-            value={entry.content}
-            disabled
+          <ReadOnlyMarkdown
+            content={entry.content}
             className="whitespace-pre-wrap break-words flex flex-col gap-1 font-light py-3"
-            taskAttemptId={taskAttempt?.id}
           />
         </div>
       </div>
@@ -920,7 +894,6 @@ function DisplayConversationEntry({
             expansionKey={expansionKey}
             defaultExpanded={defaultExpanded}
             statusAppearance={statusAppearance}
-            taskAttemptId={taskAttempt?.id}
           />
         );
       }
@@ -1007,7 +980,6 @@ function DisplayConversationEntry({
           entry={entry}
           expansionKey={expansionKey}
           forceExpanded={isPendingApproval}
-          taskAttemptId={taskAttempt?.id}
         />
       );
     })();
@@ -1052,7 +1024,6 @@ function DisplayConversationEntry({
           expansionKey={expansionKey}
           variant={isSystem ? 'system' : 'error'}
           contentClassName={getContentClassName(entryType)}
-          taskAttemptId={taskAttempt?.id}
         />
       </div>
     );
@@ -1207,21 +1178,17 @@ function DisplayConversationEntry({
               className="flex items-start gap-1.5 opacity-60 whitespace-pre-wrap break-words"
             >
               <Brain className="h-3 w-3 shrink-0 mt-0.5" />
-              <WYSIWYGEditor
-                value={thinkContent}
-                disabled
+              <ReadOnlyMarkdown
+                content={thinkContent}
                 className="whitespace-pre-wrap break-words flex flex-col gap-1 font-light text-sm"
-                taskAttemptId={taskAttempt?.id}
               />
             </div>
           ))}
           {remainingContent && (
             <div className={getContentClassName(entryType)}>
-              <WYSIWYGEditor
-                value={remainingContent}
-                disabled
+              <ReadOnlyMarkdown
+                content={remainingContent}
                 className="whitespace-pre-wrap break-words flex flex-col gap-1 font-light"
-                taskAttemptId={taskAttempt?.id}
               />
             </div>
           )}
@@ -1234,11 +1201,9 @@ function DisplayConversationEntry({
     <div className="px-4 py-2 text-sm">
       <div className={getContentClassName(entryType)}>
         {shouldRenderMarkdown(entryType) ? (
-          <WYSIWYGEditor
-            value={isNormalizedEntry(entry) ? entry.content : ''}
-            disabled
+          <ReadOnlyMarkdown
+            content={isNormalizedEntry(entry) ? entry.content : ''}
             className="whitespace-pre-wrap break-words flex flex-col gap-1 font-light"
-            taskAttemptId={taskAttempt?.id}
           />
         ) : isNormalizedEntry(entry) ? (
           entry.content
