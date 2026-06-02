@@ -1,8 +1,9 @@
 import React from 'react';
-import { act, render, waitFor } from '@testing-library/react';
+import { act, render } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { NormalLayout } from '../NormalLayout';
+import type { TerminalDrawerController } from '@/contexts/TerminalContext';
 
 interface MockPanelSize {
   asPercentage: number;
@@ -12,8 +13,9 @@ type MockLayout = { [id: string]: number };
 
 const mocks = vi.hoisted(() => ({
   isDrawerOpen: false,
-  openDrawer: vi.fn(),
-  closeDrawer: vi.fn(),
+  setDrawerOpen: vi.fn(),
+  registeredController: undefined as TerminalDrawerController | undefined,
+  unregister: vi.fn(),
   collapseTerminalPanel: vi.fn(),
   resizeTerminalPanel: vi.fn(),
   isCollapsedTerminalPanel: vi.fn(() => true),
@@ -27,8 +29,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/contexts/TerminalContext', () => ({
   useTerminal: () => ({
     isDrawerOpen: mocks.isDrawerOpen,
-    openDrawer: mocks.openDrawer,
-    closeDrawer: mocks.closeDrawer,
+    setDrawerOpen: mocks.setDrawerOpen,
+    registerDrawerController: (controller: TerminalDrawerController) => {
+      mocks.registeredController = controller;
+      return mocks.unregister;
+    },
   }),
 }));
 
@@ -100,8 +105,9 @@ vi.mock('react-resizable-panels', () => {
 describe('NormalLayout', () => {
   beforeEach(() => {
     mocks.isDrawerOpen = false;
-    mocks.openDrawer.mockClear();
-    mocks.closeDrawer.mockClear();
+    mocks.setDrawerOpen.mockClear();
+    mocks.registeredController = undefined;
+    mocks.unregister.mockClear();
     mocks.collapseTerminalPanel.mockClear();
     mocks.resizeTerminalPanel.mockClear();
     mocks.isCollapsedTerminalPanel.mockReset();
@@ -111,18 +117,69 @@ describe('NormalLayout', () => {
     mocks.capturedTerminalOnResize = undefined;
   });
 
-  it('collapses the terminal panel when the drawer closes', async () => {
-    mocks.isDrawerOpen = true;
-    const { rerender } = render(<NormalLayout />);
+  it('registers a drawer controller on mount and unregisters on unmount', () => {
+    const { unmount } = render(<NormalLayout />);
 
-    expect(mocks.collapseTerminalPanel).not.toHaveBeenCalled();
+    expect(mocks.registeredController).toBeDefined();
+    expect(typeof mocks.registeredController?.open).toBe('function');
+    expect(typeof mocks.registeredController?.close).toBe('function');
 
+    unmount();
+    expect(mocks.unregister).toHaveBeenCalledTimes(1);
+  });
+
+  // Regression: the controller's close() must collapse the panel imperatively,
+  // independent of isDrawerOpen. The old bug was that closing went through
+  // state, so when isDrawerOpen was already false (desynced) the panel never
+  // collapsed and the button appeared dead.
+  it('collapses the terminal panel when the controller close() is invoked', () => {
     mocks.isDrawerOpen = false;
-    rerender(<NormalLayout />);
+    render(<NormalLayout />);
 
-    await waitFor(() => {
-      expect(mocks.collapseTerminalPanel).toHaveBeenCalledTimes(1);
+    act(() => {
+      mocks.registeredController?.close();
     });
+
+    expect(mocks.collapseTerminalPanel).toHaveBeenCalledTimes(1);
+  });
+
+  it('resizes the terminal panel to the default when open() is invoked while collapsed', () => {
+    mocks.isCollapsedTerminalPanel.mockReturnValue(true);
+    render(<NormalLayout />);
+
+    act(() => {
+      mocks.registeredController?.open();
+    });
+
+    expect(mocks.resizeTerminalPanel).toHaveBeenCalledTimes(1);
+    expect(mocks.resizeTerminalPanel).toHaveBeenCalledWith(30);
+  });
+
+  it('preserves a user-dragged size by skipping resize when open() is invoked while already expanded', () => {
+    mocks.isCollapsedTerminalPanel.mockReturnValue(false);
+    render(<NormalLayout />);
+
+    act(() => {
+      mocks.registeredController?.open();
+    });
+
+    expect(mocks.resizeTerminalPanel).not.toHaveBeenCalled();
+  });
+
+  it('mirrors panel visibility into isDrawerOpen via onResize', () => {
+    render(<NormalLayout />);
+
+    expect(mocks.capturedTerminalOnResize).toBeDefined();
+
+    act(() => {
+      mocks.capturedTerminalOnResize?.({ asPercentage: 25 });
+    });
+    expect(mocks.setDrawerOpen).toHaveBeenLastCalledWith(true);
+
+    act(() => {
+      mocks.capturedTerminalOnResize?.({ asPercentage: 0 });
+    });
+    expect(mocks.setDrawerOpen).toHaveBeenLastCalledWith(false);
   });
 
   it('forces the initial layout to a collapsed terminal when the drawer is closed at mount', () => {
@@ -130,8 +187,8 @@ describe('NormalLayout', () => {
     mocks.persistedLayout = { content: 70, terminal: 30 };
     render(<NormalLayout />);
 
-    // Without this override, the persisted [70, 30] from another tab would
-    // briefly show the terminal at 30% before useEffect collapses it.
+    // Without this override, the persisted [70, 30] from a previous session
+    // would briefly show the terminal at 30% before it settles to collapsed.
     expect(mocks.capturedDefaultLayout).toEqual({ content: 100, terminal: 0 });
   });
 
@@ -149,56 +206,5 @@ describe('NormalLayout', () => {
     render(<NormalLayout />);
 
     expect(mocks.capturedDefaultLayout).toBeUndefined();
-  });
-
-  it('opens the drawer when the terminal panel becomes visible', () => {
-    mocks.isDrawerOpen = false;
-    render(<NormalLayout />);
-
-    expect(mocks.capturedTerminalOnResize).toBeDefined();
-    act(() => {
-      mocks.capturedTerminalOnResize?.({ asPercentage: 25 });
-    });
-
-    expect(mocks.openDrawer).toHaveBeenCalledTimes(1);
-    expect(mocks.closeDrawer).not.toHaveBeenCalled();
-  });
-
-  it('closes the drawer when the terminal panel collapses to zero', () => {
-    mocks.isDrawerOpen = true;
-    render(<NormalLayout />);
-
-    act(() => {
-      mocks.capturedTerminalOnResize?.({ asPercentage: 0 });
-    });
-
-    expect(mocks.closeDrawer).toHaveBeenCalledTimes(1);
-    expect(mocks.openDrawer).not.toHaveBeenCalled();
-  });
-
-  it('does not toggle the drawer when terminal size already matches state', () => {
-    mocks.isDrawerOpen = true;
-    render(<NormalLayout />);
-
-    act(() => {
-      mocks.capturedTerminalOnResize?.({ asPercentage: 30 });
-    });
-
-    expect(mocks.openDrawer).not.toHaveBeenCalled();
-    expect(mocks.closeDrawer).not.toHaveBeenCalled();
-  });
-
-  it('preserves the user-set panel size by skipping resize when not collapsed', async () => {
-    mocks.isDrawerOpen = false;
-    mocks.isCollapsedTerminalPanel.mockReturnValue(false);
-    const { rerender } = render(<NormalLayout />);
-
-    mocks.isDrawerOpen = true;
-    rerender(<NormalLayout />);
-
-    // Wait a frame for the requestAnimationFrame in the effect to fire.
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-
-    expect(mocks.resizeTerminalPanel).not.toHaveBeenCalled();
   });
 });

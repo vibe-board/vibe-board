@@ -1,5 +1,5 @@
 import { renderHook, act } from '@testing-library/react';
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 import type { ReactNode } from 'react';
 
 import { TerminalProvider, useTerminal } from '../TerminalContext';
@@ -160,5 +160,85 @@ describe('TerminalContext', () => {
     const titles = result.current.getAllTabs().map((tab) => tab.title);
     expect(titles).toContain('My Custom Name');
     expect(titles).toContain('Terminal 1');
+  });
+
+  describe('drawer controller', () => {
+    it('forwards close() to the registered controller even when isDrawerOpen never changes', () => {
+      const { result } = renderHook(() => useTerminal(), { wrapper });
+
+      const open = vi.fn();
+      const close = vi.fn();
+      act(() => {
+        result.current.registerDrawerController({ open, close });
+      });
+
+      // isDrawerOpen starts false. Closing again must STILL drive the panel —
+      // this is the regression: the old reducer-based closeDrawer was a no-op
+      // when the value already matched, so the panel never collapsed.
+      expect(result.current.isDrawerOpen).toBe(false);
+      act(() => result.current.closeDrawer());
+
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(open).not.toHaveBeenCalled();
+    });
+
+    it('toggleDrawer opens when closed and closes when open, driving the controller each time', () => {
+      const { result } = renderHook(() => useTerminal(), { wrapper });
+
+      const open = vi.fn();
+      const close = vi.fn();
+      act(() => {
+        result.current.registerDrawerController({ open, close });
+      });
+
+      // Closed → toggle opens.
+      act(() => result.current.toggleDrawer());
+      expect(open).toHaveBeenCalledTimes(1);
+
+      // Panel reports it is now visible; the mirror updates isDrawerOpen.
+      act(() => result.current.setDrawerOpen(true));
+      expect(result.current.isDrawerOpen).toBe(true);
+
+      // Open → toggle closes.
+      act(() => result.current.toggleDrawer());
+      expect(close).toHaveBeenCalledTimes(1);
+    });
+
+    it('setDrawerOpen is the only writer of isDrawerOpen', () => {
+      const { result } = renderHook(() => useTerminal(), { wrapper });
+
+      act(() => {
+        result.current.registerDrawerController({
+          open: vi.fn(),
+          close: vi.fn(),
+        });
+      });
+
+      // Commands alone must NOT flip the flag — only the panel's onResize
+      // mirror (setDrawerOpen) does.
+      act(() => result.current.openDrawer());
+      expect(result.current.isDrawerOpen).toBe(false);
+
+      act(() => result.current.setDrawerOpen(true));
+      expect(result.current.isDrawerOpen).toBe(true);
+    });
+
+    it('stops forwarding after the controller unregisters', () => {
+      const { result } = renderHook(() => useTerminal(), { wrapper });
+
+      const close = vi.fn();
+      let unregister: () => void = () => {};
+      act(() => {
+        unregister = result.current.registerDrawerController({
+          open: vi.fn(),
+          close,
+        });
+      });
+
+      act(() => unregister());
+      act(() => result.current.closeDrawer());
+
+      expect(close).not.toHaveBeenCalled();
+    });
   });
 });
