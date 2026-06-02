@@ -67,6 +67,7 @@ use utils::{
     log_msg::LogMsg,
     msg_store::MsgStore,
     shell,
+    stream_lines::decode_utf8_chunks,
     text::{git_branch_id, short_uuid, truncate_to_char_boundary},
 };
 use uuid::Uuid;
@@ -811,13 +812,13 @@ impl LocalContainerService {
         let out = child.inner().stdout.take().expect("no stdout");
         let err = child.inner().stderr.take().expect("no stderr");
 
-        // Map stdout bytes -> LogMsg::Stdout
-        let out = ReaderStream::new(out)
-            .map_ok(|chunk| LogMsg::Stdout(String::from_utf8_lossy(&chunk).into_owned()));
+        // Map stdout bytes -> LogMsg::Stdout. Decode incrementally so multi-byte
+        // UTF-8 chars split across read-buffer boundaries are reassembled intact
+        // instead of being corrupted into U+FFFD.
+        let out = decode_utf8_chunks(ReaderStream::new(out)).map_ok(LogMsg::Stdout);
 
         // Map stderr bytes -> LogMsg::Stderr
-        let err = ReaderStream::new(err)
-            .map_ok(|chunk| LogMsg::Stderr(String::from_utf8_lossy(&chunk).into_owned()));
+        let err = decode_utf8_chunks(ReaderStream::new(err)).map_ok(LogMsg::Stderr);
 
         // If you have a JSON Patch source, map it to LogMsg::JsonPatch too, then select all three.
 
@@ -1141,11 +1142,9 @@ impl LocalContainerService {
             let out = spawned.child.inner().stdout.take().expect("no stdout");
             let err = spawned.child.inner().stderr.take().expect("no stderr");
 
-            let out = ReaderStream::new(out)
-                .map_ok(|chunk| LogMsg::Stdout(String::from_utf8_lossy(&chunk).into_owned()));
+            let out = decode_utf8_chunks(ReaderStream::new(out)).map_ok(LogMsg::Stdout);
 
-            let err = ReaderStream::new(err)
-                .map_ok(|chunk| LogMsg::Stderr(String::from_utf8_lossy(&chunk).into_owned()));
+            let err = decode_utf8_chunks(ReaderStream::new(err)).map_ok(LogMsg::Stderr);
 
             let merged = select(out, err);
             msg_store.clone().spawn_forwarder(merged);
