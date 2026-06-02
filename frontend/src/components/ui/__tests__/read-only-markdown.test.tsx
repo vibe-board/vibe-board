@@ -42,4 +42,24 @@ describe('ReadOnlyMarkdown', () => {
       screen.queryByRole('button', { name: /copy as markdown/i })
     ).toBeNull();
   });
+
+  // The old read-only WYSIWYGEditor wrapped content in `text-base` (legacy 14px).
+  // Streamdown inherits font-size, so without a baseline the conversation text
+  // shrank to the surrounding `text-sm` (12px). Guard the baseline + override.
+  it('applies a text-base baseline when no text size is given', () => {
+    const { container } = render(<ReadOnlyMarkdown content={'hi'} />);
+    const root = container.querySelector('[class*="text-base"]');
+    expect(root).not.toBeNull();
+  });
+
+  it('defers to an explicit caller text size without emitting a conflicting text-base', () => {
+    const { container } = render(
+      <ReadOnlyMarkdown content={'hi'} className="text-sm" />
+    );
+    const sized = container.querySelector('.text-sm');
+    expect(sized).not.toBeNull();
+    // cn() is plain clsx (no twMerge), so both classes would otherwise ship and
+    // CSS source order — not prop order — would decide. Ensure text-base is gone.
+    expect(sized?.className).not.toMatch(/(?:^|\s)text-base(?:\s|$)/);
+  });
 });

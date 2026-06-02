@@ -36,6 +36,13 @@ function ReadOnlyMarkdown({
 }: ReadOnlyMarkdownProps) {
   const [copied, setCopied] = useState(false);
 
+  // When the caller supplies its own `text-*` size, defer to it; otherwise fall
+  // back to the legacy `text-base` baseline. (cn() is plain clsx with no
+  // twMerge, so emitting both would leave the winner to CSS source order.)
+  const hasTextSize = /(?:^|\s)text-(xs|sm|base|lg|xl|\d)/.test(
+    className ?? ''
+  );
+
   const handleCopy = useCallback(async () => {
     if (!content) return;
     try {
@@ -75,6 +82,14 @@ function ReadOnlyMarkdown({
       <Streamdown
         plugins={STREAMDOWN_PLUGINS}
         className={cn(
+          // Match the old read-only WYSIWYGEditor, whose `wysiwyg text-base`
+          // wrapper rendered body text at the legacy `base` size (14px).
+          // Without a baseline the content inherits the caller's `text-sm`
+          // (12px), making conversation text look smaller. cn() is plain clsx
+          // (twMerge disabled), so we must NOT emit `text-base` when the caller
+          // already passes an explicit text size — otherwise both classes ship
+          // and CSS source order, not prop order, picks the winner.
+          !hasTextSize && 'text-base',
           'text-inherit',
           // streamdown 默认用 text-primary 给链接上色,但 legacy design 里
           // --primary 近中性色。通过稳定的 data-streamdown hook 把链接改回

@@ -16,8 +16,10 @@
 
 use std::sync::Arc;
 
-use executors::executors::{StandardCodingAgentExecutor, claude::ClaudeCode};
-use executors::logs::{NormalizedEntry, NormalizedEntryType, utils::ConversationSink};
+use executors::{
+    executors::{StandardCodingAgentExecutor, claude::ClaudeCode},
+    logs::{NormalizedEntry, NormalizedEntryType, utils::ConversationSink},
+};
 use futures::StreamExt;
 use tokio_util::bytes::Bytes;
 use workspace_utils::{log_msg::LogMsg, msg_store::MsgStore, stream_lines::decode_utf8_chunks};
@@ -128,11 +130,15 @@ async fn count_heading_bubbles(use_fixed_decoder: bool) -> Vec<String> {
             for op in v.as_array().unwrap() {
                 let path = op.get("path").and_then(|p| p.as_str()).unwrap_or("");
                 let opn = op.get("op").and_then(|p| p.as_str()).unwrap_or("");
-                if let Some(idx) = path.strip_prefix("/entries/").and_then(|n| n.parse::<usize>().ok()) {
+                if let Some(idx) = path
+                    .strip_prefix("/entries/")
+                    .and_then(|n| n.parse::<usize>().ok())
+                {
                     match opn {
                         "add" | "replace" => {
                             if let Some(val) = op.get("value").and_then(|v| v.get("content"))
-                                && let Ok(e) = serde_json::from_value::<NormalizedEntry>(val.clone())
+                                && let Ok(e) =
+                                    serde_json::from_value::<NormalizedEntry>(val.clone())
                             {
                                 map.insert(idx, e);
                             }
@@ -165,7 +171,12 @@ async fn end_to_end_no_duplicate_when_char_split_across_chunks() {
         eprintln!("FIXED bubble: {b:?}");
         assert!(!b.contains('\u{FFFD}'), "text must not be corrupted");
     }
-    assert_eq!(bubbles.len(), 1, "expected ONE bubble with fix, got {}", bubbles.len());
+    assert_eq!(
+        bubbles.len(),
+        1,
+        "expected ONE bubble with fix, got {}",
+        bubbles.len()
+    );
 }
 
 #[tokio::test]
@@ -176,7 +187,12 @@ async fn end_to_end_old_lossy_behavior_duplicates() {
     for b in &bubbles {
         eprintln!("OLD bubble: {b:?}");
     }
-    assert_eq!(bubbles.len(), 2, "old lossy decode should duplicate, got {}", bubbles.len());
+    assert_eq!(
+        bubbles.len(),
+        2,
+        "old lossy decode should duplicate, got {}",
+        bubbles.len()
+    );
     assert!(
         bubbles.iter().any(|b| b.contains('\u{FFFD}')),
         "one of the duplicated bubbles should be corrupted"
