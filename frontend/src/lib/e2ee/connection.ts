@@ -21,6 +21,8 @@ export interface ConnectionOptions {
   onConnect?: () => void;
   onDisconnect?: () => void;
   onError?: (error: string) => void;
+  onMachineOffline?: () => void;
+  onMachineOnline?: () => void;
 }
 
 interface PendingRequest {
@@ -461,9 +463,14 @@ export class E2EEConnection {
         if (msg.machine_id === this.options?.machineId && this._connected) {
           this.dek = null;
           this.resetWsStreams(1006, 'Bridge reconnected');
-          this.initDek().catch((e) =>
-            console.error('DEK re-init after bridge reconnect failed:', e)
-          );
+          // Fire onMachineOnline only once the DEK is usable again. If a DEK
+          // exchange was already in flight, initDek() awaits it — so this is
+          // best-effort "DEK is ready", not strictly "this re-init succeeded".
+          this.initDek()
+            .then(() => this.options?.onMachineOnline?.())
+            .catch((e) =>
+              console.error('DEK re-init after bridge reconnect failed:', e)
+            );
         }
         break;
 
@@ -476,6 +483,7 @@ export class E2EEConnection {
         if (msg.machine_id === this.options?.machineId) {
           this.dek = null;
           this.resetWsStreams(1006, 'Bridge disconnected');
+          this.options?.onMachineOffline?.();
         }
         break;
 

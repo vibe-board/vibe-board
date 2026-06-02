@@ -6,6 +6,7 @@ import { GatewayHomeTab } from './GatewayHomeTab';
 import { GatewayLoginScreen } from './GatewayLoginScreen';
 import { ProjectTab } from './ProjectTab';
 import { MachineProjectsTab } from './MachineProjectsTab';
+import { TabErrorBoundary } from './TabErrorBoundary';
 import { useTabDocumentTitle } from './tabDocumentTitle';
 
 export function GatewayShell() {
@@ -67,7 +68,9 @@ export function GatewayShell() {
             activeTabId === 'home' ? '' : 'hidden'
           }`}
         >
-          <GatewayHomeTab connectionId={GATEWAY_SELF_ID} />
+          <TabErrorBoundary tabKey="home">
+            <GatewayHomeTab connectionId={GATEWAY_SELF_ID} />
+          </TabErrorBoundary>
         </div>
         {tabs.map((tab) => (
           <div
@@ -76,11 +79,13 @@ export function GatewayShell() {
               activeTabId === tab.id ? '' : 'hidden'
             }`}
           >
-            {tab.type === 'machine-projects' ? (
-              <MachineProjectsTab tab={tab} />
-            ) : (
-              <ProjectTab tab={tab} />
-            )}
+            <TabErrorBoundary tabKey={tab.id} label={tab.label}>
+              {tab.type === 'machine-projects' ? (
+                <MachineProjectsTab tab={tab} />
+              ) : (
+                <ProjectTab tab={tab} />
+              )}
+            </TabErrorBoundary>
           </div>
         ))}
       </div>

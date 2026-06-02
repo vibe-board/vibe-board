@@ -5,6 +5,7 @@ import { TabBar } from './TabBar';
 import { HomeTab } from './HomeTab';
 import { ProjectTab } from './ProjectTab';
 import { MachineProjectsTab } from './MachineProjectsTab';
+import { TabErrorBoundary } from './TabErrorBoundary';
 import { useTabDocumentTitle } from './tabDocumentTitle';
 
 export function MultiConnectionShell() {
@@ -60,7 +61,9 @@ export function MultiConnectionShell() {
         <div
           className={`h-full overflow-auto ${activeTabId === 'home' ? '' : 'hidden'}`}
         >
-          <HomeTab />
+          <TabErrorBoundary tabKey="home">
+            <HomeTab />
+          </TabErrorBoundary>
         </div>
 
         {/* All tabs — keep mounted to preserve state, hide inactive */}
@@ -69,11 +72,13 @@ export function MultiConnectionShell() {
             key={tab.id}
             className={`h-full overflow-hidden ${activeTabId === tab.id ? '' : 'hidden'}`}
           >
-            {tab.type === 'machine-projects' ? (
-              <MachineProjectsTab tab={tab} />
-            ) : (
-              <ProjectTab tab={tab} />
-            )}
+            <TabErrorBoundary tabKey={tab.id} label={tab.label}>
+              {tab.type === 'machine-projects' ? (
+                <MachineProjectsTab tab={tab} />
+              ) : (
+                <ProjectTab tab={tab} />
+              )}
+            </TabErrorBoundary>
           </div>
         ))}
       </div>
