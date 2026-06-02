@@ -14,64 +14,63 @@ import { Navbar } from '@/components/layout/Navbar';
 import { useTerminal } from '@/contexts/TerminalContext';
 import { TerminalBottomDrawer } from '@/components/layout/TerminalBottomDrawer';
 
+/** Default terminal panel height (% of the vertical group) when opened. */
+const DEFAULT_TERMINAL_SIZE = 30;
+
 export function NormalLayout() {
   const [searchParams] = useSearchParams();
   const view = searchParams.get('view');
   const shouldHideNavbar = view === 'preview' || view === 'diffs';
-  const { isDrawerOpen, openDrawer, closeDrawer } = useTerminal();
+  const { isDrawerOpen, registerDrawerController, setDrawerOpen } =
+    useTerminal();
   const terminalPanelRef = useRef<PanelImperativeHandle>(null);
-  const isDrawerOpenRef = useRef(isDrawerOpen);
-  isDrawerOpenRef.current = isDrawerOpen;
 
+  // Register the physical panel as the single source of truth for the drawer.
+  // Drawer commands (buttons) call these methods directly, so a command always
+  // reaches the panel — it is never swallowed by `isDrawerOpen` already holding
+  // the target value, which was the root of the "won't collapse" bug. The panel
+  // then emits `onResize`, which mirrors visibility back into `isDrawerOpen`.
+  // Commands flow one way (button → panel); state flows the other (panel →
+  // mirror); the two never write the same value, so there is no feedback loop.
   useEffect(() => {
-    const terminalPanel = terminalPanelRef.current;
-    if (!terminalPanel) return;
-
-    const frameId = requestAnimationFrame(() => {
-      if (isDrawerOpen) {
-        // Only resize to the default 30% when the panel is currently collapsed.
-        // If the panel is already at a non-zero size (e.g. user dragged it open
-        // or auto-sync flipped isDrawerOpen via onResize), preserve that size.
-        if (terminalPanel.isCollapsed?.() ?? true) {
-          terminalPanel.resize(30);
+    return registerDrawerController({
+      open: () => {
+        const panel = terminalPanelRef.current;
+        if (!panel) return;
+        // Only snap to the default height when collapsed; preserve a size the
+        // user dragged to.
+        if (panel.isCollapsed?.() ?? true) {
+          panel.resize(DEFAULT_TERMINAL_SIZE);
         }
-      } else {
-        terminalPanel.collapse();
-      }
+      },
+      close: () => {
+        terminalPanelRef.current?.collapse();
+      },
     });
-
-    return () => cancelAnimationFrame(frameId);
-  }, [isDrawerOpen]);
+  }, [registerDrawerController]);
 
   const { defaultLayout: persistedLayout, onLayoutChange } = useDefaultLayout({
     groupId: 'normalLayout-terminal',
     storage: localStorage,
   });
 
-  // Captured at mount: when the drawer is closed at mount, force the terminal
-  // panel to 0 in the initial layout. Otherwise the persisted layout (saved by
-  // another tab while its drawer was open) would render the terminal at its
-  // old size before useEffect's collapse() runs, leaving the panel visually
-  // open while isDrawerOpen=false.
+  // Captured at mount: the drawer always starts closed (persisted state forces
+  // isDrawerOpen=false on load), so force the terminal panel to 0 in the initial
+  // layout. Otherwise a persisted layout saved while the drawer was open would
+  // briefly render the terminal at its old size before it settles.
   const [initialDefaultLayout] = useState<Layout | undefined>(() => {
     if (!persistedLayout) return undefined;
     return isDrawerOpen ? persistedLayout : { content: 100, terminal: 0 };
   });
 
-  // Auto-sync isDrawerOpen with the actual terminal panel visibility. Without
-  // this, the state can desync (e.g. user drags the separator to open the
-  // panel) and the ↓ collapse button becomes a no-op because closeDrawer()
-  // sets isDrawerOpen=false but the value didn't change, so the useEffect
-  // never re-runs to call terminalPanel.collapse().
+  // Mirror the panel's real visibility into isDrawerOpen. This is the ONLY
+  // writer of the flag, so it can never disagree with what's on screen. The
+  // reducer ignores no-op writes, so steady-state resizes don't re-render.
   const handleTerminalResize = useCallback(
     (size: PanelSize) => {
-      const isVisible = size.asPercentage > 0;
-      if (isVisible !== isDrawerOpenRef.current) {
-        if (isVisible) openDrawer();
-        else closeDrawer();
-      }
+      setDrawerOpen(size.asPercentage > 0);
     },
-    [openDrawer, closeDrawer]
+    [setDrawerOpen]
   );
 
   return (
@@ -105,7 +104,7 @@ export function NormalLayout() {
           <Panel
             id="terminal"
             panelRef={terminalPanelRef}
-            defaultSize={isDrawerOpen ? 30 : 0}
+            defaultSize={isDrawerOpen ? DEFAULT_TERMINAL_SIZE : 0}
             minSize={15}
             collapsible
             collapsedSize={0}

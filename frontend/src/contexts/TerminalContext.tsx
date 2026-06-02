@@ -5,6 +5,7 @@ import {
   useMemo,
   useCallback,
   useEffect,
+  useRef,
   ReactNode,
 } from 'react';
 
@@ -12,6 +13,19 @@ export type TerminalTabContext =
   | { type: 'task'; attemptId: string; taskId: string }
   | { type: 'project'; projectId: string }
   | { type: 'home' };
+
+/**
+ * Imperative handle to the physical terminal panel, registered by the layout
+ * that owns the resizable panel. Drawer commands (open/close/toggle) drive the
+ * panel through this controller; `isDrawerOpen` is only ever a mirror of the
+ * panel's real visibility (see `setDrawerOpen`). Keeping commands one-way
+ * (button → panel) and state one-way (panel → mirror) avoids the feedback loop
+ * where a button toggle and an `onResize` callback fight over a single boolean.
+ */
+export interface TerminalDrawerController {
+  open: () => void;
+  close: () => void;
+}
 
 const STORAGE_KEY = 'vibe-board:terminal-sessions';
 
@@ -163,9 +177,7 @@ type TerminalAction =
       tabId: string;
       sessionId: string | null;
     }
-  | { type: 'OPEN_DRAWER' }
-  | { type: 'CLOSE_DRAWER' }
-  | { type: 'TOGGLE_DRAWER' }
+  | { type: 'SET_DRAWER_OPEN'; open: boolean }
   | { type: 'SET_GLOBAL_ACTIVE_TAB'; tabId: string };
 
 function generateTabId(): string {
@@ -319,12 +331,9 @@ function terminalReducer(
       };
     }
 
-    case 'OPEN_DRAWER':
-      return { ...state, isDrawerOpen: true };
-    case 'CLOSE_DRAWER':
-      return { ...state, isDrawerOpen: false };
-    case 'TOGGLE_DRAWER':
-      return { ...state, isDrawerOpen: !state.isDrawerOpen };
+    case 'SET_DRAWER_OPEN':
+      if (state.isDrawerOpen === action.open) return state;
+      return { ...state, isDrawerOpen: action.open };
     case 'SET_GLOBAL_ACTIVE_TAB':
       return { ...state, globalActiveTabId: action.tabId };
 
@@ -357,6 +366,20 @@ interface TerminalContextType {
   openDrawer: () => void;
   closeDrawer: () => void;
   toggleDrawer: () => void;
+  /**
+   * Register the panel controller. The layout owning the resizable terminal
+   * panel calls this on mount; drawer commands are forwarded to it. Returns an
+   * unregister function for cleanup.
+   */
+  registerDrawerController: (
+    controller: TerminalDrawerController
+  ) => () => void;
+  /**
+   * Mirror the panel's real visibility into `isDrawerOpen`. Called by the
+   * panel's `onResize` — this is the ONLY writer of the drawer-open state, so
+   * the flag can never disagree with what's on screen.
+   */
+  setDrawerOpen: (open: boolean) => void;
   getAllTabs: () => TerminalTab[];
   getActiveGlobalTab: () => TerminalTab | null;
   setActiveGlobalTab: (tabId: string) => void;
@@ -374,6 +397,15 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
     null,
     loadPersistedState
   );
+
+  // Imperative handle to the physical panel, registered by the layout. Drawer
+  // commands are forwarded here rather than flipping state, so a command always
+  // reaches the panel even when `isDrawerOpen` already has the target value.
+  const drawerControllerRef = useRef<TerminalDrawerController | null>(null);
+  // Live mirror of `isDrawerOpen` for `toggleDrawer`, which must branch on the
+  // current value without capturing a stale one in its callback closure.
+  const isDrawerOpenRef = useRef(state.isDrawerOpen);
+  isDrawerOpenRef.current = state.isDrawerOpen;
 
   // Persist state to localStorage on every change
   useEffect(() => {
@@ -452,15 +484,37 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
   );
 
   const openDrawer = useCallback(() => {
-    dispatch({ type: 'OPEN_DRAWER' });
+    drawerControllerRef.current?.open();
   }, []);
 
   const closeDrawer = useCallback(() => {
-    dispatch({ type: 'CLOSE_DRAWER' });
+    drawerControllerRef.current?.close();
   }, []);
 
   const toggleDrawer = useCallback(() => {
-    dispatch({ type: 'TOGGLE_DRAWER' });
+    // Read the live mirror via a ref so toggle reflects what's actually on
+    // screen, not a value captured at render time.
+    if (isDrawerOpenRef.current) {
+      drawerControllerRef.current?.close();
+    } else {
+      drawerControllerRef.current?.open();
+    }
+  }, []);
+
+  const registerDrawerController = useCallback(
+    (controller: TerminalDrawerController) => {
+      drawerControllerRef.current = controller;
+      return () => {
+        if (drawerControllerRef.current === controller) {
+          drawerControllerRef.current = null;
+        }
+      };
+    },
+    []
+  );
+
+  const setDrawerOpen = useCallback((open: boolean) => {
+    dispatch({ type: 'SET_DRAWER_OPEN', open });
   }, []);
 
   const getAllTabs = useCallback((): TerminalTab[] => {
@@ -497,6 +551,8 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
       openDrawer,
       closeDrawer,
       toggleDrawer,
+      registerDrawerController,
+      setDrawerOpen,
       getAllTabs,
       getActiveGlobalTab,
       setActiveGlobalTab,
@@ -516,6 +572,8 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
       openDrawer,
       closeDrawer,
       toggleDrawer,
+      registerDrawerController,
+      setDrawerOpen,
       getAllTabs,
       getActiveGlobalTab,
       setActiveGlobalTab,

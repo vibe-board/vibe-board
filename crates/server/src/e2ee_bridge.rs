@@ -893,7 +893,8 @@ mod tests {
                 id: 7,
                 data: BASE64.encode(ch.as_bytes()),
             };
-            let payload = serde_json::to_value(e2ee_core::encrypt_json(&req, &dek).unwrap()).unwrap();
+            let payload =
+                serde_json::to_value(e2ee_core::encrypt_json(&req, &dek).unwrap()).unwrap();
             handle_forward(&ctx, "client-1", payload).await.unwrap();
 
             // Synchronous delivery: available immediately, no await/yield.
