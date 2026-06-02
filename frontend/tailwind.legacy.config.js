@@ -7,7 +7,9 @@ module.exports = {
     './components/**/*.{ts,tsx}',
     './app/**/*.{ts,tsx}',
     './src/**/*.{ts,tsx}',
-    "node_modules/@rjsf/shadcn/src/**/*.{js,ts,jsx,tsx,mdx}"
+    "node_modules/@rjsf/shadcn/src/**/*.{js,ts,jsx,tsx,mdx}",
+    './node_modules/streamdown/dist/*.js',
+    './node_modules/@streamdown/code/dist/*.js'
   ],
   safelist: [
     'xl:hidden',

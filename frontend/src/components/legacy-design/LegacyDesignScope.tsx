@@ -2,6 +2,7 @@ import { ReactNode, useState } from 'react';
 import { PortalContainerContext } from '@/contexts/PortalContainerContext';
 import { ActiveConnectionBridge } from './ActiveConnectionBridge';
 import '@/styles/legacy/index.css';
+import 'streamdown/styles.css';
 
 interface LegacyDesignScopeProps {
   children: ReactNode;
