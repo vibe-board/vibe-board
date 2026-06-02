@@ -38,7 +38,11 @@ import {
   User,
   Wrench,
 } from 'lucide-react';
-import { formatDateShortWithTime, formatDuration } from '@/utils/date';
+import {
+  formatDateShortWithTime,
+  formatDuration,
+  formatDurationFine,
+} from '@/utils/date';
 import RawLogText from '../common/RawLogText';
 import UserMessage from './UserMessage';
 import PendingApprovalEntry from './PendingApprovalEntry';
@@ -574,9 +578,9 @@ const ToolCallCard: React.FC<{
         {durationSeconds !== null && (
           <span
             className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums"
-            title={`Duration: ${formatDuration(durationSeconds)}`}
+            title={`Duration: ${formatDurationFine(durationSeconds)}`}
           >
-            {formatDuration(durationSeconds)}
+            {formatDurationFine(durationSeconds)}
           </span>
         )}
       </HeaderWrapper>
