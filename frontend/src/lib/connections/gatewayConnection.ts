@@ -8,6 +8,7 @@ import type {
   ConnectionProject,
   GatewaySession,
 } from './types';
+import { createDeadWebSocket } from './deadWebSocket';
 
 export class GatewayMachineConnection implements UnifiedConnection {
   readonly type = 'gateway' as const;
@@ -110,6 +111,13 @@ export class GatewayMachineConnection implements UnifiedConnection {
       onError: (err) => {
         this.setStatus('error', err);
       },
+      onMachineOffline: () => {
+        this.setStatus('reconnecting', 'Machine offline');
+      },
+      onMachineOnline: () => {
+        this.reconnectAttempts = 0;
+        this.setStatus('connected');
+      },
     });
     conn.subscribeMachine(this.machineId);
     await conn.initDek();
@@ -166,8 +174,17 @@ export class GatewayMachineConnection implements UnifiedConnection {
   }
 
   openWs(path: string, query?: string): WebSocketLike {
-    if (!this.e2eeConn) throw new Error('Not connected');
-    return this.e2eeConn.openWsStream(path, query) as unknown as WebSocketLike;
+    if (!this.e2eeConn) return createDeadWebSocket('Not connected');
+    try {
+      return this.e2eeConn.openWsStream(
+        path,
+        query
+      ) as unknown as WebSocketLike;
+    } catch (e) {
+      return createDeadWebSocket(
+        e instanceof Error ? e.message : 'Stream unavailable'
+      );
+    }
   }
 
   async listProjects(): Promise<ConnectionProject[]> {

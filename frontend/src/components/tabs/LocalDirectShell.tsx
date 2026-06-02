@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { LocalConnection } from '@/lib/connections/localConnection';
 import App from '@/App';
+import { TabErrorBoundary } from './TabErrorBoundary';
 
 export function LocalDirectShell() {
   const conn = LocalConnection.getInstance();
@@ -71,7 +72,9 @@ export function LocalDirectShell() {
   // above NiceModal.Provider so dialogs also have access to the connection context.
   return (
     <div className="h-screen">
-      <App />
+      <TabErrorBoundary tabKey="local">
+        <App />
+      </TabErrorBoundary>
     </div>
   );
 }
