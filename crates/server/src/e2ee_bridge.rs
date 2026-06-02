@@ -223,6 +223,22 @@ async fn connect_and_run(
 
     info!("Bridge active — proxying to {local_base}, waiting for WebUI connections...");
 
+    // Build the forward-handling context once. Forwarded messages are handled
+    // inline (awaited) below so that consecutive frames of a single WS
+    // sub-connection — e.g. terminal keystrokes — reach the local WS in arrival
+    // order. Only the HTTP round-trip is spawned (inside `handle_forward`), so a
+    // slow or large request cannot head-of-line block the ordering-sensitive
+    // frames waiting behind it in this loop.
+    let ctx = BridgeContext {
+        client: http_client.clone(),
+        local_base: local_base.clone(),
+        content_sk: crypto.content_keypair.secret_key,
+        content_pk: crypto.content_keypair.public_key,
+        tx: tx.clone(),
+        ws_connections: ws_connections.clone(),
+        dek_state: dek_state.clone(),
+    };
+
     // Process incoming messages
     while let Some(msg) = ws_receiver.next().await {
         let msg = match msg {
@@ -254,21 +270,13 @@ async fn connect_and_run(
 
         match gateway_msg {
             GatewayMessage::Forward { client_id, payload } => {
-                let ctx = BridgeContext {
-                    client: http_client.clone(),
-                    local_base: local_base.clone(),
-                    content_sk: crypto.content_keypair.secret_key,
-                    content_pk: crypto.content_keypair.public_key,
-                    tx: tx.clone(),
-                    ws_connections: ws_connections.clone(),
-                    dek_state: dek_state.clone(),
-                };
-
-                tokio::spawn(async move {
-                    if let Err(e) = handle_forward(&ctx, &client_id, payload).await {
-                        warn!("Forward handling error for client {client_id}: {e}");
-                    }
-                });
+                // Handle inline (awaited) to preserve per-stream frame order.
+                // `handle_forward` spawns internally only for the HTTP path,
+                // which is order-insensitive, so awaiting here does not block
+                // unrelated HTTP traffic.
+                if let Err(e) = handle_forward(&ctx, &client_id, payload).await {
+                    warn!("Forward handling error for client {client_id}: {e}");
+                }
             }
             GatewayMessage::Registered { machine_id } => {
                 info!("Registration confirmed: machine_id={machine_id}");
@@ -379,40 +387,29 @@ async fn handle_forward(
             headers,
             body,
         } => {
-            let url = format!("{}{path}", ctx.local_base);
-            let method: reqwest::Method = method.parse().context("Invalid HTTP method")?;
-
-            let mut req_builder = ctx.client.request(method, &url);
-            for (key, value) in &headers {
-                // Strip Origin header — the bridge forwards requests to localhost
-                // where Origin (e.g. the public domain) won't match Host (127.0.0.1),
-                // causing the origin middleware to reject with 403.
-                if key.eq_ignore_ascii_case("origin") {
-                    continue;
-                }
-                req_builder = req_builder.header(key, value);
-            }
-
-            if let Some(body_b64) = body {
-                let body_bytes = BASE64.decode(&body_b64)?;
-                req_builder = req_builder.body(body_bytes);
-            }
-
-            let resp = req_builder.send().await?;
-            let status = resp.status().as_u16();
-            let resp_headers: Vec<(String, String)> = resp
-                .headers()
-                .iter()
-                .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
-                .collect();
-            let body_bytes = resp.bytes().await?;
-
-            send_resp(e2ee_core::BridgeResponse::HttpResponse {
-                id,
-                status,
-                headers: resp_headers,
-                body: BASE64.encode(&body_bytes),
-            })?;
+            // Spawn the HTTP round-trip so a slow or large request does not
+            // head-of-line block the ordering-sensitive WS frames that the
+            // caller's receive loop handles inline. HTTP responses carry their
+            // own `id`, so out-of-order completion across distinct requests is
+            // harmless (unlike WS frames, which must stay in order).
+            let client = ctx.client.clone();
+            let local_base = ctx.local_base.clone();
+            let tx = ctx.tx.clone();
+            let client_id = client_id.to_string();
+            tokio::spawn(async move {
+                let response =
+                    match proxy_http(&client, &local_base, id, method, path, headers, body).await {
+                        Ok(resp) => resp,
+                        Err(e) => {
+                            warn!("HTTP proxy error for client {client_id} (request {id}): {e}");
+                            e2ee_core::BridgeResponse::Error {
+                                id,
+                                message: e.to_string(),
+                            }
+                        }
+                    };
+                let _ = send_encrypted_response(&tx, &client_id, response, &dek);
+            });
         }
 
         e2ee_core::BridgeRequest::WsOpen { id, path, query } => {
@@ -538,6 +535,54 @@ async fn handle_forward(
     }
 
     Ok(())
+}
+
+/// Perform the local HTTP round-trip for a forwarded `HttpRequest` and build the
+/// `HttpResponse`. Kept separate from `handle_forward` so it can be spawned
+/// without holding up ordering-sensitive WS frames.
+async fn proxy_http(
+    client: &reqwest::Client,
+    local_base: &str,
+    id: u32,
+    method: String,
+    path: String,
+    headers: Vec<(String, String)>,
+    body: Option<String>,
+) -> Result<e2ee_core::BridgeResponse> {
+    let url = format!("{local_base}{path}");
+    let method: reqwest::Method = method.parse().context("Invalid HTTP method")?;
+
+    let mut req_builder = client.request(method, &url);
+    for (key, value) in &headers {
+        // Strip Origin header — the bridge forwards requests to localhost
+        // where Origin (e.g. the public domain) won't match Host (127.0.0.1),
+        // causing the origin middleware to reject with 403.
+        if key.eq_ignore_ascii_case("origin") {
+            continue;
+        }
+        req_builder = req_builder.header(key, value);
+    }
+
+    if let Some(body_b64) = body {
+        let body_bytes = BASE64.decode(&body_b64)?;
+        req_builder = req_builder.body(body_bytes);
+    }
+
+    let resp = req_builder.send().await?;
+    let status = resp.status().as_u16();
+    let resp_headers: Vec<(String, String)> = resp
+        .headers()
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+        .collect();
+    let body_bytes = resp.bytes().await?;
+
+    Ok(e2ee_core::BridgeResponse::HttpResponse {
+        id,
+        status,
+        headers: resp_headers,
+        body: BASE64.encode(&body_bytes),
+    })
 }
 
 /// Get a stable machine ID based on hostname + username + port
@@ -796,5 +841,110 @@ mod tests {
         assert!(deks.get("client-a").is_none());
         assert!(deks.get("client-b").is_some());
         assert_eq!(deks.len(), 1);
+    }
+
+    /// Build a `BridgeContext` plus a matching DEK, with a DEK already
+    /// registered for `client_id`, so tests can drive `handle_forward` with
+    /// encrypted `BridgeRequest`s. `local_base` points at the given address so
+    /// tests can stand up a throwaway local server.
+    async fn test_ctx_with_dek(
+        client_id: &str,
+        local_base: String,
+    ) -> (BridgeContext, [u8; 32], mpsc::UnboundedReceiver<String>) {
+        let content_kp =
+            e2ee_core::derive_content_keypair(&e2ee_core::generate_master_secret()).unwrap();
+        let (tx, rx) = mpsc::unbounded_channel::<String>();
+        let dek = e2ee_core::generate_dek();
+        let dek_state: DekState = Arc::new(Mutex::new(HashMap::new()));
+        dek_state.lock().await.insert(client_id.to_string(), dek);
+
+        let ctx = BridgeContext {
+            client: reqwest::Client::new(),
+            local_base,
+            content_sk: content_kp.secret_key,
+            content_pk: content_kp.public_key,
+            tx,
+            ws_connections: Arc::new(Mutex::new(HashMap::new())),
+            dek_state,
+        };
+        (ctx, dek, rx)
+    }
+
+    /// Regression test for keystroke reordering over the E2EE bridge.
+    ///
+    /// `handle_forward` must deliver each `WsData` frame to its sub-connection
+    /// channel *synchronously* — before the call returns — so that the daemon's
+    /// receive loop, which awaits `handle_forward` per message, preserves the
+    /// arrival order of consecutive frames (e.g. terminal keystrokes "a", "b",
+    /// "c"). The previous implementation spawned a task per frame, which could
+    /// reorder them on the multi-threaded runtime.
+    #[tokio::test]
+    async fn test_ws_data_delivered_in_order_inline() {
+        let (ctx, dek, _rx) = test_ctx_with_dek("client-1", "http://127.0.0.1:0".to_string()).await;
+
+        // Pre-register a sub-connection channel for id=7, as `WsOpen` would.
+        let (sub_tx, mut sub_rx) = mpsc::unbounded_channel::<String>();
+        ctx.ws_connections.lock().await.insert(7, sub_tx);
+
+        // Forward three WsData frames in order. Each call must have delivered
+        // its byte to `sub_rx` by the time it returns.
+        for ch in ["a", "b", "c"] {
+            let req = e2ee_core::BridgeRequest::WsData {
+                id: 7,
+                data: BASE64.encode(ch.as_bytes()),
+            };
+            let payload = serde_json::to_value(e2ee_core::encrypt_json(&req, &dek).unwrap()).unwrap();
+            handle_forward(&ctx, "client-1", payload).await.unwrap();
+
+            // Synchronous delivery: available immediately, no await/yield.
+            let got = sub_rx.try_recv().expect("frame must be delivered inline");
+            assert_eq!(got, ch);
+        }
+
+        // Channel order preserved end to end.
+        assert!(sub_rx.try_recv().is_err());
+    }
+
+    /// The HTTP path must be spawned, not awaited inline: a slow local request
+    /// must not block `handle_forward` from returning, otherwise it would
+    /// head-of-line block the ordering-sensitive WS frames behind it in the
+    /// daemon receive loop. We point the bridge at a listener that accepts the
+    /// connection but never sends a response, so the proxied request hangs, and
+    /// assert `handle_forward` still returns promptly.
+    #[tokio::test]
+    async fn test_http_request_does_not_block_inline() {
+        // A listener we never `accept()` on: the kernel completes the TCP
+        // handshake into the backlog, so reqwest connects, sends the request,
+        // then blocks forever waiting for a response that never comes.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let local_base = format!("http://{addr}");
+
+        let (ctx, dek, _rx) = test_ctx_with_dek("client-1", local_base).await;
+
+        let req = e2ee_core::BridgeRequest::HttpRequest {
+            id: 1,
+            method: "GET".to_string(),
+            path: "/api/health".to_string(),
+            headers: vec![],
+            body: None,
+        };
+        let payload = serde_json::to_value(e2ee_core::encrypt_json(&req, &dek).unwrap()).unwrap();
+
+        // handle_forward should return ~immediately even though the proxied
+        // request will hang in the background.
+        let res = tokio::time::timeout(
+            Duration::from_secs(2),
+            handle_forward(&ctx, "client-1", payload),
+        )
+        .await;
+
+        assert!(
+            res.is_ok(),
+            "handle_forward must not block on the HTTP round-trip"
+        );
+        res.unwrap().unwrap();
+
+        drop(listener);
     }
 }
