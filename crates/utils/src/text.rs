@@ -135,7 +135,10 @@ mod tests {
         out.push_str(&decoder.finish());
 
         assert_eq!(out, "结果存储");
-        assert!(!out.contains('\u{FFFD}'), "must not introduce replacement chars");
+        assert!(
+            !out.contains('\u{FFFD}'),
+            "must not introduce replacement chars"
+        );
     }
 
     #[test]
