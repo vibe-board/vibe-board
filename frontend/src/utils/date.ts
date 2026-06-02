@@ -42,3 +42,24 @@ export function formatDuration(seconds: number): string {
   if (m > 0) return `${m}m ${s}s`;
   return `${s}s`;
 }
+
+/**
+ * Like {@link formatDuration} but keeps sub-second precision so fast
+ * operations don't show as "0s". Used by the tool-call duration stats
+ * card and per-call duration badges.
+ * Examples: "0ms", "420ms", "2.4s", "42s", "2m 30s", "1h 15m 30s".
+ */
+export function formatDurationFine(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '0ms';
+  if (seconds < 1) {
+    return `${Math.round(seconds * 1000)}ms`;
+  }
+  if (seconds < 10) {
+    const rounded = Math.round(seconds * 10) / 10;
+    return Number.isInteger(rounded) ? `${rounded}s` : `${rounded.toFixed(1)}s`;
+  }
+  if (seconds < 60) {
+    return `${Math.round(seconds)}s`;
+  }
+  return formatDuration(seconds);
+}

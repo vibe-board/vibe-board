@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ChevronDown, ChevronRight, Wrench } from 'lucide-react';
 
 import type { ToolStat, ToolUsageStats } from 'shared/types';
-import { formatDuration } from '@/utils/date';
+import { formatDurationFine } from '@/utils/date';
 
 interface Props {
   stats: ToolUsageStats;
@@ -45,7 +45,7 @@ export function ToolUsageStatsCard({ stats }: Props) {
         <Wrench className="h-3 w-3" />
         <span>
           Tool calls {stats.total_calls} · Total{' '}
-          {formatDuration(stats.total_seconds)}
+          {formatDurationFine(stats.total_seconds)}
           {percentOfTask !== null && ` · ${percentOfTask}% of task`}
           {inProgressTotal > 0 && ` · ${inProgressTotal} in progress`}
         </span>
@@ -80,14 +80,14 @@ export function ToolUsageStatsCard({ stats }: Props) {
                       {row.success} / {row.failed} / {row.denied}
                     </td>
                     <td className="px-2 py-1 text-right">
-                      {hasTiming ? formatDuration(row.total_seconds) : '—'}
+                      {hasTiming ? formatDurationFine(row.total_seconds) : '—'}
                       {row.approved_call_count > 0 && ' †'}
                     </td>
                     <td className="px-2 py-1 text-right">
-                      {hasTiming ? formatDuration(row.avg_seconds) : '—'}
+                      {hasTiming ? formatDurationFine(row.avg_seconds) : '—'}
                     </td>
                     <td className="px-2 py-1 text-right">
-                      {hasTiming ? formatDuration(row.max_seconds) : '—'}
+                      {hasTiming ? formatDurationFine(row.max_seconds) : '—'}
                     </td>
                   </tr>
                 );
@@ -100,7 +100,7 @@ export function ToolUsageStatsCard({ stats }: Props) {
                 <div key={row.tool_name}>
                   † {row.tool_name}: {row.approved_call_count} of {row.count}{' '}
                   call{row.count === 1 ? '' : 's'} awaited approval (
-                  {formatDuration(row.awaiting_approval_seconds)} total)
+                  {formatDurationFine(row.awaiting_approval_seconds)} total)
                 </div>
               ))}
             </div>

@@ -1429,6 +1429,24 @@ impl ClaudeLogProcessor {
                                 worktree_path,
                                 &mut patches,
                             );
+                        } else {
+                            // All other built-in tools (Read/Write/Edit/MultiEdit/Grep/Glob/
+                            // LS/WebFetch/WebSearch/TodoWrite/TodoRead/ExitPlanMode/UndoEdit/…)
+                            // don't carry rich result content in their action_type, so just
+                            // flip status to terminal so the wrapper stamps completed_at and
+                            // the entry shows the correct success/failed icon. Preserve the
+                            // existing action_type via replace_tool_entry_status.
+                            let status = if is_error.unwrap_or(false) {
+                                ToolStatus::Failed
+                            } else {
+                                ToolStatus::Success
+                            };
+                            self.replace_tool_entry_status(
+                                tool_use_id,
+                                status,
+                                worktree_path,
+                                &mut patches,
+                            );
                         }
                         // Note: With control protocol, denials are handled via protocol messages
                         // rather than error content parsing
