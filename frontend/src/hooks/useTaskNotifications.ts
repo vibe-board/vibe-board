@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useConnection } from '@/contexts/ConnectionContext';
 import { playNotificationSound } from '@/utils/notificationSound';
+import { useTabNotificationStore } from '@/stores/tab-notification-store';
 import type { TaskStatus, Task, ApprovalInfo } from 'shared/types';
 import type { Config } from 'shared/types';
 
@@ -25,7 +26,8 @@ export function getNotificationPermission():
 export function useTaskNotifications(
   tasksById: Record<string, Task>,
   pendingApprovals: ApprovalInfo[],
-  config: Config | null
+  config: Config | null,
+  tabId?: string
 ) {
   const connection = useConnection();
   const prevTasksRef = useRef<Record<string, TaskStatus>>({});
@@ -109,6 +111,9 @@ export function useTaskNotifications(
           task.executor + (task.variant ? ` (${task.variant})` : '');
         if (task.status === 'inreview') {
           triggerNotification('Review Needed', `${task.title}\n${agent}`);
+          if (tabId) {
+            useTabNotificationStore.getState().markNotification(tabId);
+          }
         }
       }
       prevTasksRef.current[id] = task.status;
@@ -120,7 +125,7 @@ export function useTaskNotifications(
         delete prevTasksRef.current[id];
       }
     });
-  }, [tasksById, triggerNotification]);
+  }, [tasksById, triggerNotification, tabId]);
 
   // Watch new approval requests
   useEffect(() => {
@@ -131,10 +136,13 @@ export function useTaskNotifications(
           ? 'Question Asked'
           : 'Approval Needed';
         triggerNotification(title, approval.tool_name);
+        if (tabId) {
+          useTabNotificationStore.getState().markNotification(tabId);
+        }
       }
     });
     prevApprovalIdsRef.current = currentIds;
-  }, [pendingApprovals, triggerNotification]);
+  }, [pendingApprovals, triggerNotification, tabId]);
 
   return {
     showNotificationPrompt,
