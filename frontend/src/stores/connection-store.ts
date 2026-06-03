@@ -103,7 +103,7 @@ export interface ConnectionStoreActions {
   ): Promise<void>;
   logoutConnection(id: string): void;
   pairMachine(machineId: string, base64Secret: string): void;
-  unpairMachine(machineId: string): void;
+  unpairMachine(connectionId: string, machineId: string): void;
   setGatewayField: <K extends keyof GatewayState>(
     connectionId: string,
     key: K,
@@ -151,7 +151,21 @@ export const useConnectionStore = create<ConnectionStore>()(
           machineSecrets: { ...s.machineSecrets, [machineId]: secret },
         }));
       },
-      unpairMachine(machineId) {
+      unpairMachine(connectionId, machineId) {
+        // 1. Close any tabs bound to this machine. closeTab handles connection
+        //    removeRef and the activeTabId -> 'home' fallback for us.
+        const tabIds = get()
+          .tabs.filter(
+            (t) => t.connectionId === connectionId && t.machineId === machineId
+          )
+          .map((t) => t.id);
+        for (const id of tabIds) get().closeTab(id);
+
+        // 2. Tear down the live E2EE connection immediately (removeRef alone
+        //    only schedules a delayed disconnect).
+        machineRegistry.destroy(connectionId, machineId);
+
+        // 3. Forget the master secret -> the row reverts to "Not paired".
         set((s) => {
           const { [machineId]: _removed, ...rest } = s.machineSecrets;
           return { machineSecrets: rest };
