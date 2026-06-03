@@ -1,14 +1,21 @@
-import { memo, useCallback, useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import { Streamdown } from 'streamdown';
 import { code } from '@streamdown/code';
+import { cjk } from '@streamdown/cjk';
+import { mermaid } from '@streamdown/mermaid';
 import { Check, Clipboard } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { useTheme } from '@/components/ThemeProvider';
+import { getActualTheme } from '@/utils/theme';
 import { writeClipboardViaBridge } from '@/vscode/bridge';
 
-// streamdown 的 code 高亮插件(Shiki),用默认主题 ["github-light","github-dark"]。
-// 在模块作用域创建一次,避免每次渲染重建。
-const STREAMDOWN_PLUGINS = { code };
+// streamdown 插件,在模块作用域创建一次,避免每次渲染重建:
+// - code:  Shiki 代码高亮(默认主题 ["github-light","github-dark"])
+// - cjk:   修正中文等 CJK 文本紧贴 `**`/`*` 时强调标记不被识别的问题
+//          (CommonMark 在 CJK 与强调定界符相邻且无空格时常常不渲染加粗/斜体)
+// - mermaid: 把 ```mermaid 代码块渲染为图(mermaid 实例由插件按需加载)
+const STREAMDOWN_PLUGINS = { code, cjk, mermaid };
 
 export interface ReadOnlyMarkdownProps {
   /** markdown 原文 */
@@ -26,6 +33,8 @@ export interface ReadOnlyMarkdownProps {
  * 渲染为普通 DOM,使内容可被沉浸式翻译等插件翻译。
  *
  * - 代码高亮:Shiki(默认主题),暗色经 Tailwind `dark:` 变体自动跟随。
+ * - 中文强调:`@streamdown/cjk` 修正 CJK 紧贴 `**`/`*` 时加粗/斜体不渲染。
+ * - 图表:`@streamdown/mermaid` 渲染 ```mermaid 代码块,主题跟随明暗。
  * - 文字颜色:不硬编码,继承外层容器(plan 卡片用 text-blue-700/red-700 染色)。
  * - 流式:streamdown 内置 unterminated block 解析,半截 markdown 可优雅渲染。
  */
@@ -35,6 +44,21 @@ function ReadOnlyMarkdown({
   showCopyButton = true,
 }: ReadOnlyMarkdownProps) {
   const [copied, setCopied] = useState(false);
+
+  // Mermaid renders to an SVG whose colors are baked in at render time, so it
+  // can't follow Tailwind `dark:` variants like the rest of the markup. Drive
+  // its theme reactively from the app theme instead. `mermaid={{ config }}` is
+  // read from StreamdownContext on every render, so a theme switch re-themes
+  // diagrams. ("default" is mermaid's light theme.)
+  const { theme } = useTheme();
+  const mermaidOptions = useMemo(
+    () => ({
+      config: {
+        theme: getActualTheme(theme) === 'dark' ? 'dark' : 'default',
+      } as const,
+    }),
+    [theme]
+  );
 
   // When the caller supplies its own `text-*` size, defer to it; otherwise fall
   // back to the legacy `text-base` baseline. (cn() is plain clsx with no
@@ -98,6 +122,7 @@ function ReadOnlyMarkdown({
       )}
       <Streamdown
         plugins={STREAMDOWN_PLUGINS}
+        mermaid={mermaidOptions}
         className={cn(
           // Match the old read-only WYSIWYGEditor, whose `wysiwyg text-base`
           // wrapper rendered body text at the legacy `base` size (14px).
