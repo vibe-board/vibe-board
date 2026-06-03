@@ -2,9 +2,11 @@
 import { useCallback } from 'react';
 import { X, Home, Plus, Monitor } from 'lucide-react';
 import { useConnectionStore } from '@/stores/connection-store';
+import { useTabNotificationStore } from '@/stores/tab-notification-store';
 
 export function TabBar() {
   const { tabs, activeTabId, setActiveTab, closeTab } = useConnectionStore();
+  const notifications = useTabNotificationStore((s) => s.notifications);
 
   const handleAddClick = useCallback(() => {
     setActiveTab('home');
@@ -32,7 +34,7 @@ export function TabBar() {
       {tabs.map((tab) => (
         <div
           key={tab.id}
-          className={`group flex items-center gap-1.5 px-4 py-2 text-sm border-r border-border whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+          className={`group relative flex items-center gap-1.5 px-4 py-2 text-sm border-r border-border whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
             activeTabId === tab.id
               ? 'bg-background text-foreground font-medium'
               : 'text-foreground/60 hover:text-foreground hover:bg-background/50'
@@ -53,6 +55,9 @@ export function TabBar() {
           >
             <X size={14} />
           </button>
+          {notifications[tab.id] && activeTabId !== tab.id && (
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-brand" />
+          )}
         </div>
       ))}
 

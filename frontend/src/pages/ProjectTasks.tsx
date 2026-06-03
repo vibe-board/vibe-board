@@ -92,6 +92,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useSelectedOrgId } from '@/stores/useOrganizationStore';
+import { useTabId } from '@/contexts/TabIdContext';
 
 import type { Task, TaskStatus } from 'shared/types';
 
@@ -259,7 +260,8 @@ export function ProjectTasks() {
 
   const { config, updateAndSaveConfig, loading } = useUserSystem();
 
-  useTaskNotifications(tasksById, pendingApprovals, config);
+  const tabId = useTabId();
+  useTaskNotifications(tasksById, pendingApprovals, config, tabId);
 
   const isLoaded = !loading;
   const showcaseId = showcases.taskPanel.id;

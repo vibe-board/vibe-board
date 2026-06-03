@@ -10,6 +10,7 @@ import type {
 } from '@/lib/connections/types';
 import type { MachineStatus } from '@/lib/e2ee';
 import { runMigrationIfNeeded } from './migration';
+import { useTabNotificationStore } from './tab-notification-store';
 import { isGateway } from '@/lib/appMode';
 import * as gatewayService from '@/services/gateway-service';
 import * as machineRegistry from '@/services/machine-registry';
@@ -332,6 +333,11 @@ export const useConnectionStore = create<ConnectionStore>()(
             ? s.activeTabId
             : 'home';
           saveActiveTab(activeTabId);
+          for (const t of s.tabs) {
+            if (t.connectionId === id) {
+              useTabNotificationStore.getState().clearNotification(t.id);
+            }
+          }
           return { nodes, tabs, activeTabId };
         });
       },
@@ -386,6 +392,11 @@ export const useConnectionStore = create<ConnectionStore>()(
             ? s.activeTabId
             : 'home';
           saveActiveTab(activeTabId);
+          for (const t of s.tabs) {
+            if (t.connectionId === id) {
+              useTabNotificationStore.getState().clearNotification(t.id);
+            }
+          }
           return { nodes: [...s.nodes], tabs, activeTabId };
         });
       },
@@ -528,6 +539,7 @@ export const useConnectionStore = create<ConnectionStore>()(
 
           const tabs = s.tabs.filter((t) => t.id !== tabId);
           saveTabs(tabs);
+          useTabNotificationStore.getState().clearNotification(tabId);
 
           let activeTabId = s.activeTabId;
           if (activeTabId === tabId) {
@@ -544,6 +556,7 @@ export const useConnectionStore = create<ConnectionStore>()(
       setActiveTab(tabId) {
         saveActiveTab(tabId);
         set({ activeTabId: tabId });
+        useTabNotificationStore.getState().clearNotification(tabId);
       },
 
       reorderTabs(fromIndex, toIndex) {

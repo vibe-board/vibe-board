@@ -6,6 +6,7 @@ import { ProjectsNavigationProvider } from '@/contexts/ProjectsNavigationContext
 import { useConnectionStore } from '@/stores/connection-store';
 import { GatewayMachineConnection } from '@/lib/connections/gatewayConnection';
 import type { TabPersisted } from '@/lib/connections/types';
+import { TabIdProvider } from '@/contexts/TabIdContext';
 import App from '@/App';
 
 export function ProjectTab({ tab }: { tab: TabPersisted }) {
@@ -94,7 +95,9 @@ export function ProjectTab({ tab }: { tab: TabPersisted }) {
     <ConnectionProvider connection={conn}>
       <QueryClientProvider client={conn.queryClient}>
         <ProjectsNavigationProvider value={{ navigateToProjects }}>
-          <App initialPath={`/local-projects/${tab.projectId}/tasks`} />
+          <TabIdProvider value={tab.id}>
+            <App initialPath={`/local-projects/${tab.projectId}/tasks`} />
+          </TabIdProvider>
         </ProjectsNavigationProvider>
       </QueryClientProvider>
     </ConnectionProvider>
