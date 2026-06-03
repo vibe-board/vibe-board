@@ -13,7 +13,7 @@ use db::models::{
     execution_process::{ExecutionProcess, ExecutionProcessRunReason},
     normalized_entries::{NormalizedEntry, SessionConversationEntry},
     scratch::{Scratch, ScratchType},
-    session::{CreateSession, Session, SessionError},
+    session::{CreateSession, Session, SessionError, SessionWithCost},
     workspace::{Workspace, WorkspaceError},
     workspace_repo::WorkspaceRepo,
 };
@@ -54,8 +54,16 @@ pub async fn get_sessions(
 
 pub async fn get_session(
     Extension(session): Extension<Session>,
-) -> Result<ResponseJson<ApiResponse<Session>>, ApiError> {
-    Ok(ResponseJson(ApiResponse::success(session)))
+    State(deployment): State<DeploymentImpl>,
+) -> Result<ResponseJson<ApiResponse<SessionWithCost>>, ApiError> {
+    let pool = &deployment.db().pool;
+    let session_with_cost =
+        Session::get_with_cost(pool, session.id)
+            .await?
+            .ok_or(ApiError::Session(
+                db::models::session::SessionError::NotFound,
+            ))?;
+    Ok(ResponseJson(ApiResponse::success(session_with_cost)))
 }
 
 pub async fn create_session(

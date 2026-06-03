@@ -71,6 +71,7 @@ import {
   AbortConflictsRequest,
   ContinueRebaseRequest,
   Session,
+  SessionWithCost,
   Workspace,
   StartReviewRequest,
   ReviewError,
@@ -710,16 +711,16 @@ export function createApi(makeReq: MakeRequestFn, uploadFd: UploadFormDataFn) {
   };
 
   const _sessionsApi = {
-    getByWorkspace: async (workspaceId: string): Promise<Session[]> => {
+    getByWorkspace: async (workspaceId: string): Promise<SessionWithCost[]> => {
       const response = await makeReq(
         `/api/sessions?workspace_id=${workspaceId}`
       );
-      return handleApiResponse<Session[]>(response);
+      return handleApiResponse<SessionWithCost[]>(response);
     },
 
-    getById: async (sessionId: string): Promise<Session> => {
+    getById: async (sessionId: string): Promise<SessionWithCost> => {
       const response = await makeReq(`/api/sessions/${sessionId}`);
-      return handleApiResponse<Session>(response);
+      return handleApiResponse<SessionWithCost>(response);
     },
 
     create: async (data: {

@@ -576,6 +576,11 @@ impl LocalContainerService {
                 tracing::error!("Failed to update execution process completion: {}", e);
             }
 
+            // Aggregate cost data for coding agent turns
+            if let Err(e) = CodingAgentTurn::aggregate_turn_cost(&db.pool, exec_id).await {
+                tracing::warn!("Failed to aggregate turn cost for {}: {}", exec_id, e);
+            }
+
             if let Ok(ctx) = ExecutionProcess::load_context(&db.pool, exec_id).await {
                 // Update executor session summary if available
                 if let Err(e) = container.update_executor_session_summary(&exec_id).await {
@@ -1594,6 +1599,17 @@ impl ContainerService for LocalContainerService {
         // Update EP and immediately push patch so the frontend can update the stop button.
         self.update_completion_and_push(execution_process.id, status, exit_code)
             .await?;
+
+        // Aggregate cost data for coding agent turns
+        if let Err(e) =
+            CodingAgentTurn::aggregate_turn_cost(&self.db.pool, execution_process.id).await
+        {
+            tracing::warn!(
+                "Failed to aggregate turn cost for {}: {}",
+                execution_process.id,
+                e
+            );
+        }
 
         // Try graceful cancellation first, then force kill
         if let Some(cancel) = self.take_cancellation_token(&execution_process.id).await {

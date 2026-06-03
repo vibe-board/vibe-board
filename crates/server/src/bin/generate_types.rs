@@ -54,6 +54,8 @@ fn generate_types_content() -> String {
         db::models::workspace::Workspace::decl(),
         db::models::workspace::WorkspaceWithStatus::decl(),
         db::models::session::Session::decl(),
+        db::models::session::SessionWithCost::decl(),
+        db::models::session::ModelCostBreakdown::decl(),
         db::models::execution_process::ExecutionProcess::decl(),
         db::models::execution_process::ExecutionProcessStatus::decl(),
         db::models::execution_process::ExecutionProcessRunReason::decl(),

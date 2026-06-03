@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n                SUM(cost_usd) as \"total_cost: f64\",\n                SUM(input_tokens) as \"total_input: i64\",\n                SUM(output_tokens) as \"total_output: i64\"\n               FROM coding_agent_turns cat\n               JOIN execution_processes ep ON cat.execution_process_id = ep.id\n               WHERE ep.session_id = $1 AND cat.cost_usd IS NOT NULL",
+  "describe": {
+    "columns": [
+      {
+        "name": "total_cost: f64",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "total_input: i64",
+        "ordinal": 1,
+        "type_info": "Null"
+      },
+      {
+        "name": "total_output: i64",
+        "ordinal": 2,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "4c05fada356cf2e33a9a143fe5ea0950cc9a1eb8aa4a331f3da4eaaa6e07ff97"
+}

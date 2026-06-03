@@ -152,6 +152,10 @@ export type WorkspaceWithStatus = { is_running: boolean, is_errored: boolean, id
 
 export type Session = { id: string, workspace_id: string, executor: string | null, created_at: string, updated_at: string, };
 
+export type SessionWithCost = { total_cost_usd: number | null, total_input_tokens: bigint | null, total_output_tokens: bigint | null, model_breakdown: Array<ModelCostBreakdown>, id: string, workspace_id: string, executor: string | null, created_at: string, updated_at: string, };
+
+export type ModelCostBreakdown = { model_name: string, cost_usd: number, input_tokens: bigint, output_tokens: bigint, };
+
 export type ExecutionProcess = { id: string, session_id: string, run_reason: ExecutionProcessRunReason, executor_action: ExecutorAction, status: ExecutionProcessStatus, exit_code: bigint | null, 
 /**
  * dropped: true if this process is excluded from the current

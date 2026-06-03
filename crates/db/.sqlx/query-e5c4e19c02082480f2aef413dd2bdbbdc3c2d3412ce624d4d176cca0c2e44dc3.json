@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT cat.model_breakdown\n               FROM coding_agent_turns cat\n               JOIN execution_processes ep ON cat.execution_process_id = ep.id\n               WHERE ep.session_id = $1 AND cat.model_breakdown IS NOT NULL",
+  "describe": {
+    "columns": [
+      {
+        "name": "model_breakdown",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "e5c4e19c02082480f2aef413dd2bdbbdc3c2d3412ce624d4d176cca0c2e44dc3"
+}
