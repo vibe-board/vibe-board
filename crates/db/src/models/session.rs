@@ -167,6 +167,21 @@ impl Session {
         Ok(())
     }
 
+    /// Find all sessions for a workspace with aggregated cost data.
+    pub async fn find_by_workspace_id_with_cost(
+        pool: &SqlitePool,
+        workspace_id: Uuid,
+    ) -> Result<Vec<SessionWithCost>, sqlx::Error> {
+        let sessions = Self::find_by_workspace_id(pool, workspace_id).await?;
+        let mut result = Vec::with_capacity(sessions.len());
+        for session in sessions {
+            if let Some(with_cost) = Self::get_with_cost(pool, session.id).await? {
+                result.push(with_cost);
+            }
+        }
+        Ok(result)
+    }
+
     /// Load session with aggregated cost data from all coding agent turns.
     pub async fn get_with_cost(
         pool: &SqlitePool,
