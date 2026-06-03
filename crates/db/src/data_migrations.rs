@@ -8,6 +8,7 @@ use uuid::Uuid;
 /// Called after SQL migrations complete during DBService::new().
 pub async fn run(pool: &Pool<Sqlite>) -> Result<(), sqlx::Error> {
     export_execution_process_logs(pool).await?;
+    backfill_turn_costs(pool).await?;
     Ok(())
 }
 
@@ -201,4 +202,72 @@ fn should_log_progress(current: usize, total: usize) -> bool {
         return true;
     }
     current.is_multiple_of(50) || current == total || current == 1
+}
+
+/// Backfill cost_usd and token counts for existing coding agent turns.
+/// Idempotent: only processes turns where cost_usd IS NULL.
+async fn backfill_turn_costs(pool: &Pool<Sqlite>) -> Result<(), sqlx::Error> {
+    use crate::models::coding_agent_turn::CodingAgentTurn;
+
+    // Find all turns without cost data
+    let rows = sqlx::query(
+        "SELECT execution_process_id FROM coding_agent_turns WHERE cost_usd IS NULL",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    if rows.is_empty() {
+        return Ok(());
+    }
+
+    let total = rows.len();
+    tracing::info!(
+        "[data_migration] backfill_turn_costs: found {} turns to process",
+        total
+    );
+
+    let mut success_count: usize = 0;
+    let mut failed_count: usize = 0;
+
+    for (i, row) in rows.iter().enumerate() {
+        let raw_id: Vec<u8> = row.get("execution_process_id");
+        let id = match Uuid::from_slice(&raw_id) {
+            Ok(id) => id,
+            Err(e) => {
+                tracing::warn!(
+                    "[data_migration] backfill_turn_costs: [{}/{}] invalid UUID: {}",
+                    i + 1,
+                    total,
+                    e
+                );
+                failed_count += 1;
+                continue;
+            }
+        };
+
+        match CodingAgentTurn::aggregate_turn_cost(pool, id).await {
+            Ok(()) => {
+                success_count += 1;
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "[data_migration] backfill_turn_costs: [{}/{}] failed {}: {}",
+                    i + 1,
+                    total,
+                    &id.to_string()[..8],
+                    e
+                );
+                failed_count += 1;
+            }
+        }
+    }
+
+    tracing::info!(
+        "[data_migration] backfill_turn_costs: complete — {}/{} succeeded, {} failed",
+        success_count,
+        total,
+        failed_count
+    );
+
+    Ok(())
 }
