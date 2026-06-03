@@ -15,6 +15,11 @@ pub struct CodingAgentTurn {
     pub seen: bool,              // Whether user has viewed this turn
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub cost_usd: Option<f64>,
+    pub input_tokens: Option<i64>,
+    pub output_tokens: Option<i64>,
+    pub model_name: Option<String>,
+    pub model_breakdown: Option<String>,
 }
 
 #[derive(Debug, Deserialize, TS)]
@@ -80,7 +85,12 @@ impl CodingAgentTurn {
                 summary,
                 seen as "seen!: bool",
                 created_at as "created_at!: DateTime<Utc>",
-                updated_at as "updated_at!: DateTime<Utc>"
+                updated_at as "updated_at!: DateTime<Utc>",
+                cost_usd,
+                input_tokens,
+                output_tokens,
+                model_name,
+                model_breakdown
                FROM coding_agent_turns
                WHERE execution_process_id = $1"#,
             execution_process_id
@@ -104,7 +114,12 @@ impl CodingAgentTurn {
                 summary,
                 seen as "seen!: bool",
                 created_at as "created_at!: DateTime<Utc>",
-                updated_at as "updated_at!: DateTime<Utc>"
+                updated_at as "updated_at!: DateTime<Utc>",
+                cost_usd,
+                input_tokens,
+                output_tokens,
+                model_name,
+                model_breakdown
                FROM coding_agent_turns
                WHERE agent_session_id = ?
                ORDER BY updated_at DESC
@@ -133,9 +148,9 @@ impl CodingAgentTurn {
             CodingAgentTurn,
             r#"INSERT INTO coding_agent_turns (
                 id, execution_process_id, agent_session_id, agent_message_id, prompt, summary, seen,
-                created_at, updated_at
+                created_at, updated_at, cost_usd, input_tokens, output_tokens, model_name, model_breakdown
                )
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
                RETURNING
                 id as "id!: Uuid",
                 execution_process_id as "execution_process_id!: Uuid",
@@ -145,7 +160,12 @@ impl CodingAgentTurn {
                 summary,
                 seen as "seen!: bool",
                 created_at as "created_at!: DateTime<Utc>",
-                updated_at as "updated_at!: DateTime<Utc>""#,
+                updated_at as "updated_at!: DateTime<Utc>",
+                cost_usd,
+                input_tokens,
+                output_tokens,
+                model_name,
+                model_breakdown"#,
             id,
             data.execution_process_id,
             None::<String>, // agent_session_id initially None until parsed from output
@@ -154,7 +174,12 @@ impl CodingAgentTurn {
             None::<String>, // summary initially None
             false,          // seen - defaults to unseen
             now,            // created_at
-            now             // updated_at
+            now,            // updated_at
+            None::<f64>,    // cost_usd
+            None::<i64>,    // input_tokens
+            None::<i64>,    // output_tokens
+            None::<String>, // model_name
+            None::<String>  // model_breakdown
         )
         .fetch_one(pool)
         .await
@@ -218,6 +243,132 @@ impl CodingAgentTurn {
             execution_process_id
         )
         .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Update cost and token info for a coding agent turn.
+    pub async fn update_cost(
+        pool: &SqlitePool,
+        execution_process_id: Uuid,
+        cost_usd: f64,
+        input_tokens: i64,
+        output_tokens: i64,
+        model_name: &str,
+        model_breakdown: &str,
+    ) -> Result<(), sqlx::Error> {
+        let now = Utc::now();
+        sqlx::query!(
+            r#"UPDATE coding_agent_turns
+               SET cost_usd = $1, input_tokens = $2, output_tokens = $3,
+                   model_name = $4, model_breakdown = $5, updated_at = $6
+               WHERE execution_process_id = $7"#,
+            cost_usd,
+            input_tokens,
+            output_tokens,
+            model_name,
+            model_breakdown,
+            now,
+            execution_process_id
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Aggregate token usage from normalized entries for a completed turn
+    /// and persist cost data to the coding_agent_turns row.
+    pub async fn aggregate_turn_cost(
+        pool: &SqlitePool,
+        execution_process_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
+        // Only proceed if a coding agent turn exists for this execution process
+        let turn = Self::find_by_execution_process_id(pool, execution_process_id).await?;
+        if turn.is_none() {
+            return Ok(());
+        }
+
+        // Fetch all normalized entries for this execution process
+        let entries = sqlx::query!(
+            r#"SELECT entry_json FROM normalized_entries WHERE execution_id = $1"#,
+            execution_process_id
+        )
+        .fetch_all(pool)
+        .await?;
+
+        // Extract TokenUsageInfo entries with model_name (final result entries with cost_usd)
+        use executors::logs::NormalizedEntry;
+        let mut total_cost: f64 = 0.0;
+        let mut total_input: i64 = 0;
+        let mut total_output: i64 = 0;
+        let mut per_model: std::collections::HashMap<String, (f64, i64, i64)> =
+            std::collections::HashMap::new();
+
+        for row in &entries {
+            if let Ok(entry) = serde_json::from_str::<NormalizedEntry>(&row.entry_json)
+                && let executors::logs::NormalizedEntryType::TokenUsageInfo(info) = entry.entry_type
+            {
+                // Only count entries with model_name (final results with cost_usd)
+                let model = match &info.model_name {
+                    Some(m) => m.clone(),
+                    None => continue,
+                };
+                let cost = info.cost_usd.unwrap_or(0.0);
+                let input = info.input_tokens.unwrap_or(0) as i64;
+                let output = info.output_tokens.unwrap_or(0) as i64;
+
+                total_cost += cost;
+                total_input += input;
+                total_output += output;
+
+                let entry = per_model.entry(model).or_insert((0.0, 0, 0));
+                entry.0 += cost;
+                entry.1 += input;
+                entry.2 += output;
+            }
+        }
+
+        if per_model.is_empty() {
+            return Ok(());
+        }
+
+        // Pick primary model (highest cost)
+        let primary_model = per_model
+            .iter()
+            .max_by(|a, b| {
+                a.1.0
+                    .partial_cmp(&b.1.0)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .map(|(name, _)| name.clone())
+            .unwrap();
+
+        // Build model_breakdown JSON
+        let breakdown: std::collections::HashMap<String, serde_json::Value> = per_model
+            .iter()
+            .map(|(name, (cost, input, output))| {
+                (
+                    name.clone(),
+                    serde_json::json!({
+                        "cost_usd": cost,
+                        "input_tokens": input,
+                        "output_tokens": output,
+                    }),
+                )
+            })
+            .collect();
+        let breakdown_json = serde_json::to_string(&breakdown).unwrap_or_default();
+
+        Self::update_cost(
+            pool,
+            execution_process_id,
+            total_cost,
+            total_input,
+            total_output,
+            &primary_model,
+            &breakdown_json,
+        )
         .await?;
 
         Ok(())

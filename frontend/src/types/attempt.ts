@@ -1,11 +1,11 @@
-import type { Workspace, Session } from 'shared/types';
+import type { Workspace, SessionWithCost } from 'shared/types';
 
 /**
  * WorkspaceWithSession includes the latest Session for the workspace.
  * Provides access to session.id, session.executor, etc.
  */
 export type WorkspaceWithSession = Workspace & {
-  session: Session | undefined;
+  session: SessionWithCost | undefined;
 };
 
 /**
@@ -13,7 +13,7 @@ export type WorkspaceWithSession = Workspace & {
  */
 export function createWorkspaceWithSession(
   workspace: Workspace,
-  session: Session | undefined
+  session: SessionWithCost | undefined
 ): WorkspaceWithSession {
   return {
     ...workspace,

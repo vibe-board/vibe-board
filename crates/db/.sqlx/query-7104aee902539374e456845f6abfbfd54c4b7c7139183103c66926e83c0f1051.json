@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT entry_json FROM normalized_entries WHERE execution_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "name": "entry_json",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "7104aee902539374e456845f6abfbfd54c4b7c7139183103c66926e83c0f1051"
+}
