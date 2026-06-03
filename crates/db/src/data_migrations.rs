@@ -205,15 +205,26 @@ fn should_log_progress(current: usize, total: usize) -> bool {
 }
 
 /// Backfill cost_usd and token counts for existing coding agent turns.
-/// Idempotent: only processes turns where cost_usd IS NULL.
+/// Idempotent: only processes turns where cost_usd IS NULL AND the turn's
+/// execution process has token_usage_info entries with cost data.
 async fn backfill_turn_costs(pool: &Pool<Sqlite>) -> Result<(), sqlx::Error> {
     use crate::models::coding_agent_turn::CodingAgentTurn;
 
-    // Find all turns without cost data
-    let rows =
-        sqlx::query("SELECT execution_process_id FROM coding_agent_turns WHERE cost_usd IS NULL")
-            .fetch_all(pool)
-            .await?;
+    // Find turns without cost data that DO have token_usage_info entries with model_name
+    // (i.e., Claude Code turns that have cost data to backfill)
+    let rows = sqlx::query(
+        "SELECT DISTINCT cat.execution_process_id
+         FROM coding_agent_turns cat
+         WHERE cat.cost_usd IS NULL
+           AND EXISTS (
+             SELECT 1 FROM normalized_entries ne
+             WHERE ne.execution_id = cat.execution_process_id
+               AND json_extract(ne.entry_json, '$.entry_type.type') = 'token_usage_info'
+               AND json_extract(ne.entry_json, '$.entry_type.model_name') IS NOT NULL
+           )",
+    )
+    .fetch_all(pool)
+    .await?;
 
     if rows.is_empty() {
         return Ok(());
