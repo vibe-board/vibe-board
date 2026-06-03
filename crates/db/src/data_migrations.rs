@@ -210,11 +210,10 @@ async fn backfill_turn_costs(pool: &Pool<Sqlite>) -> Result<(), sqlx::Error> {
     use crate::models::coding_agent_turn::CodingAgentTurn;
 
     // Find all turns without cost data
-    let rows = sqlx::query(
-        "SELECT execution_process_id FROM coding_agent_turns WHERE cost_usd IS NULL",
-    )
-    .fetch_all(pool)
-    .await?;
+    let rows =
+        sqlx::query("SELECT execution_process_id FROM coding_agent_turns WHERE cost_usd IS NULL")
+            .fetch_all(pool)
+            .await?;
 
     if rows.is_empty() {
         return Ok(());

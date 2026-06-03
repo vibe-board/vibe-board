@@ -58,7 +58,10 @@ const SessionCost = ({ session }: { session: SessionWithCost }) => {
           <ChevronDown className="h-3 w-3 opacity-50" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-64" align="end">
+      <PopoverContent
+        className="w-64 bg-background border shadow-md"
+        align="end"
+      >
         <div className="space-y-2">
           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
             Cost by Model
