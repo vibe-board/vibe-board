@@ -43,6 +43,23 @@ function ReadOnlyMarkdown({
     className ?? ''
   );
 
+  // Callers pass `whitespace-pre-wrap` (carried over verbatim from the old
+  // read-only WYSIWYGEditor, which preserved soft single-newlines inside body
+  // text). On the Streamdown ROOT this is harmful: Streamdown splits markdown
+  // into per-token blocks and the source's inter-block newlines (e.g. a
+  // heading's trailing `\n\n` plus a following blank line) survive as bare text
+  // nodes between sibling elements. With `pre-wrap` on the root those collapse
+  // into a tall stack of visible blank lines — most visibly a huge gap between
+  // a heading and the table/`---` after it. Strip it from the root and re-apply
+  // it scoped to prose blocks so intra-paragraph soft newlines still render,
+  // while block gaps collapse the way HTML normally does.
+  const wantsPreWrap = /(?:^|\s)whitespace-pre-wrap(?:\s|$)/.test(
+    className ?? ''
+  );
+  const rootClassName = (className ?? '')
+    .replace(/(?:^|\s)whitespace-pre-wrap(?=\s|$)/g, ' ')
+    .trim();
+
   const handleCopy = useCallback(async () => {
     if (!content) return;
     try {
@@ -95,7 +112,12 @@ function ReadOnlyMarkdown({
           // --primary 近中性色。通过稳定的 data-streamdown hook 把链接改回
           // 旧编辑器一致的蓝色,不替换 streamdown 的链接组件(保留其链接安全行为)。
           '[&_[data-streamdown=link]]:text-blue-600 dark:[&_[data-streamdown=link]]:text-blue-400',
-          className
+          // Re-apply the caller's `whitespace-pre-wrap` intent, but scoped to
+          // text-bearing blocks only — never the root. This keeps soft newlines
+          // inside paragraphs/list items/quotes while letting the inter-block
+          // whitespace text nodes collapse (no giant heading→table gap).
+          wantsPreWrap && '[&_:where(p,li,blockquote)]:whitespace-pre-wrap',
+          rootClassName
         )}
       >
         {content}

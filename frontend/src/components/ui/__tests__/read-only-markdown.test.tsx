@@ -30,6 +30,40 @@ describe('ReadOnlyMarkdown', () => {
     expect(container.querySelector('table')).not.toBeNull();
   });
 
+  // Regression: PlanPresentationCard (and other callers) pass
+  // `whitespace-pre-wrap` — carried over verbatim from the old WYSIWYGEditor.
+  // Streamdown splits markdown into per-token blocks, leaving the source's
+  // inter-block newlines as bare text nodes between siblings. On the root,
+  // `pre-wrap` turns those into a tall stack of blank lines (a huge gap between
+  // e.g. a heading and the following table). The root must NOT carry a bare
+  // whitespace-pre-wrap; it belongs scoped to prose blocks instead.
+  it('does not leak whitespace-pre-wrap onto the Streamdown root (block-gap regression)', () => {
+    const md = ['## Heading', '', '| a | b |', '| - | - |', '| 1 | 2 |'].join(
+      '\n'
+    );
+    const { container } = render(
+      <ReadOnlyMarkdown
+        content={md}
+        className="whitespace-pre-wrap break-words"
+      />
+    );
+    // The block container is the element that also lays blocks out (space-y-*).
+    const root = container.querySelector('[class*="space-y"]');
+    expect(root).not.toBeNull();
+    expect(root?.className).not.toMatch(/(?:^|\s)whitespace-pre-wrap(?:\s|$)/);
+  });
+
+  it('re-applies the caller pre-wrap intent scoped to prose blocks', () => {
+    const { container } = render(
+      <ReadOnlyMarkdown content={'a\nb'} className="whitespace-pre-wrap" />
+    );
+    // The scoped arbitrary variant survives on some element so soft single
+    // newlines inside paragraphs still render as breaks.
+    expect(
+      container.querySelector('[class*="whitespace-pre-wrap"]')
+    ).not.toBeNull();
+  });
+
   it('does not throw on incomplete (streaming) markdown', () => {
     expect(() =>
       render(<ReadOnlyMarkdown content={'```ts\nconst a = 1'} />)
