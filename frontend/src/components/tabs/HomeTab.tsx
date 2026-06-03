@@ -309,8 +309,9 @@ function MachineNodeView({
   machine: MachineStatus;
   connectionId: string;
 }) {
-  const { openMachineProjectsTab } = useConnectionStore();
+  const { openMachineProjectsTab, unpairMachine } = useConnectionStore();
   const [showPairing, setShowPairing] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
   const isPaired = useConnectionStore(
     (s) => machine.machine_id in s.machineSecrets
   );
@@ -345,6 +346,33 @@ function MachineNodeView({
         </span>
         {!isPaired && (
           <span className="text-sm text-foreground/40">Not paired</span>
+        )}
+        {isPaired && (
+          <div className="relative shrink-0">
+            <button
+              className="p-1.5 rounded hover:bg-foreground/10"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowMenu(!showMenu);
+              }}
+            >
+              <MoreHorizontal size={16} className="text-foreground/50" />
+            </button>
+            {showMenu && (
+              <div className="absolute right-0 top-full mt-1 bg-background border border-border rounded shadow-lg z-10 py-1 min-w-[140px]">
+                <button
+                  className="flex items-center gap-2 w-full px-3 py-2 text-sm text-destructive hover:bg-destructive/10"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    unpairMachine(connectionId, machine.machine_id);
+                    setShowMenu(false);
+                  }}
+                >
+                  <WifiOff size={14} /> Unpair
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
