@@ -96,4 +96,21 @@ describe('ReadOnlyMarkdown', () => {
     // CSS source order — not prop order — would decide. Ensure text-base is gone.
     expect(sized?.className).not.toMatch(/(?:^|\s)text-base(?:\s|$)/);
   });
+
+  // The mermaid plugin must be registered; otherwise streamdown renders the
+  // "add the mermaid plugin to enable diagram rendering" fallback instead of a
+  // diagram. We assert that fallback is absent (the async SVG render itself
+  // doesn't resolve in jsdom, so checking the negative is the reliable signal).
+  it('registers the mermaid plugin (no "plugin not available" fallback)', () => {
+    const md = ['```mermaid', 'graph TD; A-->B;', '```'].join('\n');
+    const { container } = render(<ReadOnlyMarkdown content={md} />);
+    expect(container.textContent ?? '').not.toMatch(/mermaid plugin/i);
+  });
+
+  it('does not throw rendering a mermaid block', () => {
+    const md = ['```mermaid', 'sequenceDiagram; Alice->>Bob: Hi', '```'].join(
+      '\n'
+    );
+    expect(() => render(<ReadOnlyMarkdown content={md} />)).not.toThrow();
+  });
 });

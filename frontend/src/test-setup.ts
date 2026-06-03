@@ -25,6 +25,21 @@ globalThis.IntersectionObserver =
 
 Element.prototype.scrollTo = vi.fn();
 
+// jsdom has no matchMedia; theme-aware components (getActualTheme, mermaid theme
+// selection, etc.) call it during render. Default to light (matches: false).
+if (!window.matchMedia) {
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })) as unknown as typeof window.matchMedia;
+}
+
 // ---------------------------------------------------------------------------
 // Mock react-virtuoso
 // ---------------------------------------------------------------------------
