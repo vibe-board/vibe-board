@@ -81,7 +81,7 @@ export function TaskFollowUpSection({
   task,
   session,
 }: TaskFollowUpSectionProps) {
-  const { tasksApi, attemptsApi, imagesApi, queueApi } = useApi();
+  const { tasksApi, attemptsApi, imagesApi, queueApi, sessionsApi } = useApi();
   const { t } = useTranslation('tasks');
   const { projectId } = useProject();
   const navigate = useNavigateWithSearch();
@@ -152,6 +152,9 @@ export function TaskFollowUpSection({
     scratch?.payload?.type === 'DRAFT_FOLLOW_UP'
       ? scratch.payload.data
       : undefined;
+
+  // Loading state for quick button sends (prevents double-clicks)
+  const [isSendingQuickButton, setIsSendingQuickButton] = useState(false);
 
   // Track whether the follow-up textarea is focused
   const [isTextareaFocused, setIsTextareaFocused] = useState(false);
@@ -421,6 +424,41 @@ export function TaskFollowUpSection({
         setLocalMessage(''); // Clear local state immediately
       },
     });
+
+  const handleQuickButton = useCallback(
+    async (text: string) => {
+      if (!sessionId || !selectedExecutor) return;
+      setIsSendingQuickButton(true);
+      try {
+        await sessionsApi.followUp(sessionId, {
+          prompt: text,
+          executor_profile_id: {
+            executor: selectedExecutor,
+            variant: selectedVariant ?? null,
+          },
+          retry_process_id: null,
+          force_when_dirty: null,
+          perform_git_reset: null,
+          allow_executor_change: null,
+        });
+      } catch (error) {
+        console.error('Failed to send quick button message:', error);
+        setFollowUpError(
+          'Failed to send quick message: ' +
+            (error instanceof Error ? error.message : 'Unknown error')
+        );
+      } finally {
+        setIsSendingQuickButton(false);
+      }
+    },
+    [
+      sessionId,
+      selectedExecutor,
+      selectedVariant,
+      sessionsApi,
+      setFollowUpError,
+    ]
+  );
 
   // In question mode, allow typing but handle submit as question answer
   const isInQuestionMode = hasPendingQuestion && !hasPendingApproval;
@@ -948,6 +986,28 @@ export function TaskFollowUpSection({
             )}
 
             <div className="flex flex-col gap-2">
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleQuickButton('ok')}
+                  disabled={
+                    !isEditable || !selectedExecutor || isSendingQuickButton
+                  }
+                >
+                  OK
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleQuickButton('continue')}
+                  disabled={
+                    !isEditable || !selectedExecutor || isSendingQuickButton
+                  }
+                >
+                  Continue
+                </Button>
+              </div>
               <WYSIWYGEditor
                 placeholder={editorPlaceholder}
                 value={displayMessage}
