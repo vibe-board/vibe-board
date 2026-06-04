@@ -333,18 +333,28 @@ export function TaskFollowUpSection({
 
   // Track previous process count to detect new processes
   const prevProcessCountRef = useRef(processes.length);
+  const prevIsAttemptRunningRef = useRef(isAttemptRunning);
 
   // Refresh queue status when execution stops OR when a new process starts
   useEffect(() => {
     const prevCount = prevProcessCountRef.current;
     prevProcessCountRef.current = processes.length;
+    const wasRunning = prevIsAttemptRunningRef.current;
+    prevIsAttemptRunningRef.current = isAttemptRunning;
 
     if (!workspaceId) return;
 
-    // Refresh when execution stops
-    if (!isAttemptRunning) {
+    // Refresh when execution just stopped (transition from running to not-running)
+    if (wasRunning && !isAttemptRunning) {
       refreshQueueStatus();
-      return;
+      // Schedule a delayed refresh to handle race condition: the backend
+      // consumes the queue AFTER marking the EP as completed. The first
+      // refresh may hit the backend before take_queued() runs, getting a
+      // stale "queued" response. The delayed refresh catches the real state.
+      const timer = setTimeout(() => {
+        refreshQueueStatus();
+      }, 1500);
+      return () => clearTimeout(timer);
     }
 
     // Refresh when a new process starts (could be queued message consumption or follow-up)
