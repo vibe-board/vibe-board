@@ -26,3 +26,4 @@ export {
   type MachineStatus,
 } from './connection';
 export { RemoteWs } from './remoteWs';
+export { E2EEManager } from './manager';
