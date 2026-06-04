@@ -152,6 +152,8 @@ pub(super) async fn maybe_emit_token_usage(context: &EventStreamContext<'_>, eve
 
     let model_name = model_id.map(|s| s.to_string());
 
+    let cost_usd = message.cost.filter(|c| c.is_finite() && *c >= 0.0);
+
     let _ = context
         .log_writer
         .log_event(&OpencodeExecutorEvent::TokenUsage {
@@ -175,6 +177,7 @@ pub(super) async fn maybe_emit_token_usage(context: &EventStreamContext<'_>, eve
             } else {
                 None
             },
+            cost_usd,
         })
         .await;
 }
