@@ -1117,8 +1117,31 @@ export function TaskFollowUpSection({
 
           {isAttemptRunning ? (
             <div className="flex items-center gap-2">
-              {/* Queue/Cancel Queue button when running */}
-              {isQueued ? (
+              {isInQuestionMode && pendingQuestionInfo ? (
+                <Button
+                  onClick={() => {
+                    if (localMessage.trim()) {
+                      submitQuestionAnswer({
+                        approvalId: pendingQuestionInfo.approvalId,
+                        executionProcessId:
+                          pendingQuestionInfo.executionProcessId,
+                        answers: [
+                          {
+                            question: pendingQuestionInfo.question,
+                            answer: [localMessage.trim()],
+                          },
+                        ],
+                      });
+                      setLocalMessage('');
+                    }
+                  }}
+                  disabled={!localMessage.trim() || isRetryingToNewTask}
+                  size="sm"
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  Submit Answer
+                </Button>
+              ) : isQueued ? (
                 <Button
                   onClick={cancelQueue}
                   disabled={isQueueLoading}
