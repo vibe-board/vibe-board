@@ -17,8 +17,6 @@ import { GitActionsDialog } from '@/components/dialogs/tasks/GitActionsDialog';
 import { useOpenInEditor } from '@/hooks/useOpenInEditor';
 import { useDevServer } from '@/hooks/useDevServer';
 import { useHasDevServerScript } from '@/hooks/useHasDevServerScript';
-import { useExecutionProcesses } from '@/hooks/useExecutionProcesses';
-import { getLatestProfileFromProcesses } from '@/utils/executor';
 import { Button } from '@/components/ui/button';
 import { IdeIcon } from '@/components/ide/IdeIcon';
 import { useUserSystem } from '@/components/ConfigProvider';
@@ -57,7 +55,7 @@ export function NextActionCard({
   task,
   needsSetup,
 }: NextActionCardProps) {
-  const { attemptsApi, sessionsApi } = useApi();
+  const { attemptsApi } = useApi();
   const { t } = useTranslation('tasks');
   const { config } = useUserSystem();
   const { projectId } = useProject();
@@ -85,9 +83,6 @@ export function NextActionCard({
     runningDevServers,
     devServerProcesses,
   } = useDevServer(attemptId);
-
-  const { executionProcesses } = useExecutionProcesses(sessionId);
-  const latestProfile = getLatestProfileFromProcesses(executionProcesses);
 
   const hasRunningDevServer = runningDevServers.length > 0;
 
@@ -131,24 +126,6 @@ export function NextActionCard({
     });
   }, [attempt?.task_id, projectId]);
 
-  const handleContinue = useCallback(async () => {
-    if (!sessionId || !latestProfile?.executor) return;
-    try {
-      await sessionsApi.followUp(sessionId, {
-        prompt: 'continue',
-        executor_profile_id: {
-          executor: latestProfile.executor,
-          variant: latestProfile.variant ?? null,
-        },
-        retry_process_id: null,
-        force_when_dirty: null,
-        perform_git_reset: null,
-        allow_executor_change: null,
-      });
-    } catch (error) {
-      console.error('Failed to send continue:', error);
-    }
-  }, [sessionId, latestProfile]);
 
   const handleGitActions = useCallback(() => {
     if (!attemptId) return;
@@ -249,28 +226,16 @@ export function NextActionCard({
               </Button>
             ) : (
               execution_processes <= 2 && (
-                <>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={handleTryAgain}
-                    disabled={!attempt?.task_id}
-                    className="text-sm w-full sm:w-auto"
-                    aria-label={t('attempt.tryAgain')}
-                  >
-                    {t('attempt.tryAgain')}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleContinue}
-                    disabled={!latestProfile?.executor}
-                    className="text-sm w-full sm:w-auto"
-                    aria-label={t('attempt.continue')}
-                  >
-                    {t('attempt.continue')}
-                  </Button>
-                </>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleTryAgain}
+                  disabled={!attempt?.task_id}
+                  className="text-sm w-full sm:w-auto"
+                  aria-label={t('attempt.tryAgain')}
+                >
+                  {t('attempt.tryAgain')}
+                </Button>
               )
             ))}
 
