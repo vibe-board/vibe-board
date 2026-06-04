@@ -27,6 +27,7 @@ pub enum OpencodeExecutorEvent {
         reasoning_tokens: Option<u64>,
         cache_read_input_tokens: Option<u64>,
         cache_creation_input_tokens: Option<u64>,
+        cost_usd: Option<f64>,
     },
     ApprovalRequested {
         tool_call_id: String,
@@ -165,6 +166,8 @@ pub(super) struct MessageInfo {
     pub(super) model_id: Option<String>,
     #[serde(default)]
     pub(super) tokens: Option<MessageTokens>,
+    #[serde(default)]
+    pub(super) cost: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
