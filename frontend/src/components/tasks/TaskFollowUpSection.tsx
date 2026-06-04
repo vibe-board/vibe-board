@@ -1017,6 +1017,16 @@ export function TaskFollowUpSection({
                 >
                   Continue
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleQuickButton('yes')}
+                  disabled={
+                    !isEditable || !selectedExecutor || isSendingQuickButton
+                  }
+                >
+                  Yes
+                </Button>
               </div>
               <WYSIWYGEditor
                 placeholder={editorPlaceholder}
