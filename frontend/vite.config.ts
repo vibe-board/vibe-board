@@ -104,7 +104,7 @@ export default defineConfig({
         ],
       },
     }),
-    sentryVitePlugin({ org: 'wqyjh', project: 'vibe-board' }),
+    sentryVitePlugin({ org: 'wqyjh', project: 'vibe-board', telemetry: false }),
     executorSchemasPlugin(),
   ],
   resolve: {
