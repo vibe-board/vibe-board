@@ -80,6 +80,7 @@ pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path
                     reasoning_tokens,
                     cache_read_input_tokens,
                     cache_creation_input_tokens,
+                    cost_usd,
                 } => {
                     add_normalized_entry(
                         &msg_store,
@@ -94,7 +95,7 @@ pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path
                                 reasoning_tokens,
                                 cache_read_input_tokens,
                                 cache_creation_input_tokens,
-                                cost_usd: None,
+                                cost_usd,
                                 context_window: None,
                                 model_context_window: if model_context_window > 0 {
                                     Some(model_context_window)
