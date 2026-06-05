@@ -888,6 +888,22 @@ impl LocalContainerService {
                         if !has_cron.load(Ordering::Relaxed) {
                             idle_deadline = Some(tokio::time::Instant::now() + idle_timeout);
                         }
+
+                        // Mark EP as completed so frontend knows the round is done
+                        let _ = container
+                            .update_completion_and_push(
+                                exec_id,
+                                ExecutionProcessStatus::Completed,
+                                Some(0),
+                            )
+                            .await;
+
+                        // Aggregate cost and finalize task (same as oneshot exit monitor)
+                        let _ = CodingAgentTurn::aggregate_turn_cost(&container.db.pool, exec_id).await;
+                        if let Ok(ctx) = ExecutionProcess::load_context(&container.db.pool, exec_id).await {
+                            container.finalize_task(&ctx).await;
+                        }
+
                         continue;
                     }
                     // Periodic cron detection check
@@ -908,6 +924,14 @@ impl LocalContainerService {
                             && !has_cron.load(Ordering::Relaxed)
                         {
                             tracing::info!("Idle timeout for session {}", session_id);
+                            // Mark as completed (normal exit) before killing
+                            let _ = container
+                                .update_completion_and_push(
+                                    exec_id,
+                                    ExecutionProcessStatus::Completed,
+                                    Some(0),
+                                )
+                                .await;
                             if let Some(child_lock) = container.child_store.read().await.get(&exec_id) {
                                 let mut child = child_lock.write().await;
                                 let _ = command::kill_process_group(&mut child).await;
@@ -915,9 +939,16 @@ impl LocalContainerService {
                             break;
                         }
                     }
-                    // User cancelled
+                    // User cancelled — treat as normal completion
                     _ = cancel.cancelled() => {
                         tracing::info!("Cancel signal for session {}", session_id);
+                        let _ = container
+                            .update_completion_and_push(
+                                exec_id,
+                                ExecutionProcessStatus::Completed,
+                                Some(0),
+                            )
+                            .await;
                         if let Some(child_lock) = container.child_store.read().await.get(&exec_id) {
                             let mut child = child_lock.write().await;
                             let _ = command::kill_process_group(&mut child).await;
