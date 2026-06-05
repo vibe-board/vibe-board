@@ -435,7 +435,7 @@ fn build_default_headers(directory: &str, password: &str) -> HeaderMap {
     headers
 }
 
-fn build_mimocode_client(
+pub fn build_mimocode_client(
     directory: &str,
     password: &str,
 ) -> Result<reqwest::Client, ExecutorError> {
@@ -1000,6 +1000,32 @@ async fn build_response_error(resp: reqwest::Response, context: &str) -> Executo
     ExecutorError::Io(io::Error::other(format!(
         "MiMoCode {context} failed: HTTP {status} {body}"
     )))
+}
+
+/// Lightweight API client for fetching task data when `task.updated` events arrive.
+#[derive(Clone)]
+pub struct TaskApiClient {
+    pub client: reqwest::Client,
+    pub base_url: String,
+}
+
+impl TaskApiClient {
+    pub fn new(client: reqwest::Client, base_url: String) -> Self {
+        Self { client, base_url }
+    }
+
+    pub async fn fetch_tasks(&self, session_id: &str) -> Option<Vec<super::types::TaskInfo>> {
+        let resp = self
+            .client
+            .get(format!("{}/session/{}/task", self.base_url, session_id))
+            .send()
+            .await
+            .ok()?;
+        if !resp.status().is_success() {
+            return None;
+        }
+        resp.json::<Vec<super::types::TaskInfo>>().await.ok()
+    }
 }
 
 pub async fn send_abort(

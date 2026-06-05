@@ -86,6 +86,10 @@ pub(super) enum SdkEvent {
     QuestionRejected,
     CommandExecuted,
     TuiSessionSelect,
+    ActorRegistered(ActorRegisteredEvent),
+    ActorStatusChanged(ActorStatusChangedEvent),
+    ActorStuck(ActorStuckEvent),
+    TaskUpdated(TaskUpdatedEvent),
     Unknown {
         type_: String,
         properties: Value,
@@ -95,6 +99,11 @@ pub(super) enum SdkEvent {
 impl SdkEvent {
     pub(super) fn parse(value: &Value) -> Option<Self> {
         let envelope = serde_json::from_value::<SdkEventEnvelope>(value.clone()).ok()?;
+
+        // Silently ignore metrics events (metrics.tool_call, metrics.model_call, etc.)
+        if envelope.type_.starts_with("metrics.") {
+            return None;
+        }
 
         let event = match envelope.type_.as_str() {
             "message.updated" => {
@@ -130,6 +139,18 @@ impl SdkEvent {
             "question.rejected" => SdkEvent::QuestionRejected,
             "command.executed" => SdkEvent::CommandExecuted,
             "tui.session.select" => SdkEvent::TuiSessionSelect,
+            "actor.registered" => {
+                SdkEvent::ActorRegistered(serde_json::from_value(envelope.properties).ok()?)
+            }
+            "actor.status" => {
+                SdkEvent::ActorStatusChanged(serde_json::from_value(envelope.properties).ok()?)
+            }
+            "actor.stuck" => {
+                SdkEvent::ActorStuck(serde_json::from_value(envelope.properties).ok()?)
+            }
+            "task.updated" => {
+                SdkEvent::TaskUpdated(serde_json::from_value(envelope.properties).ok()?)
+            }
             _ => SdkEvent::Unknown {
                 type_: envelope.type_,
                 properties: envelope.properties,
@@ -398,6 +419,55 @@ pub(super) struct SessionErrorEvent {
     pub(super) error: Option<SdkError>,
 }
 
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+pub(super) struct ActorRegisteredEvent {
+    #[serde(rename = "actorID")]
+    pub(super) actor_id: String,
+    #[serde(default)]
+    pub(super) mode: Option<String>,
+    #[serde(default)]
+    pub(super) description: Option<String>,
+    #[serde(default)]
+    pub(super) agent: Option<String>,
+    #[serde(default)]
+    pub(super) background: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct ActorStatusChangedEvent {
+    #[serde(rename = "actorID")]
+    pub(super) actor_id: String,
+    pub(super) status: ActorStatus,
+    #[serde(default)]
+    pub(super) error: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(super) enum ActorStatus {
+    Pending,
+    Running,
+    Idle,
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct ActorStuckEvent {
+    #[serde(rename = "actorID")]
+    pub(super) actor_id: String,
+    #[serde(default)]
+    pub(super) description: Option<String>,
+    #[serde(default)]
+    pub(super) stuck_duration: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+pub(super) struct TaskUpdatedEvent {
+    #[serde(rename = "sessionID")]
+    pub(super) session_id: String,
+}
+
 #[derive(Debug)]
 pub(super) struct SdkError {
     pub(super) raw: Value,
@@ -455,4 +525,45 @@ pub(super) struct ProviderModelInfo {
 pub(super) struct ProviderModelLimit {
     #[serde(default, deserialize_with = "deserialize_f64_as_u32")]
     pub(super) context: u32,
+}
+
+// Task types for task.updated event handling
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub struct TaskInfo {
+    pub id: String,
+    #[serde(default)]
+    pub status: TaskStatusValue,
+    pub summary: String,
+    #[serde(default)]
+    pub owner: Option<String>,
+    #[serde(default)]
+    pub parent_task_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskStatusValue {
+    Open,
+    InProgress,
+    Blocked,
+    Done,
+    Abandoned,
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+
+impl std::fmt::Display for TaskStatusValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TaskStatusValue::Open => write!(f, "open"),
+            TaskStatusValue::InProgress => write!(f, "in_progress"),
+            TaskStatusValue::Blocked => write!(f, "blocked"),
+            TaskStatusValue::Done => write!(f, "done"),
+            TaskStatusValue::Abandoned => write!(f, "abandoned"),
+            TaskStatusValue::Unknown => write!(f, "unknown"),
+        }
+    }
 }

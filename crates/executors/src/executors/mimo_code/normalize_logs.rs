@@ -9,9 +9,10 @@ use workspace_utils::{
 };
 
 use super::types::{
-    MessageInfo, MessageRole, MiMoCodeExecutorEvent, Part, PermissionAskedEvent, QuestionInfo,
-    SdkEvent, SdkTodo, SessionStatus, ToolPart, ToolStateUpdate,
+    ActorStatus, MessageInfo, MessageRole, MiMoCodeExecutorEvent, Part, PermissionAskedEvent,
+    QuestionInfo, SdkEvent, SdkTodo, SessionStatus, ToolPart, ToolStateUpdate,
 };
+use super::sdk::TaskApiClient;
 use crate::{
     approvals::ToolCallMetadata,
     logs::{
@@ -35,13 +36,25 @@ fn system_message(content: String) -> NormalizedEntry {
     }
 }
 
-pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path) {
+pub fn normalize_logs_with_api(
+    msg_store: Arc<dyn ConversationSink>,
+    worktree_path: &Path,
+    task_api: Arc<tokio::sync::OnceCell<TaskApiClient>>,
+) {
+    normalize_logs_inner(msg_store, worktree_path, Some(task_api));
+}
+
+fn normalize_logs_inner(
+    msg_store: Arc<dyn ConversationSink>,
+    worktree_path: &Path,
+    task_api: Option<Arc<tokio::sync::OnceCell<TaskApiClient>>>,
+) {
     let entry_index = EntryIndexProvider::start_from(msg_store.as_ref());
     normalize_stderr_logs(msg_store.clone(), entry_index.clone());
 
     let worktree_path = worktree_path.to_path_buf();
     tokio::spawn(async move {
-        let mut stored_session_id = false;
+        let mut session_id: Option<String> = None;
         let mut state = LogState::new(entry_index.clone(), msg_store.clone());
 
         let mut stdout_lines = msg_store.raw().stdout_lines_stream();
@@ -62,14 +75,14 @@ pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path
 
             match event {
                 MiMoCodeExecutorEvent::StartupLog { .. } => {}
-                MiMoCodeExecutorEvent::SessionStart { session_id } => {
-                    if !stored_session_id {
-                        msg_store.push_session_id(session_id);
-                        stored_session_id = true;
+                MiMoCodeExecutorEvent::SessionStart { session_id: sid } => {
+                    if session_id.is_none() {
+                        msg_store.push_session_id(sid.clone());
+                        session_id = Some(sid);
                     }
                 }
                 MiMoCodeExecutorEvent::SdkEvent { event } => {
-                    state.handle_sdk_event(&event, &worktree_path, &msg_store);
+                    state.handle_sdk_event(&event, &worktree_path, &msg_store, task_api.as_ref(), session_id.as_deref());
                 }
                 MiMoCodeExecutorEvent::TokenUsage {
                     total_tokens,
@@ -253,6 +266,8 @@ impl LogState {
         raw: &Value,
         worktree_path: &Path,
         msg_store: &Arc<dyn ConversationSink>,
+        task_api: Option<&Arc<tokio::sync::OnceCell<TaskApiClient>>>,
+        session_id: Option<&str>,
     ) {
         let Some(event) = SdkEvent::parse(raw) else {
             let raw_text = raw.to_string();
@@ -309,6 +324,91 @@ impl LogState {
             | SdkEvent::SessionDiff
             | SdkEvent::SessionUpdated
             | SdkEvent::TuiSessionSelect => {}
+            SdkEvent::ActorRegistered(event) => {
+                let bg = event.background.unwrap_or(false);
+                let mode = event.mode.as_deref().unwrap_or("agent");
+                let agent_info = event
+                    .agent
+                    .as_deref()
+                    .map(|a| format!(" ({a})"))
+                    .unwrap_or_default();
+                self.add_normalized_entry(system_message(format!(
+                    "Actor registered: {}{} [{}]{}",
+                    event.actor_id,
+                    agent_info,
+                    mode,
+                    if bg { ", background" } else { "" }
+                )));
+            }
+            SdkEvent::ActorStatusChanged(event) => {
+                let status = match &event.status {
+                    ActorStatus::Pending => "pending",
+                    ActorStatus::Running => "running",
+                    ActorStatus::Idle => "idle",
+                };
+                let error_info = event
+                    .error
+                    .as_deref()
+                    .filter(|e| !e.trim().is_empty())
+                    .map(|e| format!(" — error: {e}"))
+                    .unwrap_or_default();
+                self.add_normalized_entry(system_message(format!(
+                    "Actor {}: {}{}",
+                    event.actor_id, status, error_info
+                )));
+            }
+            SdkEvent::ActorStuck(event) => {
+                let duration = event
+                    .stuck_duration
+                    .map(|d| format!(" ({d}ms)"))
+                    .unwrap_or_default();
+                let desc = event
+                    .description
+                    .as_deref()
+                    .filter(|d| !d.trim().is_empty())
+                    .map(|d| format!(": {d}"))
+                    .unwrap_or_default();
+                self.add_normalized_entry(system_message(format!(
+                    "Actor {} stuck{}{}",
+                    event.actor_id, duration, desc
+                )));
+            }
+            SdkEvent::TaskUpdated(_event) => {
+                if let (Some(cell), Some(sid)) = (task_api, session_id)
+                    && let Some(api) = cell.get()
+                {
+                    let api = api.clone();
+                    let sid = sid.to_string();
+                    let msg_store = msg_store.clone();
+                    let entry_index = self.entry_index.clone();
+                    tokio::spawn(async move {
+                        if let Some(tasks) = api.fetch_tasks(&sid).await {
+                            if tasks.is_empty() {
+                                return;
+                            }
+                            let lines: Vec<String> = tasks
+                                .iter()
+                                .map(|t| {
+                                    let owner = t
+                                        .owner
+                                        .as_deref()
+                                        .map(|o| format!(" ({o})"))
+                                        .unwrap_or_default();
+                                    format!("- [{}] {}{}", t.status, t.id, owner)
+                                })
+                                .collect();
+                            add_normalized_entry(
+                                &msg_store,
+                                &entry_index,
+                                system_message(format!(
+                                    "Tasks updated:\n{}",
+                                    lines.join("\n")
+                                )),
+                            );
+                        }
+                    });
+                }
+            }
             SdkEvent::SessionError(event) => {
                 let (error_type, message) = match event.error {
                     Some(err) if err.kind() == "ProviderAuthError" => (
