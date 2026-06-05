@@ -96,6 +96,16 @@ impl SdkEvent {
     pub(super) fn parse(value: &Value) -> Option<Self> {
         let envelope = serde_json::from_value::<SdkEventEnvelope>(value.clone()).ok()?;
 
+        // Silently ignore metrics events (metrics.tool_call, metrics.model_call, etc.)
+        if envelope.type_.starts_with("metrics.") {
+            return None;
+        }
+
+        // Silently ignore writer diagnostics (writer.cache_perf, etc.)
+        if envelope.type_.starts_with("writer.") {
+            return None;
+        }
+
         let event = match envelope.type_.as_str() {
             "message.updated" => {
                 SdkEvent::MessageUpdated(serde_json::from_value(envelope.properties).ok()?)
