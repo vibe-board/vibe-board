@@ -64,6 +64,21 @@ use crate::services::{
 };
 pub type ContainerRef = String;
 
+/// Result of attempting to send a message to an active process.
+pub enum SendToActiveResult {
+    /// Message sent to active process successfully.
+    Sent(Box<ExecutionProcess>),
+    /// No active process found, caller should spawn a new one.
+    NotFound,
+}
+
+/// Status of a session's active process.
+pub enum SessionProcessStatus {
+    Idle,
+    Running,
+    Stopped,
+}
+
 #[derive(Debug, Error)]
 pub enum ContainerError {
     #[error(transparent)]
@@ -1468,5 +1483,25 @@ pub trait ContainerService {
 
         tracing::debug!("Started next action: {:?}", next_action);
         Ok(())
+    }
+
+    /// Try to send a follow-up message to an already-running process for this session.
+    async fn send_to_active_process(
+        &self,
+        _session_id: Uuid,
+        _prompt: &str,
+        _executor_profile_id: &ExecutorProfileId,
+    ) -> Result<SendToActiveResult, ContainerError> {
+        Ok(SendToActiveResult::NotFound)
+    }
+
+    /// Stop the active process for a session.
+    async fn stop_session_process(&self, _session_id: Uuid) -> Result<(), ContainerError> {
+        Ok(())
+    }
+
+    /// Get the status of a session's active process.
+    async fn session_process_status(&self, _session_id: Uuid) -> SessionProcessStatus {
+        SessionProcessStatus::Stopped
     }
 }

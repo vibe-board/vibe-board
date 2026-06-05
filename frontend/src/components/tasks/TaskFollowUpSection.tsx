@@ -5,7 +5,6 @@ import {
   StopCircle,
   AlertCircle,
   Clock,
-  X,
   Paperclip,
   Terminal,
   MessageSquare,
@@ -54,7 +53,6 @@ import { useFollowUpSend } from '@/hooks/useFollowUpSend';
 import { useVariant } from '@/hooks/useVariant';
 import type {
   DraftFollowUpData,
-  ExecutorProfileId,
   QueueStatus,
   BaseCodingAgent,
 } from 'shared/types';
@@ -68,7 +66,6 @@ import { useApi } from '@/hooks/useApi';
 import { PrCommentsDialog } from '@/components/dialogs/tasks/PrCommentsDialog';
 import type { NormalizedComment } from '@/components/ui/wysiwyg/nodes/pr-comment-node';
 import type { Session } from 'shared/types';
-import { buildAgentPrompt } from '@/utils/promptMessage';
 import { useApprovalMutation } from '@/hooks/useApprovalMutation';
 import { paths } from '@/lib/paths';
 
@@ -293,43 +290,12 @@ export function TaskFollowUpSection({
     ? (queueStatus as Extract<QueueStatus, { status: 'queued' }>).message
     : null;
 
-  const queueMutation = useMutation({
-    mutationFn: ({
-      message,
-      executor_profile_id,
-    }: {
-      message: string;
-      executor_profile_id: ExecutorProfileId;
-    }) => queueApi.queue(sessionId!, { message, executor_profile_id }),
-    onSuccess: (status) => {
-      queryClient.setQueryData([QUEUE_STATUS_KEY, sessionId], status);
-    },
-  });
-
   const cancelMutation = useMutation({
     mutationFn: () => queueApi.cancel(sessionId!),
     onSuccess: (status) => {
       queryClient.setQueryData([QUEUE_STATUS_KEY, sessionId], status);
     },
   });
-
-  const queueMessage = useCallback(
-    async (message: string, executorProfileId: ExecutorProfileId) => {
-      if (!sessionId) return;
-      await queueMutation.mutateAsync({
-        message,
-        executor_profile_id: executorProfileId,
-      });
-    },
-    [sessionId, queueMutation]
-  );
-
-  const cancelQueue = useCallback(async () => {
-    if (!sessionId) return;
-    await cancelMutation.mutateAsync();
-  }, [sessionId, cancelMutation]);
-
-  const isQueueLoading = queueMutation.isPending || cancelMutation.isPending;
 
   // Track previous process count to detect new processes
   const prevProcessCountRef = useRef(processes.length);
@@ -541,47 +507,6 @@ export function TaskFollowUpSection({
     }
   }, [workspaceId, isAttemptRunning]);
 
-  // Handler to queue the current message for execution after agent finishes
-  const handleQueueMessage = useCallback(async () => {
-    if (
-      !localMessage.trim() &&
-      !conflictResolutionInstructions &&
-      !reviewMarkdown &&
-      !clickedMarkdown
-    ) {
-      return;
-    }
-
-    // Cancel any pending debounced save and save immediately before queueing
-    // This prevents the race condition where the debounce fires after queueing
-    cancelDebouncedSave();
-    await saveToScratch(localMessage, selectedVariant);
-
-    // Combine all the content that would be sent (same as follow-up send)
-    const { prompt } = buildAgentPrompt(
-      localMessage,
-      [conflictResolutionInstructions, clickedMarkdown, reviewMarkdown].filter(
-        Boolean
-      )
-    );
-    if (selectedExecutor) {
-      await queueMessage(prompt, {
-        executor: selectedExecutor,
-        variant: selectedVariant,
-      });
-    }
-  }, [
-    localMessage,
-    conflictResolutionInstructions,
-    reviewMarkdown,
-    clickedMarkdown,
-    selectedExecutor,
-    selectedVariant,
-    queueMessage,
-    cancelDebouncedSave,
-    saveToScratch,
-  ]);
-
   // State for retry-to-new-task loading
   const [isRetryingToNewTask, setIsRetryingToNewTask] = useState(false);
 
@@ -657,7 +582,7 @@ export function TaskFollowUpSection({
     navigate,
   ]);
 
-  // Keyboard shortcut handler - send follow-up, queue, or submit question answer
+  // Keyboard shortcut handler - send follow-up or submit question answer
   const handleSubmitShortcut = useCallback(
     (e?: KeyboardEvent) => {
       e?.preventDefault();
@@ -674,22 +599,16 @@ export function TaskFollowUpSection({
           ],
         });
         setLocalMessage('');
-      } else if (isAttemptRunning) {
-        // When running, CMD+Enter queues the message (if not already queued)
-        if (!isQueued) {
-          handleQueueMessage();
-        }
-      } else if (executorChanged) {
-        // When executor has changed, create a new task with context
+      } else if (executorChanged && !isAttemptRunning) {
+        // When executor has changed and not running, create a new task with context
         handleRetryToNewTask();
       } else {
+        // Send directly - backend's send_to_active_process handles routing
         onSendFollowUp();
       }
     },
     [
       isAttemptRunning,
-      isQueued,
-      handleQueueMessage,
       onSendFollowUp,
       executorChanged,
       handleRetryToNewTask,
@@ -1251,40 +1170,30 @@ export function TaskFollowUpSection({
                   <Send className="h-4 w-4 mr-2" />
                   Submit Answer
                 </Button>
-              ) : isQueued ? (
-                <Button
-                  onClick={cancelQueue}
-                  disabled={isQueueLoading}
-                  size="sm"
-                  variant="outline"
-                >
-                  {isQueueLoading ? (
-                    <Loader2 className="animate-spin h-4 w-4 mr-2" />
-                  ) : (
-                    <>
-                      <X className="h-4 w-4 mr-2" />
-                      {t('followUp.cancelQueue', 'Cancel Queue')}
-                    </>
-                  )}
-                </Button>
               ) : (
                 <Button
-                  onClick={handleQueueMessage}
+                  onClick={() => {
+                    if (executorChanged) {
+                      handleRetryToNewTask();
+                    } else {
+                      onSendFollowUp();
+                    }
+                  }}
                   disabled={
-                    isQueueLoading ||
-                    (!localMessage.trim() &&
-                      !conflictResolutionInstructions &&
-                      !reviewMarkdown &&
-                      !clickedMarkdown)
+                    !canSendFollowUp || !isEditable || isRetryingToNewTask
                   }
                   size="sm"
                 >
-                  {isQueueLoading ? (
+                  {isSendingFollowUp || isRetryingToNewTask ? (
                     <Loader2 className="animate-spin h-4 w-4 mr-2" />
                   ) : (
                     <>
-                      <Clock className="h-4 w-4 mr-2" />
-                      {t('followUp.queue', 'Queue')}
+                      <Send className="h-4 w-4 mr-2" />
+                      {isInQuestionMode
+                        ? 'Submit Answer'
+                        : executorChanged
+                          ? 'Retry to New Task'
+                          : t('followUp.send')}
                     </>
                   )}
                 </Button>

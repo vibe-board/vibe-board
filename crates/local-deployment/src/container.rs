@@ -2,7 +2,10 @@ use std::{
     collections::HashMap,
     io,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicU32, Ordering},
+    },
     time::Duration,
 };
 
@@ -12,11 +15,14 @@ use command_group::AsyncGroupChild;
 use db::{
     DBService,
     models::{
-        coding_agent_turn::CodingAgentTurn,
+        coding_agent_turn::{CodingAgentTurn, CreateCodingAgentTurn},
         execution_process::{
-            ExecutionContext, ExecutionProcess, ExecutionProcessRunReason, ExecutionProcessStatus,
+            CreateExecutionProcess, ExecutionContext, ExecutionProcess, ExecutionProcessRunReason,
+            ExecutionProcessStatus,
         },
-        execution_process_repo_state::ExecutionProcessRepoState,
+        execution_process_repo_state::{
+            CreateExecutionProcessRepoState, ExecutionProcessRepoState,
+        },
         repo::Repo,
         scratch::{DraftFollowUpData, Scratch, ScratchType},
         session::Session,
@@ -36,7 +42,7 @@ use executors::{
     env::{ExecutionEnv, RepoContext},
     executors::{
         BaseCodingAgent, CancellationToken, ExecutorExitResult, ExecutorExitSignal,
-        StandardCodingAgentExecutor,
+        StandardCodingAgentExecutor, claude::protocol::ProtocolPeer,
     },
     logs::{
         NormalizedEntry, NormalizedEntryType,
@@ -53,7 +59,9 @@ use services::services::{
     analytics::AnalyticsContext,
     approvals::{Approvals, executor_approvals::ExecutorApprovalBridge},
     config::{Config, DEFAULT_COMMIT_REMINDER_PROMPT, DEFAULT_LINTER_FIX_FOLLOW_UP_PROMPT},
-    container::{ContainerError, ContainerRef, ContainerService},
+    container::{
+        ContainerError, ContainerRef, ContainerService, SendToActiveResult, SessionProcessStatus,
+    },
     events::patches::{execution_process_patch, task_patch, workspace_diff_signal_patch},
     image::ImageService,
     normalized_entry_store::NormalizedEntryStore,
@@ -90,6 +98,19 @@ fn repo_worktree_path(
     }
 }
 
+/// Represents a running agent process that can accept follow-up messages.
+#[derive(Clone)]
+pub struct ActiveProcess {
+    pub protocol_peer: ProtocolPeer,
+    pub session_id: Uuid,
+    pub last_active: Arc<tokio::sync::Mutex<tokio::time::Instant>>,
+    pub cancel: CancellationToken,
+    pub result_notify: Arc<tokio::sync::Notify>,
+    pub has_cron: Arc<AtomicBool>,
+    pub crash_count: Arc<AtomicU32>,
+    pub last_crash: Arc<tokio::sync::Mutex<Option<tokio::time::Instant>>>,
+}
+
 #[derive(Clone)]
 pub struct LocalContainerService {
     db: DBService,
@@ -103,6 +124,7 @@ pub struct LocalContainerService {
     db_stream_handles: Arc<RwLock<HashMap<Uuid, JoinHandle<()>>>>,
     raw_log_handles: Arc<RwLock<HashMap<Uuid, JoinHandle<()>>>>,
     exit_monitor_handles: Arc<RwLock<HashMap<Uuid, JoinHandle<()>>>>,
+    pub active_processes: Arc<RwLock<HashMap<Uuid, ActiveProcess>>>,
     config: Arc<RwLock<Config>>,
     git: GitService,
     image_service: ImageService,
@@ -130,6 +152,7 @@ impl LocalContainerService {
         let db_stream_handles = Arc::new(RwLock::new(HashMap::new()));
         let raw_log_handles = Arc::new(RwLock::new(HashMap::new()));
         let exit_monitor_handles = Arc::new(RwLock::new(HashMap::new()));
+        let active_processes = Arc::new(RwLock::new(HashMap::new()));
         let normalized_entry_stores = Arc::new(RwLock::new(HashMap::new()));
         let notification_service = NotificationService::new(config.clone());
 
@@ -143,6 +166,7 @@ impl LocalContainerService {
             db_stream_handles,
             raw_log_handles,
             exit_monitor_handles,
+            active_processes,
             config,
             git,
             image_service,
@@ -170,6 +194,24 @@ impl LocalContainerService {
     pub async fn remove_child_from_store(&self, id: &Uuid) {
         let mut map = self.child_store.write().await;
         map.remove(id);
+    }
+
+    /// Find an active process for a session.
+    pub async fn find_active_process(&self, session_id: &Uuid) -> Option<ActiveProcess> {
+        let processes = self.active_processes.read().await;
+        processes.get(session_id).cloned()
+    }
+
+    /// Remove an active process.
+    pub async fn remove_active_process(&self, session_id: &Uuid) {
+        let mut processes = self.active_processes.write().await;
+        processes.remove(session_id);
+    }
+
+    /// Insert an active process.
+    pub async fn insert_active_process(&self, session_id: Uuid, process: ActiveProcess) {
+        let mut processes = self.active_processes.write().await;
+        processes.insert(session_id, process);
     }
 
     async fn add_cancellation_token(&self, id: Uuid, token: CancellationToken) {
@@ -766,6 +808,102 @@ impl LocalContainerService {
 
             // Cleanup child handle
             child_store.write().await.remove(&exec_id);
+        })
+    }
+
+    const IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15 * 60); // 15 minutes
+
+    /// Check if a normalized entry indicates a CronCreate tool call.
+    fn entry_indicates_cron(entry: &NormalizedEntry) -> bool {
+        if let NormalizedEntryType::ToolUse { tool_name, .. } = &entry.entry_type {
+            tool_name == "CronCreate"
+        } else {
+            false
+        }
+    }
+
+    /// Check if any entry in the normalized entry store indicates cron usage.
+    fn has_cron_in_store(store: &NormalizedEntryStore) -> bool {
+        store
+            .snapshot()
+            .iter()
+            .any(|(_, entry)| Self::entry_indicates_cron(entry))
+    }
+
+    pub fn spawn_continuous_exit_monitor(
+        &self,
+        exec_id: &Uuid,
+        session_id: Uuid,
+        active_process: ActiveProcess,
+    ) -> JoinHandle<()> {
+        let exec_id = *exec_id;
+        let container = self.clone();
+        let active_processes = container.active_processes.clone();
+        let normalized_entry_stores = container.normalized_entry_stores.clone();
+        let idle_timeout = Self::IDLE_TIMEOUT;
+
+        tokio::spawn(async move {
+            let mut process_exit_rx = container.spawn_os_exit_watcher(exec_id);
+            let cancel = active_process.cancel.clone();
+            let result_notify = active_process.result_notify.clone();
+            let last_active = active_process.last_active.clone();
+            let has_cron = active_process.has_cron.clone();
+
+            // Check for cron entries every 30 seconds
+            let cron_check_interval = tokio::time::Duration::from_secs(30);
+            let mut cron_check_tick = tokio::time::interval(cron_check_interval);
+            // Skip the first immediate tick
+            cron_check_tick.tick().await;
+
+            loop {
+                tokio::select! {
+                    // Result received — round complete, continue loop
+                    _ = result_notify.notified() => {
+                        *last_active.lock().await = tokio::time::Instant::now();
+                        continue;
+                    }
+                    // Periodic cron detection check
+                    _ = cron_check_tick.tick() => {
+                        if !has_cron.load(Ordering::Relaxed)
+                            && let Some(store) = normalized_entry_stores.read().await.get(&exec_id)
+                            && Self::has_cron_in_store(store)
+                        {
+                            tracing::info!("Detected CronCreate tool call for session {}", session_id);
+                            has_cron.store(true, Ordering::Relaxed);
+                        }
+                    }
+                    // Idle timeout
+                    _ = tokio::time::sleep(idle_timeout) => {
+                        if last_active.lock().await.elapsed() > idle_timeout
+                            && !has_cron.load(Ordering::Relaxed)
+                        {
+                            tracing::info!("Idle timeout for session {}", session_id);
+                            if let Some(child_lock) = container.child_store.read().await.get(&exec_id) {
+                                let mut child = child_lock.write().await;
+                                let _ = command::kill_process_group(&mut child).await;
+                            }
+                            break;
+                        }
+                    }
+                    // User cancelled
+                    _ = cancel.cancelled() => {
+                        tracing::info!("Cancel signal for session {}", session_id);
+                        if let Some(child_lock) = container.child_store.read().await.get(&exec_id) {
+                            let mut child = child_lock.write().await;
+                            let _ = command::kill_process_group(&mut child).await;
+                        }
+                        break;
+                    }
+                    // Process exited on its own
+                    exit_result = &mut process_exit_rx => {
+                        tracing::info!("Process exited for session {}: {:?}", session_id, exit_result);
+                        break;
+                    }
+                }
+            }
+
+            // Clean up
+            active_processes.write().await.remove(&session_id);
         })
     }
 
@@ -1566,15 +1704,60 @@ impl ContainerService for LocalContainerService {
         self.add_child_to_store(execution_process.id, spawned.child)
             .await;
 
-        // Store cancellation token for graceful shutdown
-        if let Some(cancel) = spawned.cancel {
-            self.add_cancellation_token(execution_process.id, cancel)
-                .await;
-        }
+        // Check if this executor supports continuous mode (has protocol_peer_rx)
+        if let Some(peer_rx) = spawned.protocol_peer_rx {
+            // Wait for the ProtocolPeer (should be available quickly since it's sent during spawn)
+            match tokio::time::timeout(Duration::from_secs(5), peer_rx).await {
+                Ok(Ok(protocol_peer)) => {
+                    let cancel = spawned.cancel.unwrap_or_else(CancellationToken::new);
 
-        // Spawn unified exit monitor: watches OS exit and optional executor signal
-        let hn = self.spawn_exit_monitor(&execution_process.id, spawned.exit_signal);
-        self.add_exit_monitor_handle(execution_process.id, hn).await;
+                    // Store cancellation token for graceful shutdown
+                    self.add_cancellation_token(execution_process.id, cancel.clone())
+                        .await;
+
+                    let active = ActiveProcess {
+                        protocol_peer,
+                        session_id: execution_process.session_id,
+                        last_active: Arc::new(tokio::sync::Mutex::new(tokio::time::Instant::now())),
+                        cancel,
+                        result_notify: Arc::new(tokio::sync::Notify::new()),
+                        has_cron: Arc::new(AtomicBool::new(false)),
+                        crash_count: Arc::new(AtomicU32::new(0)),
+                        last_crash: Arc::new(tokio::sync::Mutex::new(None)),
+                    };
+                    self.insert_active_process(execution_process.session_id, active.clone())
+                        .await;
+                    let hn = self.spawn_continuous_exit_monitor(
+                        &execution_process.id,
+                        execution_process.session_id,
+                        active,
+                    );
+                    self.add_exit_monitor_handle(execution_process.id, hn).await;
+                }
+                _ => {
+                    tracing::warn!(
+                        "Failed to receive ProtocolPeer for continuous mode, \
+                         falling back to standard exit monitor"
+                    );
+                    if let Some(cancel) = spawned.cancel {
+                        self.add_cancellation_token(execution_process.id, cancel)
+                            .await;
+                    }
+                    let hn = self.spawn_exit_monitor(&execution_process.id, spawned.exit_signal);
+                    self.add_exit_monitor_handle(execution_process.id, hn).await;
+                }
+            }
+        } else {
+            // Store cancellation token for graceful shutdown
+            if let Some(cancel) = spawned.cancel {
+                self.add_cancellation_token(execution_process.id, cancel)
+                    .await;
+            }
+
+            // Spawn unified exit monitor: watches OS exit and optional executor signal
+            let hn = self.spawn_exit_monitor(&execution_process.id, spawned.exit_signal);
+            self.add_exit_monitor_handle(execution_process.id, hn).await;
+        }
 
         Ok(())
     }
@@ -1768,6 +1951,157 @@ impl ContainerService for LocalContainerService {
         }
 
         Ok(())
+    }
+
+    async fn send_to_active_process(
+        &self,
+        session_id: Uuid,
+        prompt: &str,
+        executor_profile_id: &ExecutorProfileId,
+    ) -> Result<SendToActiveResult, ContainerError> {
+        let active = self.find_active_process(&session_id).await;
+        let Some(active) = active else {
+            return Ok(SendToActiveResult::NotFound);
+        };
+
+        // Update last_active
+        *active.last_active.lock().await = tokio::time::Instant::now();
+
+        // Load session and workspace from DB
+        let session = Session::find_by_id(&self.db.pool, session_id)
+            .await?
+            .ok_or_else(|| ContainerError::Other(anyhow!("Session not found")))?;
+        let workspace = Workspace::find_by_id(&self.db.pool, session.workspace_id)
+            .await?
+            .ok_or_else(|| ContainerError::Other(anyhow!("Workspace not found")))?;
+
+        // Capture before_head_commit for each repo
+        let repositories =
+            WorkspaceRepo::find_repos_for_workspace(&self.db.pool, workspace.id).await?;
+        let workspace_root = workspace
+            .container_ref
+            .as_ref()
+            .map(std::path::PathBuf::from)
+            .ok_or_else(|| ContainerError::Other(anyhow!("Container ref not found")))?;
+
+        let mut repo_states = Vec::with_capacity(repositories.len());
+        for repo in &repositories {
+            let repo_path = workspace_root.join(&repo.name);
+            let before_head_commit = self.git().get_head_info(&repo_path).ok().map(|h| h.oid);
+            repo_states.push(CreateExecutionProcessRepoState {
+                repo_id: repo.id,
+                before_head_commit,
+                after_head_commit: None,
+                merge_commit: None,
+            });
+        }
+
+        // Create an ExecutorAction for this follow-up
+        let working_dir = workspace
+            .agent_working_dir
+            .as_ref()
+            .filter(|dir| !dir.is_empty())
+            .cloned();
+
+        let action = ExecutorAction::new(
+            ExecutorActionType::CodingAgentFollowUpRequest(CodingAgentFollowUpRequest {
+                prompt: prompt.to_string(),
+                session_id: session_id.to_string(),
+                reset_to_message_id: None,
+                executor_profile_id: executor_profile_id.clone(),
+                working_dir,
+            }),
+            None,
+        );
+
+        // Create ExecutionProcess DB record
+        let create_ep = CreateExecutionProcess {
+            session_id,
+            executor_action: action.clone(),
+            run_reason: ExecutionProcessRunReason::CodingAgent,
+        };
+        let execution_process =
+            ExecutionProcess::create(&self.db.pool, &create_ep, Uuid::new_v4(), &repo_states)
+                .await?;
+
+        // Create CodingAgentTurn DB record
+        let create_turn = CreateCodingAgentTurn {
+            execution_process_id: execution_process.id,
+            prompt: Some(prompt.to_string()),
+        };
+        CodingAgentTurn::create(&self.db.pool, &create_turn, Uuid::new_v4()).await?;
+
+        // Start log streaming for this execution
+        let workspace_root_path = self.workspace_to_current_dir(&workspace);
+        if let Some(msg_store) = self.get_msg_store_by_id(&execution_process.id).await {
+            let effective_dir = match action.typ() {
+                ExecutorActionType::CodingAgentFollowUpRequest(req) => {
+                    req.effective_dir(&workspace_root_path)
+                }
+                _ => workspace_root_path.clone(),
+            };
+            if let Some(executor) =
+                ExecutorConfigs::get_cached().get_coding_agent(executor_profile_id)
+            {
+                let sink: Arc<dyn ConversationSink> = ConversationMsgStore::wrap(msg_store);
+                executor.normalize_logs(sink, &effective_dir);
+            } else {
+                tracing::error!(
+                    "Failed to resolve profile '{:?}' for normalization",
+                    executor_profile_id
+                );
+            }
+        }
+
+        let raw_log_handle = self.spawn_stream_raw_logs_to_file(&execution_process.id);
+        let db_stream_handle = self.spawn_stream_db_persistence(&execution_process.id);
+        self.store_raw_log_handle(execution_process.id, raw_log_handle)
+            .await;
+        self.store_db_stream_handle(execution_process.id, db_stream_handle)
+            .await;
+
+        // Send message to the running agent
+        active
+            .protocol_peer
+            .send_user_message(prompt.to_string())
+            .await
+            .map_err(|e| ContainerError::Other(anyhow!("Failed to send message: {}", e)))?;
+
+        // Wait for result
+        active.protocol_peer.wait_for_result().await;
+
+        // Aggregate cost data for the turn
+        if let Err(e) =
+            CodingAgentTurn::aggregate_turn_cost(&self.db.pool, execution_process.id).await
+        {
+            tracing::warn!(
+                "Failed to aggregate turn cost for {}: {}",
+                execution_process.id,
+                e
+            );
+        }
+
+        Ok(SendToActiveResult::Sent(Box::new(execution_process)))
+    }
+
+    async fn stop_session_process(&self, session_id: Uuid) -> Result<(), ContainerError> {
+        let active = {
+            let mut processes = self.active_processes.write().await;
+            processes.remove(&session_id)
+        };
+        if let Some(active) = active {
+            active.cancel.cancel();
+        }
+        Ok(())
+    }
+
+    async fn session_process_status(&self, session_id: Uuid) -> SessionProcessStatus {
+        let processes = self.active_processes.read().await;
+        if processes.contains_key(&session_id) {
+            SessionProcessStatus::Idle
+        } else {
+            SessionProcessStatus::Stopped
+        }
     }
 }
 fn success_exit_status() -> std::process::ExitStatus {

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::{ChildStdin, ChildStdout},
-    sync::Mutex,
+    sync::{Mutex, Notify},
 };
 use tokio_util::sync::CancellationToken;
 
@@ -20,9 +20,11 @@ use crate::{
 };
 
 /// Handles bidirectional control protocol communication
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ProtocolPeer {
     stdin: Arc<Mutex<Option<ChildStdin>>>,
+    keep_alive: bool,
+    result_tx: Arc<Notify>,
 }
 
 impl ProtocolPeer {
@@ -35,9 +37,12 @@ impl ProtocolPeer {
         client: Arc<ClaudeAgentClient>,
         cancel: CancellationToken,
         expect_stop_hook: bool,
+        keep_alive: bool,
     ) -> Self {
         let peer = Self {
             stdin: Arc::new(Mutex::new(Some(stdin))),
+            keep_alive,
+            result_tx: Arc::new(Notify::new()),
         };
 
         let reader_peer = peer.clone();
@@ -96,7 +101,10 @@ impl ProtocolPeer {
                                         .await;
                                 }
                                 Ok(CLIMessage::Result(_)) => {
-                                    if !expect_stop_hook {
+                                    if self.keep_alive {
+                                        // Notify upper layer that result is received, keep stdin open
+                                        self.result_tx.notify_one();
+                                    } else if !expect_stop_hook {
                                         // We did not register the Stop hook; close stdin so the CLI exits.
                                         self.close_stdin().await;
                                     }
@@ -166,7 +174,7 @@ impl ProtocolPeer {
                         }
                         // Close stdin after responding to Stop hook so the CLI can exit.
                         // Otherwise the CLI may wait for stdin EOF and we wait for stdout EOF.
-                        if callback_id == STOP_GIT_CHECK_CALLBACK_ID {
+                        if callback_id == STOP_GIT_CHECK_CALLBACK_ID && !self.keep_alive {
                             self.close_stdin().await;
                         }
                     }
@@ -222,6 +230,11 @@ impl ProtocolPeer {
     pub async fn send_user_message(&self, content: String) -> Result<(), ExecutorError> {
         let message = Message::new_user(content);
         self.send_json(&message).await
+    }
+
+    /// Wait for the next Result message from the agent.
+    pub async fn wait_for_result(&self) {
+        self.result_tx.notified().await;
     }
 
     pub async fn initialize(&self, hooks: Option<serde_json::Value>) -> Result<(), ExecutorError> {
