@@ -15,14 +15,11 @@ use command_group::AsyncGroupChild;
 use db::{
     DBService,
     models::{
-        coding_agent_turn::{CodingAgentTurn, CreateCodingAgentTurn},
+        coding_agent_turn::CodingAgentTurn,
         execution_process::{
-            CreateExecutionProcess, ExecutionContext, ExecutionProcess, ExecutionProcessRunReason,
-            ExecutionProcessStatus,
+            ExecutionContext, ExecutionProcess, ExecutionProcessRunReason, ExecutionProcessStatus,
         },
-        execution_process_repo_state::{
-            CreateExecutionProcessRepoState, ExecutionProcessRepoState,
-        },
+        execution_process_repo_state::ExecutionProcessRepoState,
         repo::Repo,
         scratch::{DraftFollowUpData, Scratch, ScratchType},
         session::Session,
@@ -103,6 +100,9 @@ fn repo_worktree_path(
 pub struct ActiveProcess {
     pub protocol_peer: ProtocolPeer,
     pub session_id: Uuid,
+    /// The execution process ID that owns the child process and its MsgStore.
+    /// Follow-up messages inject entries into this process's store.
+    pub execution_process_id: Uuid,
     pub last_active: Arc<tokio::sync::Mutex<tokio::time::Instant>>,
     pub cancel: CancellationToken,
     pub result_notify: Arc<tokio::sync::Notify>,
@@ -1718,6 +1718,7 @@ impl ContainerService for LocalContainerService {
                     let active = ActiveProcess {
                         protocol_peer,
                         session_id: execution_process.session_id,
+                        execution_process_id: execution_process.id,
                         last_active: Arc::new(tokio::sync::Mutex::new(tokio::time::Instant::now())),
                         cancel,
                         result_notify: Arc::new(tokio::sync::Notify::new()),
@@ -1957,7 +1958,7 @@ impl ContainerService for LocalContainerService {
         &self,
         session_id: Uuid,
         prompt: &str,
-        executor_profile_id: &ExecutorProfileId,
+        _executor_profile_id: &ExecutorProfileId,
     ) -> Result<SendToActiveResult, ContainerError> {
         let active = self.find_active_process(&session_id).await;
         let Some(active) = active else {
@@ -1967,98 +1968,42 @@ impl ContainerService for LocalContainerService {
         // Update last_active
         *active.last_active.lock().await = tokio::time::Instant::now();
 
-        // Load session and workspace from DB
-        let session = Session::find_by_id(&self.db.pool, session_id)
-            .await?
-            .ok_or_else(|| ContainerError::Other(anyhow!("Session not found")))?;
-        let workspace = Workspace::find_by_id(&self.db.pool, session.workspace_id)
-            .await?
-            .ok_or_else(|| ContainerError::Other(anyhow!("Workspace not found")))?;
-
-        // Capture before_head_commit for each repo
-        let repositories =
-            WorkspaceRepo::find_repos_for_workspace(&self.db.pool, workspace.id).await?;
-        let workspace_root = workspace
-            .container_ref
-            .as_ref()
-            .map(std::path::PathBuf::from)
-            .ok_or_else(|| ContainerError::Other(anyhow!("Container ref not found")))?;
-
-        let mut repo_states = Vec::with_capacity(repositories.len());
-        for repo in &repositories {
-            let repo_path = workspace_root.join(&repo.name);
-            let before_head_commit = self.git().get_head_info(&repo_path).ok().map(|h| h.oid);
-            repo_states.push(CreateExecutionProcessRepoState {
-                repo_id: repo.id,
-                before_head_commit,
-                after_head_commit: None,
-                merge_commit: None,
-            });
-        }
-
-        // Create an ExecutorAction for this follow-up
-        let working_dir = workspace
-            .agent_working_dir
-            .as_ref()
-            .filter(|dir| !dir.is_empty())
-            .cloned();
-
-        let action = ExecutorAction::new(
-            ExecutorActionType::CodingAgentFollowUpRequest(CodingAgentFollowUpRequest {
-                prompt: prompt.to_string(),
-                session_id: session_id.to_string(),
-                reset_to_message_id: None,
-                executor_profile_id: executor_profile_id.clone(),
-                working_dir,
-            }),
-            None,
-        );
-
-        // Create ExecutionProcess DB record
-        let create_ep = CreateExecutionProcess {
-            session_id,
-            executor_action: action.clone(),
-            run_reason: ExecutionProcessRunReason::CodingAgent,
+        // Inject user_message into the original process's MsgStore
+        let ep_id = active.execution_process_id;
+        let msg_store = {
+            let stores = self.msg_stores.read().await;
+            stores.get(&ep_id).cloned()
         };
-        let execution_process =
-            ExecutionProcess::create(&self.db.pool, &create_ep, Uuid::new_v4(), &repo_states)
-                .await?;
 
-        // Create CodingAgentTurn DB record
-        let create_turn = CreateCodingAgentTurn {
-            execution_process_id: execution_process.id,
-            prompt: Some(prompt.to_string()),
-        };
-        CodingAgentTurn::create(&self.db.pool, &create_turn, Uuid::new_v4()).await?;
-
-        // Start log streaming for this execution
-        let workspace_root_path = self.workspace_to_current_dir(&workspace);
-        if let Some(msg_store) = self.get_msg_store_by_id(&execution_process.id).await {
-            let effective_dir = match action.typ() {
-                ExecutorActionType::CodingAgentFollowUpRequest(req) => {
-                    req.effective_dir(&workspace_root_path)
-                }
-                _ => workspace_root_path.clone(),
+        if let Some(store) = msg_store {
+            use executors::logs::{
+                NormalizedEntry, NormalizedEntryType,
+                utils::{
+                    ConversationSink, entry_index::EntryIndexProvider, patch::ConversationPatch,
+                },
             };
-            if let Some(executor) =
-                ExecutorConfigs::get_cached().get_coding_agent(executor_profile_id)
-            {
-                let sink: Arc<dyn ConversationSink> = ConversationMsgStore::wrap(msg_store);
-                executor.normalize_logs(sink, &effective_dir);
-            } else {
-                tracing::error!(
-                    "Failed to resolve profile '{:?}' for normalization",
-                    executor_profile_id
-                );
-            }
-        }
+            // Find the next entry index from existing history
+            let index_provider = EntryIndexProvider::start_from(&store);
+            let next_index = index_provider.next();
 
-        let raw_log_handle = self.spawn_stream_raw_logs_to_file(&execution_process.id);
-        let db_stream_handle = self.spawn_stream_db_persistence(&execution_process.id);
-        self.store_raw_log_handle(execution_process.id, raw_log_handle)
-            .await;
-        self.store_db_stream_handle(execution_process.id, db_stream_handle)
-            .await;
+            // Create a user_message NormalizedEntry
+            let user_entry = NormalizedEntry {
+                timestamp: None,
+                entry_type: NormalizedEntryType::UserMessage,
+                content: prompt.to_string(),
+                metadata: None,
+            };
+
+            // Push to the MsgStore (live streaming picks this up)
+            store.push_patch(ConversationPatch::add_normalized_entry(
+                next_index, user_entry,
+            ));
+        } else {
+            tracing::warn!(
+                "MsgStore not found for execution process {}, skipping user message injection",
+                ep_id
+            );
+        }
 
         // Send message to the running agent
         active
@@ -2070,16 +2015,10 @@ impl ContainerService for LocalContainerService {
         // Wait for result
         active.protocol_peer.wait_for_result().await;
 
-        // Aggregate cost data for the turn
-        if let Err(e) =
-            CodingAgentTurn::aggregate_turn_cost(&self.db.pool, execution_process.id).await
-        {
-            tracing::warn!(
-                "Failed to aggregate turn cost for {}: {}",
-                execution_process.id,
-                e
-            );
-        }
+        // Return the original execution process (entries are in its MsgStore)
+        let execution_process = ExecutionProcess::find_by_id(&self.db.pool, ep_id)
+            .await?
+            .ok_or_else(|| ContainerError::Other(anyhow!("Execution process not found")))?;
 
         Ok(SendToActiveResult::Sent(Box::new(execution_process)))
     }
