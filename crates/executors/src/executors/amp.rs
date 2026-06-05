@@ -169,9 +169,12 @@ impl StandardCodingAgentExecutor for Amp {
         Ok(child.into())
     }
 
-    fn normalize_logs(&self, msg_store: Arc<dyn ConversationSink>, current_dir: &Path) {
-        let entry_index_provider = EntryIndexProvider::start_from(msg_store.as_ref());
-
+    fn normalize_logs(
+        &self,
+        msg_store: Arc<dyn ConversationSink>,
+        current_dir: &Path,
+        entry_index_provider: EntryIndexProvider,
+    ) {
         // Process stdout logs (Amp's stream JSON output) using Claude's log processor
         ClaudeLogProcessor::process_logs(
             msg_store.clone(),

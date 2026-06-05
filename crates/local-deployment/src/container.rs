@@ -103,6 +103,9 @@ pub struct ActiveProcess {
     /// The execution process ID that owns the child process and its MsgStore.
     /// Follow-up messages inject entries into this process's store.
     pub execution_process_id: Uuid,
+    /// Shared entry-index provider used by both the LogProcessor (normalize_logs)
+    /// and follow-up injection (send_to_active_process) to avoid index collisions.
+    pub entry_index_provider: executors::logs::utils::entry_index::EntryIndexProvider,
     pub last_active: Arc<tokio::sync::Mutex<tokio::time::Instant>>,
     pub cancel: CancellationToken,
     pub result_notify: Arc<tokio::sync::Notify>,
@@ -117,6 +120,8 @@ pub struct LocalContainerService {
     child_store: Arc<RwLock<HashMap<Uuid, Arc<RwLock<AsyncGroupChild>>>>>,
     cancellation_tokens: Arc<RwLock<HashMap<Uuid, CancellationToken>>>,
     msg_stores: Arc<RwLock<HashMap<Uuid, Arc<MsgStore>>>>,
+    entry_index_providers:
+        Arc<RwLock<HashMap<Uuid, executors::logs::utils::entry_index::EntryIndexProvider>>>,
     events: Arc<MsgStore>,
     normalized_entry_stores: Arc<RwLock<HashMap<Uuid, Arc<NormalizedEntryStore>>>>,
     /// Tracks background tasks that stream logs to the database.
@@ -153,6 +158,7 @@ impl LocalContainerService {
         let raw_log_handles = Arc::new(RwLock::new(HashMap::new()));
         let exit_monitor_handles = Arc::new(RwLock::new(HashMap::new()));
         let active_processes = Arc::new(RwLock::new(HashMap::new()));
+        let entry_index_providers = Arc::new(RwLock::new(HashMap::new()));
         let normalized_entry_stores = Arc::new(RwLock::new(HashMap::new()));
         let notification_service = NotificationService::new(config.clone());
 
@@ -161,6 +167,7 @@ impl LocalContainerService {
             child_store,
             cancellation_tokens,
             msg_stores,
+            entry_index_providers,
             events,
             normalized_entry_stores,
             db_stream_handles,
@@ -855,11 +862,32 @@ impl LocalContainerService {
             // Skip the first immediate tick
             cron_check_tick.tick().await;
 
+            // Track when the idle timeout should fire (absolute deadline).
+            // Starts as None — only set after the first Result (agent enters idle).
+            let mut idle_deadline: Option<tokio::time::Instant> = None;
+
             loop {
+                // Compute remaining time until idle deadline.
+                // If no deadline set yet (agent still processing), sleep forever.
+                let sleep_duration = match idle_deadline {
+                    Some(dl) => {
+                        let now = tokio::time::Instant::now();
+                        if dl > now {
+                            dl - now
+                        } else {
+                            std::time::Duration::ZERO
+                        }
+                    }
+                    None => std::time::Duration::from_secs(u64::MAX), // effectively forever
+                };
+
                 tokio::select! {
-                    // Result received — round complete, continue loop
+                    // Result received — round complete, start/reset idle timer
                     _ = result_notify.notified() => {
                         *last_active.lock().await = tokio::time::Instant::now();
+                        if !has_cron.load(Ordering::Relaxed) {
+                            idle_deadline = Some(tokio::time::Instant::now() + idle_timeout);
+                        }
                         continue;
                     }
                     // Periodic cron detection check
@@ -870,11 +898,13 @@ impl LocalContainerService {
                         {
                             tracing::info!("Detected CronCreate tool call for session {}", session_id);
                             has_cron.store(true, Ordering::Relaxed);
+                            // Cancel idle deadline — cron tasks need the process alive
+                            idle_deadline = None;
                         }
                     }
-                    // Idle timeout
-                    _ = tokio::time::sleep(idle_timeout) => {
-                        if last_active.lock().await.elapsed() > idle_timeout
+                    // Idle timeout (sleep until the absolute deadline)
+                    _ = tokio::time::sleep(sleep_duration) => {
+                        if last_active.lock().await.elapsed() >= idle_timeout
                             && !has_cron.load(Ordering::Relaxed)
                         {
                             tracing::info!("Idle timeout for session {}", session_id);
@@ -1295,7 +1325,11 @@ impl LocalContainerService {
 
         // 5. Start normalizer (background tasks that push JsonPatch into msg_store)
         let sink: Arc<dyn ConversationSink> = ConversationMsgStore::wrap(msg_store.clone());
-        executor.normalize_logs(sink, working_dir);
+        executor.normalize_logs(
+            sink.clone(),
+            working_dir,
+            executors::logs::utils::entry_index::EntryIndexProvider::start_from(sink.as_ref()),
+        );
 
         // 6. Wait for process completion with 90s timeout
         const TIMEOUT: Duration = Duration::from_secs(90);
@@ -1359,6 +1393,12 @@ fn failure_exit_status() -> std::process::ExitStatus {
 impl ContainerService for LocalContainerService {
     fn msg_stores(&self) -> &Arc<RwLock<HashMap<Uuid, Arc<MsgStore>>>> {
         &self.msg_stores
+    }
+
+    fn entry_index_providers(
+        &self,
+    ) -> &Arc<RwLock<HashMap<Uuid, executors::logs::utils::entry_index::EntryIndexProvider>>> {
+        &self.entry_index_providers
     }
 
     fn normalized_entry_stores(&self) -> &Arc<RwLock<HashMap<Uuid, Arc<NormalizedEntryStore>>>> {
@@ -1704,6 +1744,27 @@ impl ContainerService for LocalContainerService {
         self.add_child_to_store(execution_process.id, spawned.child)
             .await;
 
+        // Create shared EntryIndexProvider from the MsgStore so that the
+        // LogProcessor (normalize_logs) and follow-up injection
+        // (send_to_active_process) share a single monotonic counter.
+        let entry_index_provider = {
+            let stores = self.msg_stores.read().await;
+            if let Some(store) = stores.get(&execution_process.id) {
+                let sink: Arc<dyn executors::logs::utils::ConversationSink> =
+                    executors::logs::utils::ConversationMsgStore::wrap(store.clone());
+                executors::logs::utils::entry_index::EntryIndexProvider::start_from(sink.as_ref())
+            } else {
+                executors::logs::utils::entry_index::EntryIndexProvider::default()
+            }
+        };
+
+        // Store the provider so the trait's start_execution default method
+        // can retrieve it for normalize_logs.
+        {
+            let mut providers = self.entry_index_providers.write().await;
+            providers.insert(execution_process.id, entry_index_provider.clone());
+        }
+
         // Check if this executor supports continuous mode (has protocol_peer_rx)
         if let Some(peer_rx) = spawned.protocol_peer_rx {
             // Wait for the ProtocolPeer (should be available quickly since it's sent during spawn)
@@ -1719,6 +1780,7 @@ impl ContainerService for LocalContainerService {
                         protocol_peer,
                         session_id: execution_process.session_id,
                         execution_process_id: execution_process.id,
+                        entry_index_provider: entry_index_provider.clone(),
                         last_active: Arc::new(tokio::sync::Mutex::new(tokio::time::Instant::now())),
                         cancel,
                         result_notify: Arc::new(tokio::sync::Notify::new()),
@@ -1978,13 +2040,11 @@ impl ContainerService for LocalContainerService {
         if let Some(store) = msg_store {
             use executors::logs::{
                 NormalizedEntry, NormalizedEntryType,
-                utils::{
-                    ConversationSink, entry_index::EntryIndexProvider, patch::ConversationPatch,
-                },
+                utils::{ConversationSink, patch::ConversationPatch},
             };
-            // Find the next entry index from existing history
-            let index_provider = EntryIndexProvider::start_from(&store);
-            let next_index = index_provider.next();
+            // Use the shared provider from ActiveProcess to avoid index collisions
+            // with the LogProcessor's normalize_logs.
+            let next_index = active.entry_index_provider.next();
 
             // Create a user_message NormalizedEntry
             let user_entry = NormalizedEntry {

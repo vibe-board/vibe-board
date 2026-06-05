@@ -1516,8 +1516,8 @@ fn normalize_codex_stderr_logs(
 pub fn normalize_logs(
     msg_store: Arc<dyn ConversationSink>,
     worktree_path: &Path,
+    entry_index: EntryIndexProvider,
 ) -> Vec<tokio::task::JoinHandle<()>> {
-    let entry_index = EntryIndexProvider::start_from(msg_store.as_ref());
     let h1 = normalize_codex_stderr_logs(msg_store.clone(), entry_index.clone());
 
     let worktree_path_str = worktree_path.to_string_lossy().to_string();
@@ -2765,7 +2765,8 @@ mod tests {
         msg_store.push_finished();
 
         let sink: Arc<dyn ConversationSink> = Arc::new(msg_store.clone());
-        for handle in normalize_logs(sink, Path::new("/tmp/test-worktree")) {
+        let entry_index_provider = EntryIndexProvider::start_from(sink.as_ref());
+        for handle in normalize_logs(sink, Path::new("/tmp/test-worktree"), entry_index_provider) {
             handle.await.unwrap();
         }
 

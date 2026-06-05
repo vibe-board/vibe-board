@@ -14,7 +14,7 @@ use crate::{
     executors::{
         AppendPrompt, AvailabilityInfo, ExecutorError, SpawnedChild, StandardCodingAgentExecutor,
     },
-    logs::utils::ConversationSink,
+    logs::utils::{ConversationSink, EntryIndexProvider},
 };
 
 #[derive(Derivative, Clone, Serialize, Deserialize, TS, JsonSchema)]
@@ -105,8 +105,13 @@ impl StandardCodingAgentExecutor for Nova {
             .await
     }
 
-    fn normalize_logs(&self, msg_store: Arc<dyn ConversationSink>, worktree_path: &Path) {
-        super::acp::normalize_logs(msg_store, worktree_path);
+    fn normalize_logs(
+        &self,
+        msg_store: Arc<dyn ConversationSink>,
+        worktree_path: &Path,
+        entry_index_provider: EntryIndexProvider,
+    ) {
+        super::acp::normalize_logs(msg_store, worktree_path, entry_index_provider);
     }
 
     fn default_mcp_config_path(&self) -> Option<std::path::PathBuf> {

@@ -35,22 +35,63 @@ Verified via POC that Claude Code CLI fully supports multi-round conversation vi
 
 ## Design
 
-### 1. Session State & Process Lifecycle
+### 1. Core Architecture: One Process Per Session
 
-Introduce `ActiveProcess` to hold a running process reference:
+**Principle**: A session in continuous mode uses ONE ExecutionProcess, ONE MsgStore, ONE LogProcessor, ONE EntryIndexProvider, and ONE DB persistence task for the entire session lifetime.
 
 ```
-Session (DB) ──1:0..1──> ActiveProcess (in-memory)
-                           ├── child: AsyncGroupChild
-                           ├── protocol_peer: ProtocolPeer
-                           ├── session_id: String (agent-native)
-                           ├── last_active: Instant
-                           ├── cancel: CancellationToken
-                           ├── result_notify: Notify
-                           └── has_cron: AtomicBool
+Session (continuous mode)
+  └── ExecutionProcess (one, created on first message)
+        ├── MsgStore (one, receives stdout + injected user_messages)
+        ├── LogProcessor + EntryIndexProvider (one, shared, runs continuously)
+        ├── DB persistence task (one, writes all entries to normalized_entries)
+        ├── NormalizedEntryStore (one, for live WebSocket streaming)
+        └── ActiveProcess (in-memory, holds protocol_peer + provider reference)
+              ├── protocol_peer: ProtocolPeer
+              ├── entry_index_provider: EntryIndexProvider (shared with LogProcessor)
+              ├── execution_process_id: Uuid
+              ├── last_active: Instant
+              ├── cancel: CancellationToken
+              ├── result_notify: Notify
+              └── has_cron: AtomicBool
 ```
 
-**State machine:**
+**Follow-up messages do NOT create new ExecutionProcesses.** Instead:
+1. The user_message is injected into the existing MsgStore using the shared EntryIndexProvider
+2. The agent's response flows through the existing LogProcessor → MsgStore → DB pipeline
+3. A CodingAgentTurn is created per follow-up (for cost tracking), linked to the single ExecutionProcess
+
+**Why one process**: The MsgStore is bound to the child process's stdout/stderr at spawn time. Creating a new ExecutionProcess creates a new MsgStore disconnected from the live stdout stream. By keeping one process, all entries flow through one pipeline with correct entry_index ordering.
+
+### 2. EntryIndexProvider Sharing
+
+**File**: `crates/executors/src/executors/utils/entry_index.rs`
+
+`EntryIndexProvider` already uses `Arc<AtomicUsize>` internally (line 13), so it's naturally cloneable and thread-safe. The `next()` method uses `fetch_add(1, Relaxed)`.
+
+**The fix**: Store the EntryIndexProvider in ActiveProcess so `send_to_active_process` can use the same provider as the LogProcessor.
+
+```
+start_execution_inner:
+  1. Spawn child process
+  2. Create MsgStore, attach stdout/stderr
+  3. Call normalize_logs(sink, dir) → creates LogProcessor with EntryIndexProvider
+  4. Capture the EntryIndexProvider
+  5. Store it in ActiveProcess.entry_index_provider
+
+send_to_active_process:
+  1. Get active.entry_index_provider
+  2. Call provider.next() → returns N (next available index)
+  3. Create user_message NormalizedEntry
+  4. Push ConversationPatch::add_normalized_entry(N, user_entry) to MsgStore
+  5. Send message to agent via protocol_peer
+  6. Agent responds → LogProcessor processes stdout → provider.next() returns N+1, N+2, ...
+  7. user_message at index N, response at N+1, N+2, ... → correct ordering
+```
+
+**Thread safety**: `EntryIndexProvider.next()` is atomic. The user_message is pushed BEFORE `send_user_message` returns, so the provider advances before the agent's response entries are processed.
+
+### 3. Session State & Process Lifecycle
 
 ```
 Idle ─[user message]─> Running ─[Result]─> Idle (process stays alive)
@@ -64,7 +105,7 @@ Idle ─[user message]─> Running ─[Result]─> Idle (process stays alive)
 - `Running`: Processing a user message
 - `Stopped`: Process exited, next follow-up requires `--resume`
 
-### 2. ProtocolPeer Changes
+### 4. ProtocolPeer Changes
 
 **File**: `crates/executors/src/executors/claude/protocol.rs`
 
@@ -80,112 +121,107 @@ Ok(CLIMessage::Result(_)) => {
 New behavior:
 ```rust
 Ok(CLIMessage::Result(_)) => {
-    if self.config.keep_alive {
-        // Notify upper layer that result is received
-        self.result_tx.send(()).ok();
+    if self.keep_alive {
+        // Notify upper layer that result is received, keep stdin open
+        self.result_tx.notify_one();
     } else if !expect_stop_hook {
         self.close_stdin().await;  // oneshot mode
     }
 }
 ```
 
-**Stop hook handling**: In continuous mode, Stop hook still triggers (for commit), but `close_stdin()` is NOT called after responding. The `STOP_GIT_CHECK_CALLBACK_ID` branch skips stdin close when `keep_alive` is true.
+**Stop hook handling**: In continuous mode, Stop hook still triggers (for commit), but `close_stdin()` is NOT called after responding.
 
-**New method**: `send_user_message(content: String)` — writes a user message JSON to stdin.
+### 5. `send_to_active_process` Design
 
-### 3. ContainerService Changes
+**File**: `crates/local-deployment/src/container.rs`
 
-**File**: `crates/services/src/services/container.rs`, `crates/local-deployment/src/container.rs`
-
-**New field** in `ContainerServiceInner`:
 ```rust
-active_processes: Arc<RwLock<HashMap<Uuid, ActiveProcess>>>,
+async fn send_to_active_process(&self, session_id, prompt, ...) {
+    let active = self.find_active_process(&session_id).await?;
+    
+    // 1. Update last_active
+    *active.last_active.lock().await = Instant::now();
+    
+    // 2. Get the original MsgStore
+    let msg_store = self.msg_stores.read().await
+        .get(&active.execution_process_id).cloned()?;
+    
+    // 3. Use shared provider to get next index, inject user_message
+    let index = active.entry_index_provider.next();
+    let user_entry = NormalizedEntry {
+        entry_type: NormalizedEntryType::UserMessage,
+        content: prompt.to_string(),
+        timestamp: None, metadata: None,
+    };
+    msg_store.push_patch(ConversationPatch::add_normalized_entry(index, user_entry));
+    
+    // 4. Create CodingAgentTurn for cost tracking
+    CodingAgentTurn::create(&self.db.pool, &turn, ...).await?;
+    
+    // 5. Send message to agent
+    active.protocol_peer.send_user_message(prompt).await?;
+    
+    // 6. Wait for result
+    active.protocol_peer.wait_for_result().await;
+    
+    // 7. Return the original ExecutionProcess
+    ExecutionProcess::find_by_id(&self.db.pool, active.execution_process_id).await
+}
 ```
 
-**Follow-up flow change**:
+**Key**: No new ExecutionProcess, no new MsgStore, no new LogPipeline. The user_message flows through the same pipeline as the agent's response.
 
-```
-POST /api/sessions/{id}/follow-up
-  → container.follow_up(session, prompt, ...)
-  → check active_processes for session.id
-    ├─ Found active process → send_user_message(prompt) via ProtocolPeer
-    └─ Not found → spawn new process (--resume <session_id>)
-```
+### 6. Exit Monitor
 
-**`send_user_message` path** (when active process exists):
-1. Update `last_active` timestamp
-2. Create `ExecutionProcess` DB record (for tracking)
-3. Create `CodingAgentTurn` DB record
-4. Call `protocol_peer.send_user_message(prompt)`
-5. Wait for `result_notify` (or cancel/timeout)
-6. On Result: execute commit, update `CodingAgentTurn` with session_id/cost
-7. Return to Idle state
-
-### 4. Exit Monitor Changes
-
-**File**: `crates/local-deployment/src/container.rs` (`spawn_exit_monitor`)
-
-Replace the current "wait for process exit" with a loop:
+The exit monitor loops instead of exiting after one result:
 
 ```rust
 loop {
     tokio::select! {
-        // Result received (round complete)
         _ = result_notify.notified() => {
-            // Execute commit, update state
-            // Reset last_active
-            // Continue loop (wait for next message)
+            *last_active.lock().await = Instant::now();
+            // Commit handled by caller; continue loop
         }
-        // Idle timeout (15 min, only when no cron)
         _ = tokio::time::sleep(IDLE_TIMEOUT) => {
-            if last_active.elapsed() > IDLE_TIMEOUT
-                && !has_cron.load(Ordering::Relaxed)
-            {
-                kill_process_group(&mut child).await;
-                break;
+            if last_active.elapsed() > IDLE_TIMEOUT && !has_cron.load(Relaxed) {
+                kill_process_group(); break;
             }
         }
-        // User cancelled / task status changed
-        _ = cancel.cancelled() => {
-            kill_process_group(&mut child).await;
-            break;
-        }
-        // Process exited on its own (crash or CLI decided to exit)
-        exit_result = wait_for_exit(&mut child) => {
-            handle_process_exit(exit_result, ...);
-            break;
-        }
+        _ = cancel.cancelled() => { kill_process_group(); break; }
+        exit_result = wait_for_exit() => { handle_exit(); break; }
     }
 }
-// Clean up active_processes entry
+active_processes.write().await.remove(&session_id);
 ```
 
-### 5. Auto-Resume Logic
+### 7. Auto-Resume
 
 When a process exits unexpectedly:
-
-```rust
-fn should_auto_resume(
-    exit_code: Option<i32>,
-    was_stopped: bool,
-    has_queued_messages: bool,
-    has_cron: bool,
-) -> bool {
-    if was_stopped { return false; }  // user-initiated stop
-    if exit_code == Some(0) { return false; }  // normal exit
-    if has_queued_messages || has_cron { return true; }  // pending work
-    false
-}
-```
-
-**Auto-resume flow**:
 1. Wait 2 seconds (avoid rapid loop)
 2. Spawn new process with `--resume <session_id>`
-3. Update `active_processes` with new process
-4. Track crash count in `ActiveProcess.crash_count: AtomicU32` and `last_crash: Mutex<Instant>`
-5. If same session crashes 3 times in 30 seconds → stop auto-resume, mark session as `error`
+3. New MsgStore + LogProcessor + EntryIndexProvider (starts from DB max index)
+4. Update ActiveProcess
+5. Track crash count: 3 crashes in 30s → stop auto-resume
 
-### 6. Stopping Conditions
+### 8. Frontend Changes
+
+**Conversation display**:
+- First prompt: synthetic user_message from `executor_action.prompt` (unchanged)
+- Follow-up prompts: real user_message entries from DB
+- Remove user_message filter in `flattenEntriesForEmit` and `parseWithUserMessages`
+
+**TOC (ProcessesTab)**:
+- Change from ExecutionProcess list to CodingAgentTurn list
+- Each turn shows one row (prompt preview, cost, status)
+- Click to scroll to that turn in the conversation
+
+**Input behavior**:
+- Input always enabled (not disabled when process is running)
+- Send directly to active process (no queue)
+- Stop button stops the active session process
+
+### 9. Stopping Conditions
 
 | Trigger | Action |
 |---------|--------|
@@ -195,56 +231,34 @@ fn should_auto_resume(
 | Process crash | Mark Stopped → auto-resume if eligible |
 | 3 crashes in 30s | Mark Stopped + error, no auto-resume |
 
-### 7. API Changes
-
-| Endpoint | Change |
-|----------|--------|
-| `POST /api/sessions/{id}/follow-up` | Check active process first, send message directly if found |
-| `POST /api/sessions/{id}/stop` (new) | Stop active process for session |
-| `GET /api/sessions/{id}/process-status` (new) | Return `idle`/`running`/`stopped`, `has_cron`, `last_active` |
-
-### 8. Frontend Changes
-
-- **Input box**: Always enabled (not disabled when process is running)
-- **Stop button**: Stops the active session process (not just current execution)
-- **Process status indicator**: Show `idle` (green) / `running` (blue animated) / `stopped` (gray)
-- **Queue system**: Messages queued while running are sent directly to active process stdin
-
-### 9. Configuration
-
-Executor profile config addition:
+### 10. Configuration
 
 ```json
-{
-  "continuous": true  // default: true
-}
+{ "continuous": true }  // default: true
 ```
 
-When `continuous: false`, behavior matches current oneshot mode (ProtocolPeer closes stdin after Result).
+When `continuous: false`, behavior matches current oneshot mode.
 
-### 10. has_cron Detection
+### 11. has_cron Detection
 
-Track whether the agent has created cron jobs:
-
-- Parse stdout for `CronCreate` tool calls → set `has_cron = true`
-- Parse stdout for `CronDelete` / `CronList` showing empty → set `has_cron = false`
-- Alternative: query the cron store directly
-
-When `has_cron` is true, idle timeout is disabled (process stays alive until cron fires or user stops).
+- Parse MsgStore history for `CronCreate` tool calls → set `has_cron = true`
+- Poll every 30 seconds via `tokio::time::interval`
+- When `has_cron` is true, idle timeout is disabled
 
 ## Files to Modify
 
 | File | Change |
 |------|--------|
-| `crates/executors/src/executors/claude/protocol.rs` | Keep-alive mode, `send_user_message()`, result notification |
-| `crates/executors/src/executors/claude.rs` | Pass `keep_alive` config to ProtocolPeer |
-| `crates/executors/src/executors/mod.rs` | `StandardCodingAgentExecutor` trait: add `send_message()` method |
-| `crates/local-deployment/src/container.rs` | Active process management, exit monitor loop, auto-resume |
-| `crates/services/src/services/container.rs` | `ContainerService` trait: add active process fields, follow-up logic |
-| `crates/server/src/routes/sessions/mod.rs` | Follow-up API: check active process, new stop/status endpoints |
-| `frontend/src/lib/api.ts` | New stop/status API calls |
-| `frontend/src/hooks/useAttemptExecution.ts` | Handle continuous mode process status |
-| `frontend/src/components/tasks/TaskFollowUpSection.tsx` | Input always enabled, status indicator |
+| `crates/executors/src/executors/claude/protocol.rs` | Keep-alive mode, result notification (already done) |
+| `crates/executors/src/executors/claude.rs` | `continuous` field, pass `keep_alive` to ProtocolPeer (already done) |
+| `crates/executors/src/executors/mod.rs` | `SpawnedChild.protocol_peer_rx`, `supports_continuous()` (already done) |
+| `crates/local-deployment/src/container.rs` | **Major rewrite**: `send_to_active_process` uses shared EntryIndexProvider, no new ExecutionProcess. `ActiveProcess` holds `entry_index_provider`. |
+| `crates/services/src/services/container.rs` | `SendToActiveResult::Sent` returns original EP (already done) |
+| `crates/server/src/routes/sessions/mod.rs` | Follow-up checks active process first (already done) |
+| `frontend/src/hooks/useConversationHistory/useConversationHistoryOld.ts` | Remove user_message filter, keep synthetic for first prompt |
+| `frontend/src/hooks/useConversationHistory/useConversationWindow.ts` | Remove user_message filter |
+| `frontend/src/components/tasks/TaskDetails/ProcessesTab.tsx` | Change TOC from ExecutionProcess to CodingAgentTurn list |
+| `frontend/src/components/tasks/TaskFollowUpSection.tsx` | Input always enabled (already done) |
 
 ## Risks
 

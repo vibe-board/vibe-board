@@ -25,7 +25,10 @@ use db::models::{
 use executors::{
     actions::{ExecutorAction, ExecutorActionType},
     executors::{BaseCodingAgent, StandardCodingAgentExecutor},
-    logs::{NormalizedEntry, utils::ConversationSink},
+    logs::{
+        NormalizedEntry,
+        utils::{ConversationSink, EntryIndexProvider},
+    },
     profile::{ExecutorConfigs, ExecutorProfileId},
 };
 use sqlx::SqlitePool;
@@ -144,7 +147,8 @@ pub async fn replay_normalize(
     store.push_finished();
 
     let sink: Arc<dyn ConversationSink> = Arc::new(store.clone());
-    executor.normalize_logs(sink, &worktree_path);
+    let entry_index_provider = EntryIndexProvider::start_from(sink.as_ref());
+    executor.normalize_logs(sink, &worktree_path, entry_index_provider);
 
     let status = wait_for_patches_to_stabilize(&store).await;
 

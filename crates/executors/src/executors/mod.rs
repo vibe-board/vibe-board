@@ -477,6 +477,7 @@ pub trait StandardCodingAgentExecutor {
         &self,
         _sink: std::sync::Arc<dyn crate::logs::utils::ConversationSink>,
         _worktree_path: &Path,
+        _entry_index_provider: crate::logs::utils::entry_index::EntryIndexProvider,
     );
 
     // MCP configuration methods

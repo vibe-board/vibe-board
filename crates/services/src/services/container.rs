@@ -39,7 +39,7 @@ use executors::{
     logs::{
         NormalizedEntry,
         utils::{
-            ConversationMsgStore, ConversationPatch, ConversationSink,
+            ConversationMsgStore, ConversationPatch, ConversationSink, EntryIndexProvider,
             extract_normalized_entry_from_patch,
         },
     },
@@ -108,6 +108,8 @@ pub enum ContainerError {
 #[async_trait]
 pub trait ContainerService {
     fn msg_stores(&self) -> &Arc<RwLock<HashMap<Uuid, Arc<MsgStore>>>>;
+
+    fn entry_index_providers(&self) -> &Arc<RwLock<HashMap<Uuid, EntryIndexProvider>>>;
 
     fn normalized_entry_stores(&self) -> &Arc<RwLock<HashMap<Uuid, Arc<NormalizedEntryStore>>>>;
 
@@ -1419,11 +1421,20 @@ pub trait ContainerService {
                 _ => None,
             }
         {
+            // Retrieve the shared EntryIndexProvider created by start_execution_inner.
+            // This ensures normalize_logs and send_to_active_process share the same
+            // monotonic counter, avoiding entry-index collisions.
+            let entry_index_provider = {
+                let providers = self.entry_index_providers().read().await;
+                providers.get(&execution_process.id).cloned()
+            };
             #[cfg(feature = "qa-mode")]
             {
                 let executor = QaMockExecutor;
                 let sink: Arc<dyn ConversationSink> = ConversationMsgStore::wrap(msg_store);
-                executor.normalize_logs(sink, &working_dir);
+                let entry_index_provider = entry_index_provider
+                    .unwrap_or_else(|| EntryIndexProvider::start_from(sink.as_ref()));
+                executor.normalize_logs(sink, &working_dir, entry_index_provider);
             }
             #[cfg(not(feature = "qa-mode"))]
             {
@@ -1431,7 +1442,9 @@ pub trait ContainerService {
                     ExecutorConfigs::get_cached().get_coding_agent(executor_profile_id)
                 {
                     let sink: Arc<dyn ConversationSink> = ConversationMsgStore::wrap(msg_store);
-                    executor.normalize_logs(sink, &working_dir);
+                    let entry_index_provider = entry_index_provider
+                        .unwrap_or_else(|| EntryIndexProvider::start_from(sink.as_ref()));
+                    executor.normalize_logs(sink, &working_dir, entry_index_provider);
                 } else {
                     tracing::error!(
                         "Failed to resolve profile '{:?}' for normalization",

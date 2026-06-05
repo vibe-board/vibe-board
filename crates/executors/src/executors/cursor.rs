@@ -168,9 +168,12 @@ impl StandardCodingAgentExecutor for CursorAgent {
         Ok(child.into())
     }
 
-    fn normalize_logs(&self, msg_store: Arc<dyn ConversationSink>, worktree_path: &Path) {
-        let entry_index_provider = EntryIndexProvider::start_from(msg_store.as_ref());
-
+    fn normalize_logs(
+        &self,
+        msg_store: Arc<dyn ConversationSink>,
+        worktree_path: &Path,
+        entry_index_provider: EntryIndexProvider,
+    ) {
         // Custom stderr processor for Cursor that detects login errors
         let msg_store_stderr = msg_store.clone();
         let entry_index_provider_stderr = entry_index_provider.clone();
@@ -1274,7 +1277,8 @@ mod tests {
         msg_store.push_finished();
 
         let sink: Arc<dyn crate::logs::utils::ConversationSink> = Arc::new(msg_store.clone());
-        executor.normalize_logs(sink, &current_dir);
+        let entry_index_provider = EntryIndexProvider::start_from(sink.as_ref());
+        executor.normalize_logs(sink, &current_dir, entry_index_provider);
 
         tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
 
