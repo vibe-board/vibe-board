@@ -852,7 +852,7 @@ impl LocalContainerService {
         tokio::spawn(async move {
             let mut process_exit_rx = container.spawn_os_exit_watcher(exec_id);
             let cancel = active_process.cancel.clone();
-            let result_notify = active_process.result_notify.clone();
+            let protocol_peer = active_process.protocol_peer.clone();
             let last_active = active_process.last_active.clone();
             let has_cron = active_process.has_cron.clone();
 
@@ -883,7 +883,7 @@ impl LocalContainerService {
 
                 tokio::select! {
                     // Result received — round complete, start/reset idle timer
-                    _ = result_notify.notified() => {
+                    _ = protocol_peer.wait_for_result() => {
                         *last_active.lock().await = tokio::time::Instant::now();
                         if !has_cron.load(Ordering::Relaxed) {
                             idle_deadline = Some(tokio::time::Instant::now() + idle_timeout);
