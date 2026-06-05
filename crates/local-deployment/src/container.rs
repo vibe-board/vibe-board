@@ -852,7 +852,8 @@ impl LocalContainerService {
         tokio::spawn(async move {
             let mut process_exit_rx = container.spawn_os_exit_watcher(exec_id);
             let cancel = active_process.cancel.clone();
-            let protocol_peer = active_process.protocol_peer.clone();
+            let _protocol_peer = active_process.protocol_peer.clone(); // keep alive
+            let result_notify = active_process.result_notify.clone();
             let last_active = active_process.last_active.clone();
             let has_cron = active_process.has_cron.clone();
 
@@ -882,28 +883,12 @@ impl LocalContainerService {
                 };
 
                 tokio::select! {
-                    // Result received — round complete, start/reset idle timer
-                    _ = protocol_peer.wait_for_result() => {
+                    // Round completed (signaled by send_to_active_process) — reset idle timer
+                    _ = result_notify.notified() => {
                         *last_active.lock().await = tokio::time::Instant::now();
                         if !has_cron.load(Ordering::Relaxed) {
                             idle_deadline = Some(tokio::time::Instant::now() + idle_timeout);
                         }
-
-                        // Mark EP as completed so frontend knows the round is done
-                        let _ = container
-                            .update_completion_and_push(
-                                exec_id,
-                                ExecutionProcessStatus::Completed,
-                                Some(0),
-                            )
-                            .await;
-
-                        // Aggregate cost and finalize task (same as oneshot exit monitor)
-                        let _ = CodingAgentTurn::aggregate_turn_cost(&container.db.pool, exec_id).await;
-                        if let Ok(ctx) = ExecutionProcess::load_context(&container.db.pool, exec_id).await {
-                            container.finalize_task(&ctx).await;
-                        }
-
                         continue;
                     }
                     // Periodic cron detection check
@@ -2105,6 +2090,20 @@ impl ContainerService for LocalContainerService {
 
         // Wait for result
         active.protocol_peer.wait_for_result().await;
+
+        // Mark EP as completed so frontend knows the round is done
+        let _ = self
+            .update_completion_and_push(ep_id, ExecutionProcessStatus::Completed, Some(0))
+            .await;
+
+        // Aggregate cost and finalize task (same as oneshot exit monitor)
+        let _ = CodingAgentTurn::aggregate_turn_cost(&self.db.pool, ep_id).await;
+        if let Ok(ctx) = ExecutionProcess::load_context(&self.db.pool, ep_id).await {
+            self.finalize_task(&ctx).await;
+        }
+
+        // Signal exit monitor to reset idle deadline
+        active.result_notify.notify_one();
 
         // Return the original execution process (entries are in its MsgStore)
         let execution_process = ExecutionProcess::find_by_id(&self.db.pool, ep_id)
