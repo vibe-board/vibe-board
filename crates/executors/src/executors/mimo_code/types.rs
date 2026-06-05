@@ -567,3 +567,16 @@ impl std::fmt::Display for TaskStatusValue {
         }
     }
 }
+
+impl TaskStatusValue {
+    pub(super) fn to_todo_status(&self) -> &'static str {
+        match self {
+            TaskStatusValue::Open => "pending",
+            TaskStatusValue::InProgress => "in_progress",
+            TaskStatusValue::Blocked => "blocked",
+            TaskStatusValue::Done => "completed",
+            TaskStatusValue::Abandoned => "cancelled",
+            TaskStatusValue::Unknown => "pending",
+        }
+    }
+}

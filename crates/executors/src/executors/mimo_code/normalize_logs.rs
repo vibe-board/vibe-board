@@ -12,7 +12,7 @@ use super::{
     sdk::TaskApiClient,
     types::{
         ActorStatus, MessageInfo, MessageRole, MiMoCodeExecutorEvent, Part, PermissionAskedEvent,
-        QuestionInfo, SdkEvent, SdkTodo, SessionStatus, ToolPart, ToolStateUpdate,
+        QuestionInfo, SdkEvent, SdkTodo, SessionStatus, TaskInfo, ToolPart, ToolStateUpdate,
     },
 };
 use crate::{
@@ -389,28 +389,21 @@ impl LogState {
                     let api = api.clone();
                     let sid = sid.to_string();
                     let msg_store = msg_store.clone();
-                    let entry_index = self.entry_index.clone();
+                    let (index, is_new) = match self.todo_update_entry {
+                        Some(index) => (index, false),
+                        None => {
+                            let index = self.entry_index.next();
+                            self.todo_update_entry = Some(index);
+                            (index, true)
+                        }
+                    };
                     tokio::spawn(async move {
                         if let Some(tasks) = api.fetch_tasks(&sid).await {
                             if tasks.is_empty() {
                                 return;
                             }
-                            let lines: Vec<String> = tasks
-                                .iter()
-                                .map(|t| {
-                                    let owner = t
-                                        .owner
-                                        .as_deref()
-                                        .map(|o| format!(" ({o})"))
-                                        .unwrap_or_default();
-                                    format!("- [{}] {}{}", t.status, t.id, owner)
-                                })
-                                .collect();
-                            add_normalized_entry(
-                                &msg_store,
-                                &entry_index,
-                                system_message(format!("Tasks updated:\n{}", lines.join("\n"))),
-                            );
+                            let entry = task_list_entry(&tasks);
+                            upsert_normalized_entry(&msg_store, index, entry, is_new);
                         }
                     });
                 }
@@ -846,6 +839,34 @@ impl LogState {
             .push_patch(crate::logs::utils::ConversationPatch::add_normalized_entry(
                 index, entry,
             ));
+    }
+}
+
+fn task_list_entry(tasks: &[TaskInfo]) -> NormalizedEntry {
+    let todos = tasks
+        .iter()
+        .map(|task| TodoItem {
+            content: format!("{} {}", task.id, task.summary),
+            status: task.status.to_todo_status().to_string(),
+            priority: task.owner.clone(),
+        })
+        .collect();
+
+    NormalizedEntry {
+        timestamp: None,
+        entry_type: NormalizedEntryType::ToolUse {
+            tool_name: "task".to_string(),
+            action_type: ActionType::TodoManagement {
+                todos,
+                operation: "update".to_string(),
+            },
+            status: ToolStatus::Success,
+            started_at: None,
+            approved_at: None,
+            completed_at: None,
+        },
+        content: "Tasks updated".to_string(),
+        metadata: None,
     }
 }
 
