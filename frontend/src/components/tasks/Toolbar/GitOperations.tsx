@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   CheckCircle,
   ExternalLink,
+  Upload,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button.tsx';
 import {
@@ -193,6 +194,12 @@ function GitOperations({
     if (rebasing) return t('git.states.rebasing');
     return t('git.states.rebase');
   }, [rebasing, t]);
+
+  const pushButtonLabel = useMemo(() => {
+    if (pushSuccess) return t('git.states.pushed');
+    if (pushing) return t('git.states.pushing');
+    return t('git.states.push');
+  }, [pushSuccess, pushing, t]);
 
   const prButtonLabel = useMemo(() => {
     if (mergeInfo.hasOpenPR) {
@@ -550,6 +557,25 @@ function GitOperations({
             >
               <GitBranchIcon className="h-3.5 w-3.5" />
               <span className="truncate max-w-[10ch]">{mergeButtonLabel}</span>
+            </Button>
+
+            <Button
+              onClick={handlePushClick}
+              disabled={
+                mergeInfo.hasMergedPR ||
+                pushing ||
+                isAttemptRunning ||
+                hasConflictsCalculated ||
+                ((selectedRepoStatus?.commits_ahead ?? 0) === 0 &&
+                  !pushSuccess)
+              }
+              variant="outline"
+              size="xs"
+              className="border-primary text-primary hover:bg-primary/10 gap-1 shrink-0"
+              aria-label={pushButtonLabel}
+            >
+              <Upload className="h-3.5 w-3.5" />
+              <span className="truncate max-w-[10ch]">{pushButtonLabel}</span>
             </Button>
 
             <Button
