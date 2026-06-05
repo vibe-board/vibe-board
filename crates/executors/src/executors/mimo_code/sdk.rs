@@ -1296,6 +1296,7 @@ async fn process_event_stream(
     resp: reqwest::Response,
 ) -> Result<EventStreamOutcome, ExecutorError> {
     let mut stream = resp.bytes_stream().eventsource();
+    let mut event_filter = SubagentEventFilter::default();
 
     loop {
         let evt = tokio::select! {
@@ -1338,6 +1339,10 @@ async fn process_event_stream(
         };
 
         if !event_matches_session(event_type, &data, ctx.session_id) {
+            continue;
+        }
+
+        if !event_filter.should_log(event_type, &data) {
             continue;
         }
 
@@ -1664,6 +1669,73 @@ async fn process_event_stream(
     Ok(EventStreamOutcome::Disconnected)
 }
 
+#[derive(Default)]
+struct SubagentEventFilter {
+    message_agent_ids: HashMap<String, String>,
+    subagent_actor_ids: HashSet<String>,
+}
+
+impl SubagentEventFilter {
+    fn should_log(&mut self, event_type: &str, event: &Value) -> bool {
+        match event_type {
+            "message.updated" => {
+                let Some(message_id) = event.pointer("/properties/info/id").and_then(Value::as_str)
+                else {
+                    return true;
+                };
+                let agent_id = event
+                    .pointer("/properties/info/agentID")
+                    .or_else(|| event.pointer("/properties/info/agent_id"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("main");
+                self.message_agent_ids
+                    .insert(message_id.to_string(), agent_id.to_string());
+                is_main_agent(agent_id)
+            }
+            "message.part.updated" => self.message_id_for_part(event).is_none_or(|message_id| {
+                self.message_agent_ids
+                    .get(message_id)
+                    .is_none_or(|agent_id| is_main_agent(agent_id))
+            }),
+            "message.part.delta" | "message.part.removed" => event
+                .pointer("/properties/messageID")
+                .and_then(Value::as_str)
+                .is_none_or(|message_id| {
+                    self.message_agent_ids
+                        .get(message_id)
+                        .is_none_or(|agent_id| is_main_agent(agent_id))
+                }),
+            "actor.registered" => {
+                let actor_id = event.pointer("/properties/actorID").and_then(Value::as_str);
+                let mode = event.pointer("/properties/mode").and_then(Value::as_str);
+                if let Some(actor_id) = actor_id
+                    && mode == Some("subagent")
+                {
+                    self.subagent_actor_ids.insert(actor_id.to_string());
+                    return false;
+                }
+                true
+            }
+            "actor.status" | "actor.stuck" => event
+                .pointer("/properties/actorID")
+                .and_then(Value::as_str)
+                .is_none_or(|actor_id| !self.subagent_actor_ids.contains(actor_id)),
+            _ => true,
+        }
+    }
+
+    fn message_id_for_part<'a>(&self, event: &'a Value) -> Option<&'a str> {
+        event
+            .pointer("/properties/part/messageID")
+            .or_else(|| event.pointer("/properties/part/message_id"))
+            .and_then(Value::as_str)
+    }
+}
+
+fn is_main_agent(agent_id: &str) -> bool {
+    agent_id == "main" || agent_id.trim().is_empty()
+}
+
 fn event_matches_session(event_type: &str, event: &Value, session_id: &str) -> bool {
     let extracted = match event_type {
         "message.updated" => event
@@ -1815,4 +1887,102 @@ fn answers_to_mimocode_format(questions: &[Value], answers: &[QuestionAnswer]) -
                 })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn subagent_event_filter_drops_subagent_message_parts() {
+        let mut filter = SubagentEventFilter::default();
+
+        assert!(!filter.should_log(
+            "message.updated",
+            &json!({
+                "properties": {
+                    "info": {
+                        "id": "msg_sub",
+                        "sessionID": "ses_1",
+                        "agentID": "explore-1"
+                    }
+                }
+            })
+        ));
+        assert!(!filter.should_log(
+            "message.part.updated",
+            &json!({
+                "properties": {
+                    "part": {
+                        "sessionID": "ses_1",
+                        "messageID": "msg_sub"
+                    }
+                }
+            })
+        ));
+        assert!(!filter.should_log(
+            "message.part.delta",
+            &json!({
+                "properties": {
+                    "sessionID": "ses_1",
+                    "messageID": "msg_sub"
+                }
+            })
+        ));
+    }
+
+    #[test]
+    fn subagent_event_filter_keeps_main_message_parts() {
+        let mut filter = SubagentEventFilter::default();
+
+        assert!(filter.should_log(
+            "message.updated",
+            &json!({
+                "properties": {
+                    "info": {
+                        "id": "msg_main",
+                        "sessionID": "ses_1",
+                        "agentID": "main"
+                    }
+                }
+            })
+        ));
+        assert!(filter.should_log(
+            "message.part.updated",
+            &json!({
+                "properties": {
+                    "part": {
+                        "sessionID": "ses_1",
+                        "messageID": "msg_main"
+                    }
+                }
+            })
+        ));
+    }
+
+    #[test]
+    fn subagent_event_filter_drops_subagent_actor_events() {
+        let mut filter = SubagentEventFilter::default();
+
+        assert!(!filter.should_log(
+            "actor.registered",
+            &json!({
+                "properties": {
+                    "actorID": "explore-1",
+                    "mode": "subagent"
+                }
+            })
+        ));
+        assert!(!filter.should_log(
+            "actor.status",
+            &json!({
+                "properties": {
+                    "actorID": "explore-1",
+                    "status": "running"
+                }
+            })
+        ));
+    }
 }
