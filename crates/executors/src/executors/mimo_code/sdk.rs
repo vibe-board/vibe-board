@@ -296,12 +296,7 @@ async fn run_session_inner(
     }
 
     let session_id = match config.resume_session_id.as_deref() {
-        Some(existing) => {
-            tokio::select! {
-                _ = cancel.cancelled() => return Ok(()),
-                res = fork_session(&client, &config.base_url, &config.directory, existing) => res?,
-            }
-        }
+        Some(existing) => existing.to_string(),
         None => tokio::select! {
             _ = cancel.cancelled() => return Ok(()),
             res = create_session(&client, &config.base_url, &config.directory) => res?,
