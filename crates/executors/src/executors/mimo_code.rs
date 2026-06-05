@@ -19,7 +19,7 @@ use crate::{
         AppendPrompt, AvailabilityInfo, ExecutorError, ExecutorExitResult, SpawnedChild,
         StandardCodingAgentExecutor, mimo_code::types::MiMoCodeExecutorEvent,
     },
-    logs::utils::{ConversationSink, patch},
+    logs::utils::{ConversationSink, EntryIndexProvider, patch},
     stdout_dup::create_stdout_pipe_writer,
 };
 
@@ -386,8 +386,18 @@ impl StandardCodingAgentExecutor for MiMoCode {
             .await
     }
 
-    fn normalize_logs(&self, msg_store: Arc<dyn ConversationSink>, worktree_path: &Path) {
-        normalize_logs::normalize_logs_with_api(msg_store, worktree_path, self.task_api.clone());
+    fn normalize_logs(
+        &self,
+        msg_store: Arc<dyn ConversationSink>,
+        worktree_path: &Path,
+        entry_index_provider: EntryIndexProvider,
+    ) {
+        normalize_logs::normalize_logs_with_api(
+            msg_store,
+            worktree_path,
+            self.task_api.clone(),
+            entry_index_provider,
+        );
     }
 
     fn default_mcp_config_path(&self) -> Option<std::path::PathBuf> {

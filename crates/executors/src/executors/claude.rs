@@ -299,9 +299,12 @@ impl StandardCodingAgentExecutor for ClaudeCode {
             .await
     }
 
-    fn normalize_logs(&self, msg_store: Arc<dyn ConversationSink>, current_dir: &Path) {
-        let entry_index_provider = EntryIndexProvider::start_from(msg_store.as_ref());
-
+    fn normalize_logs(
+        &self,
+        msg_store: Arc<dyn ConversationSink>,
+        current_dir: &Path,
+        entry_index_provider: EntryIndexProvider,
+    ) {
         // Process stdout logs (Claude's JSON output)
         ClaudeLogProcessor::process_logs(
             msg_store.clone(),
@@ -3017,7 +3020,8 @@ mod tests {
 
         // Start normalization (this spawns async task)
         let sink: Arc<dyn crate::logs::utils::ConversationSink> = Arc::new(msg_store.clone());
-        executor.normalize_logs(sink, &current_dir);
+        let entry_index_provider = EntryIndexProvider::start_from(sink.as_ref());
+        executor.normalize_logs(sink, &current_dir, entry_index_provider);
 
         // Give some time for async processing
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;

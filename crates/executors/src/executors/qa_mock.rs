@@ -86,9 +86,13 @@ impl StandardCodingAgentExecutor for QaMockExecutor {
         self.spawn(current_dir, prompt, env).await
     }
 
-    fn normalize_logs(&self, msg_store: Arc<dyn ConversationSink>, current_dir: &Path) {
+    fn normalize_logs(
+        &self,
+        msg_store: Arc<dyn ConversationSink>,
+        current_dir: &Path,
+        entry_index_provider: EntryIndexProvider,
+    ) {
         // Reuse Claude's log processor since we output ClaudeJson format
-        let entry_index_provider = EntryIndexProvider::start_from(msg_store.as_ref());
         crate::executors::claude::ClaudeLogProcessor::process_logs(
             msg_store,
             current_dir,
@@ -481,7 +485,12 @@ mod tests {
         sink.push_finished();
 
         let executor = QaMockExecutor;
-        executor.normalize_logs(sink.clone(), std::path::Path::new("/tmp"));
+        let entry_index_provider = EntryIndexProvider::start_from(sink.as_ref());
+        executor.normalize_logs(
+            sink.clone(),
+            std::path::Path::new("/tmp"),
+            entry_index_provider,
+        );
 
         // Allow normalizer tasks to drain
         tokio::time::sleep(Duration::from_millis(200)).await;

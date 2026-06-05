@@ -18,7 +18,10 @@ use std::sync::Arc;
 
 use executors::{
     executors::{StandardCodingAgentExecutor, claude::ClaudeCode},
-    logs::{NormalizedEntry, NormalizedEntryType, utils::ConversationSink},
+    logs::{
+        NormalizedEntry, NormalizedEntryType,
+        utils::{ConversationSink, EntryIndexProvider},
+    },
 };
 use futures::StreamExt;
 use tokio_util::bytes::Bytes;
@@ -118,7 +121,12 @@ async fn count_heading_bubbles(use_fixed_decoder: bool) -> Vec<String> {
     // Run the real normalizer.
     let executor = serde_json::from_str::<ClaudeCode>("{}").unwrap();
     let sink: Arc<dyn ConversationSink> = Arc::new(msg_store.clone());
-    executor.normalize_logs(sink, std::path::Path::new("/tmp/test-worktree"));
+    let entry_index_provider = EntryIndexProvider::start_from(sink.as_ref());
+    executor.normalize_logs(
+        sink,
+        std::path::Path::new("/tmp/test-worktree"),
+        entry_index_provider,
+    );
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     // Reconstruct final entries from patches.
