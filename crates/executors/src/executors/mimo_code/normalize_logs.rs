@@ -8,11 +8,13 @@ use workspace_utils::{
     path::make_path_relative,
 };
 
-use super::types::{
-    ActorStatus, MessageInfo, MessageRole, MiMoCodeExecutorEvent, Part, PermissionAskedEvent,
-    QuestionInfo, SdkEvent, SdkTodo, SessionStatus, ToolPart, ToolStateUpdate,
+use super::{
+    sdk::TaskApiClient,
+    types::{
+        ActorStatus, MessageInfo, MessageRole, MiMoCodeExecutorEvent, Part, PermissionAskedEvent,
+        QuestionInfo, SdkEvent, SdkTodo, SessionStatus, ToolPart, ToolStateUpdate,
+    },
 };
-use super::sdk::TaskApiClient;
 use crate::{
     approvals::ToolCallMetadata,
     logs::{
@@ -82,7 +84,13 @@ fn normalize_logs_inner(
                     }
                 }
                 MiMoCodeExecutorEvent::SdkEvent { event } => {
-                    state.handle_sdk_event(&event, &worktree_path, &msg_store, task_api.as_ref(), session_id.as_deref());
+                    state.handle_sdk_event(
+                        &event,
+                        &worktree_path,
+                        &msg_store,
+                        task_api.as_ref(),
+                        session_id.as_deref(),
+                    );
                 }
                 MiMoCodeExecutorEvent::TokenUsage {
                     total_tokens,
@@ -400,10 +408,7 @@ impl LogState {
                             add_normalized_entry(
                                 &msg_store,
                                 &entry_index,
-                                system_message(format!(
-                                    "Tasks updated:\n{}",
-                                    lines.join("\n")
-                                )),
+                                system_message(format!("Tasks updated:\n{}", lines.join("\n"))),
                             );
                         }
                     });

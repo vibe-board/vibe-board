@@ -10,6 +10,7 @@ use serde_json::{Map, Value};
 use tokio::{io::AsyncBufReadExt, process::Command};
 use ts_rs::TS;
 
+use self::sdk::TaskApiClient;
 use crate::{
     approvals::ExecutorApprovalService,
     command::{CmdOverrides, CommandBuildError, CommandBuilder, apply_overrides},
@@ -21,8 +22,6 @@ use crate::{
     logs::utils::{ConversationSink, patch},
     stdout_dup::create_stdout_pipe_writer,
 };
-
-use self::sdk::TaskApiClient;
 
 mod models;
 mod normalize_logs;
@@ -388,11 +387,7 @@ impl StandardCodingAgentExecutor for MiMoCode {
     }
 
     fn normalize_logs(&self, msg_store: Arc<dyn ConversationSink>, worktree_path: &Path) {
-        normalize_logs::normalize_logs_with_api(
-            msg_store,
-            worktree_path,
-            self.task_api.clone(),
-        );
+        normalize_logs::normalize_logs_with_api(msg_store, worktree_path, self.task_api.clone());
     }
 
     fn default_mcp_config_path(&self) -> Option<std::path::PathBuf> {
