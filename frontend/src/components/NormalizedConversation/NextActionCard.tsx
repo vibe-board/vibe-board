@@ -126,7 +126,6 @@ export function NextActionCard({
     });
   }, [attempt?.task_id, projectId]);
 
-
   const handleGitActions = useCallback(() => {
     if (!attemptId) return;
     GitActionsDialog.show({
