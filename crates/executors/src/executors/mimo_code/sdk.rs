@@ -1672,7 +1672,6 @@ async fn process_event_stream(
 #[derive(Default)]
 struct SubagentEventFilter {
     message_agent_ids: HashMap<String, String>,
-    subagent_actor_ids: HashSet<String>,
 }
 
 impl SubagentEventFilter {
@@ -1705,21 +1704,6 @@ impl SubagentEventFilter {
                         .get(message_id)
                         .is_none_or(|agent_id| is_main_agent(agent_id))
                 }),
-            "actor.registered" => {
-                let actor_id = event.pointer("/properties/actorID").and_then(Value::as_str);
-                let mode = event.pointer("/properties/mode").and_then(Value::as_str);
-                if let Some(actor_id) = actor_id
-                    && mode == Some("subagent")
-                {
-                    self.subagent_actor_ids.insert(actor_id.to_string());
-                    return false;
-                }
-                true
-            }
-            "actor.status" | "actor.stuck" => event
-                .pointer("/properties/actorID")
-                .and_then(Value::as_str)
-                .is_none_or(|actor_id| !self.subagent_actor_ids.contains(actor_id)),
             _ => true,
         }
     }
@@ -1963,10 +1947,10 @@ mod tests {
     }
 
     #[test]
-    fn subagent_event_filter_drops_subagent_actor_events() {
+    fn subagent_event_filter_keeps_actor_lifecycle_events() {
         let mut filter = SubagentEventFilter::default();
 
-        assert!(!filter.should_log(
+        assert!(filter.should_log(
             "actor.registered",
             &json!({
                 "properties": {
@@ -1975,7 +1959,7 @@ mod tests {
                 }
             })
         ));
-        assert!(!filter.should_log(
+        assert!(filter.should_log(
             "actor.status",
             &json!({
                 "properties": {
