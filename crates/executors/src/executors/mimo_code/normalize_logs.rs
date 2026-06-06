@@ -8,12 +8,9 @@ use workspace_utils::{
     path::make_path_relative,
 };
 
-use super::{
-    sdk::TaskApiClient,
-    types::{
-        ActorStatus, MessageInfo, MessageRole, MiMoCodeExecutorEvent, Part, PermissionAskedEvent,
-        QuestionInfo, SdkEvent, SdkTodo, SessionStatus, TaskInfo, ToolPart, ToolStateUpdate,
-    },
+use super::types::{
+    MessageInfo, MessageRole, MiMoCodeExecutorEvent, Part, PermissionAskedEvent, QuestionInfo,
+    SdkEvent, SdkTodo, SessionStatus, ToolPart, ToolStateUpdate,
 };
 use crate::{
     approvals::ToolCallMetadata,
@@ -38,26 +35,13 @@ fn system_message(content: String) -> NormalizedEntry {
     }
 }
 
-pub fn normalize_logs_with_api(
-    msg_store: Arc<dyn ConversationSink>,
-    worktree_path: &Path,
-    task_api: Arc<tokio::sync::OnceCell<TaskApiClient>>,
-    entry_index: EntryIndexProvider,
-) {
-    normalize_logs_inner(msg_store, worktree_path, Some(task_api), entry_index);
-}
-
-fn normalize_logs_inner(
-    msg_store: Arc<dyn ConversationSink>,
-    worktree_path: &Path,
-    task_api: Option<Arc<tokio::sync::OnceCell<TaskApiClient>>>,
-    entry_index: EntryIndexProvider,
-) {
+pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path) {
+    let entry_index = EntryIndexProvider::start_from(msg_store.as_ref());
     normalize_stderr_logs(msg_store.clone(), entry_index.clone());
 
     let worktree_path = worktree_path.to_path_buf();
     tokio::spawn(async move {
-        let mut session_id: Option<String> = None;
+        let mut stored_session_id = false;
         let mut state = LogState::new(entry_index.clone(), msg_store.clone());
 
         let mut stdout_lines = msg_store.raw().stdout_lines_stream();
@@ -78,20 +62,14 @@ fn normalize_logs_inner(
 
             match event {
                 MiMoCodeExecutorEvent::StartupLog { .. } => {}
-                MiMoCodeExecutorEvent::SessionStart { session_id: sid } => {
-                    if session_id.is_none() {
-                        msg_store.push_session_id(sid.clone());
-                        session_id = Some(sid);
+                MiMoCodeExecutorEvent::SessionStart { session_id } => {
+                    if !stored_session_id {
+                        msg_store.push_session_id(session_id);
+                        stored_session_id = true;
                     }
                 }
                 MiMoCodeExecutorEvent::SdkEvent { event } => {
-                    state.handle_sdk_event(
-                        &event,
-                        &worktree_path,
-                        &msg_store,
-                        task_api.as_ref(),
-                        session_id.as_deref(),
-                    );
+                    state.handle_sdk_event(&event, &worktree_path, &msg_store);
                 }
                 MiMoCodeExecutorEvent::TokenUsage {
                     total_tokens,
@@ -275,8 +253,6 @@ impl LogState {
         raw: &Value,
         worktree_path: &Path,
         msg_store: &Arc<dyn ConversationSink>,
-        task_api: Option<&Arc<tokio::sync::OnceCell<TaskApiClient>>>,
-        session_id: Option<&str>,
     ) {
         let Some(event) = SdkEvent::parse(raw) else {
             let raw_text = raw.to_string();
@@ -333,81 +309,6 @@ impl LogState {
             | SdkEvent::SessionDiff
             | SdkEvent::SessionUpdated
             | SdkEvent::TuiSessionSelect => {}
-            SdkEvent::ActorRegistered(event) => {
-                let bg = event.background.unwrap_or(false);
-                let mode = event.mode.as_deref().unwrap_or("agent");
-                let agent_info = event
-                    .agent
-                    .as_deref()
-                    .map(|a| format!(" ({a})"))
-                    .unwrap_or_default();
-                self.add_normalized_entry(system_message(format!(
-                    "Actor registered: {}{} [{}]{}",
-                    event.actor_id,
-                    agent_info,
-                    mode,
-                    if bg { ", background" } else { "" }
-                )));
-            }
-            SdkEvent::ActorStatusChanged(event) => {
-                let status = match &event.status {
-                    ActorStatus::Pending => "pending",
-                    ActorStatus::Running => "running",
-                    ActorStatus::Idle => "idle",
-                };
-                let error_info = event
-                    .error
-                    .as_deref()
-                    .filter(|e| !e.trim().is_empty())
-                    .map(|e| format!(" — error: {e}"))
-                    .unwrap_or_default();
-                self.add_normalized_entry(system_message(format!(
-                    "Actor {}: {}{}",
-                    event.actor_id, status, error_info
-                )));
-            }
-            SdkEvent::ActorStuck(event) => {
-                let duration = event
-                    .stuck_duration
-                    .map(|d| format!(" ({d}ms)"))
-                    .unwrap_or_default();
-                let desc = event
-                    .description
-                    .as_deref()
-                    .filter(|d| !d.trim().is_empty())
-                    .map(|d| format!(": {d}"))
-                    .unwrap_or_default();
-                self.add_normalized_entry(system_message(format!(
-                    "Actor {} stuck{}{}",
-                    event.actor_id, duration, desc
-                )));
-            }
-            SdkEvent::TaskUpdated(_event) => {
-                if let (Some(cell), Some(sid)) = (task_api, session_id)
-                    && let Some(api) = cell.get()
-                {
-                    let api = api.clone();
-                    let sid = sid.to_string();
-                    let msg_store = msg_store.clone();
-                    let (index, is_new) = match self.todo_update_entry {
-                        Some(index) => (index, false),
-                        None => {
-                            let index = self.entry_index.next();
-                            self.todo_update_entry = Some(index);
-                            (index, true)
-                        }
-                    };
-                    tokio::spawn(async move {
-                        if let Some(tasks) = api.fetch_tasks(&sid).await {
-                            if tasks.is_empty() {
-                                return;
-                            }
-                            let entry = task_list_entry(&tasks);
-                            upsert_normalized_entry(&msg_store, index, entry, is_new);
-                        }
-                    });
-                }
-            }
             SdkEvent::SessionError(event) => {
                 let (error_type, message) = match event.error {
                     Some(err) if err.kind() == "ProviderAuthError" => (
@@ -436,6 +337,10 @@ impl LogState {
                     },
                 );
             }
+            SdkEvent::ActorRegistered(_)
+            | SdkEvent::ActorStatusChanged(_)
+            | SdkEvent::ActorStuck(_)
+            | SdkEvent::TaskUpdated(_) => {}
             SdkEvent::Unknown { type_, properties } => {
                 self.add_normalized_entry(system_message(format!(
                     "Unrecognized MiMoCode SDK event type `{type_}`: {properties}"
@@ -839,34 +744,6 @@ impl LogState {
             .push_patch(crate::logs::utils::ConversationPatch::add_normalized_entry(
                 index, entry,
             ));
-    }
-}
-
-fn task_list_entry(tasks: &[TaskInfo]) -> NormalizedEntry {
-    let todos = tasks
-        .iter()
-        .map(|task| TodoItem {
-            content: format!("{} {}", task.id, task.summary),
-            status: task.status.to_todo_status().to_string(),
-            priority: task.owner.clone(),
-        })
-        .collect();
-
-    NormalizedEntry {
-        timestamp: None,
-        entry_type: NormalizedEntryType::ToolUse {
-            tool_name: "task".to_string(),
-            action_type: ActionType::TodoManagement {
-                todos,
-                operation: "update".to_string(),
-            },
-            status: ToolStatus::Success,
-            started_at: None,
-            approved_at: None,
-            completed_at: None,
-        },
-        content: "Tasks updated".to_string(),
-        metadata: None,
     }
 }
 

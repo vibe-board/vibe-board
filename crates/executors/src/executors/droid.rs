@@ -183,13 +183,12 @@ impl StandardCodingAgentExecutor for Droid {
         spawn_droid(continue_cmd, &combined_prompt, current_dir, env, &self.cmd).await
     }
 
-    fn normalize_logs(
-        &self,
-        msg_store: Arc<dyn ConversationSink>,
-        current_dir: &Path,
-        entry_index_provider: EntryIndexProvider,
-    ) {
-        normalize_logs(msg_store.clone(), current_dir, entry_index_provider);
+    fn normalize_logs(&self, msg_store: Arc<dyn ConversationSink>, current_dir: &Path) {
+        normalize_logs(
+            msg_store.clone(),
+            current_dir,
+            EntryIndexProvider::start_from(msg_store.as_ref()),
+        );
     }
 
     fn default_mcp_config_path(&self) -> Option<std::path::PathBuf> {

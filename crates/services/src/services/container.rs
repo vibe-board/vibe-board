@@ -39,7 +39,7 @@ use executors::{
     logs::{
         NormalizedEntry,
         utils::{
-            ConversationMsgStore, ConversationPatch, ConversationSink, EntryIndexProvider,
+            ConversationMsgStore, ConversationPatch, ConversationSink,
             extract_normalized_entry_from_patch,
         },
     },
@@ -63,21 +63,6 @@ use crate::services::{
     workspace_manager::WorkspaceError as WorkspaceManagerError, worktree_manager::WorktreeError,
 };
 pub type ContainerRef = String;
-
-/// Result of attempting to send a message to an active process.
-pub enum SendToActiveResult {
-    /// Message sent to active process successfully.
-    Sent(Box<ExecutionProcess>),
-    /// No active process found, caller should spawn a new one.
-    NotFound,
-}
-
-/// Status of a session's active process.
-pub enum SessionProcessStatus {
-    Idle,
-    Running,
-    Stopped,
-}
 
 #[derive(Debug, Error)]
 pub enum ContainerError {
@@ -108,8 +93,6 @@ pub enum ContainerError {
 #[async_trait]
 pub trait ContainerService {
     fn msg_stores(&self) -> &Arc<RwLock<HashMap<Uuid, Arc<MsgStore>>>>;
-
-    fn entry_index_providers(&self) -> &Arc<RwLock<HashMap<Uuid, EntryIndexProvider>>>;
 
     fn normalized_entry_stores(&self) -> &Arc<RwLock<HashMap<Uuid, Arc<NormalizedEntryStore>>>>;
 
@@ -1421,20 +1404,11 @@ pub trait ContainerService {
                 _ => None,
             }
         {
-            // Retrieve the shared EntryIndexProvider created by start_execution_inner.
-            // This ensures normalize_logs and send_to_active_process share the same
-            // monotonic counter, avoiding entry-index collisions.
-            let entry_index_provider = {
-                let providers = self.entry_index_providers().read().await;
-                providers.get(&execution_process.id).cloned()
-            };
             #[cfg(feature = "qa-mode")]
             {
                 let executor = QaMockExecutor;
                 let sink: Arc<dyn ConversationSink> = ConversationMsgStore::wrap(msg_store);
-                let entry_index_provider = entry_index_provider
-                    .unwrap_or_else(|| EntryIndexProvider::start_from(sink.as_ref()));
-                executor.normalize_logs(sink, &working_dir, entry_index_provider);
+                executor.normalize_logs(sink, &working_dir);
             }
             #[cfg(not(feature = "qa-mode"))]
             {
@@ -1442,9 +1416,7 @@ pub trait ContainerService {
                     ExecutorConfigs::get_cached().get_coding_agent(executor_profile_id)
                 {
                     let sink: Arc<dyn ConversationSink> = ConversationMsgStore::wrap(msg_store);
-                    let entry_index_provider = entry_index_provider
-                        .unwrap_or_else(|| EntryIndexProvider::start_from(sink.as_ref()));
-                    executor.normalize_logs(sink, &working_dir, entry_index_provider);
+                    executor.normalize_logs(sink, &working_dir);
                 } else {
                     tracing::error!(
                         "Failed to resolve profile '{:?}' for normalization",
@@ -1496,25 +1468,5 @@ pub trait ContainerService {
 
         tracing::debug!("Started next action: {:?}", next_action);
         Ok(())
-    }
-
-    /// Try to send a follow-up message to an already-running process for this session.
-    async fn send_to_active_process(
-        &self,
-        _session_id: Uuid,
-        _prompt: &str,
-        _executor_profile_id: &ExecutorProfileId,
-    ) -> Result<SendToActiveResult, ContainerError> {
-        Ok(SendToActiveResult::NotFound)
-    }
-
-    /// Stop the active process for a session.
-    async fn stop_session_process(&self, _session_id: Uuid) -> Result<(), ContainerError> {
-        Ok(())
-    }
-
-    /// Get the status of a session's active process.
-    async fn session_process_status(&self, _session_id: Uuid) -> SessionProcessStatus {
-        SessionProcessStatus::Stopped
     }
 }

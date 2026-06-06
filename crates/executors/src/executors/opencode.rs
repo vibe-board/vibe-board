@@ -18,7 +18,7 @@ use crate::{
         AppendPrompt, AvailabilityInfo, ExecutorError, ExecutorExitResult, SpawnedChild,
         StandardCodingAgentExecutor, opencode::types::OpencodeExecutorEvent,
     },
-    logs::utils::{ConversationSink, EntryIndexProvider, patch},
+    logs::utils::{ConversationSink, patch},
     stdout_dup::create_stdout_pipe_writer,
 };
 
@@ -248,7 +248,6 @@ impl Opencode {
             child,
             exit_signal: Some(exit_signal_rx),
             cancel: Some(cancel),
-            protocol_peer_rx: None,
         })
     }
 }
@@ -371,13 +370,8 @@ impl StandardCodingAgentExecutor for Opencode {
             .await
     }
 
-    fn normalize_logs(
-        &self,
-        msg_store: Arc<dyn ConversationSink>,
-        worktree_path: &Path,
-        entry_index_provider: EntryIndexProvider,
-    ) {
-        normalize_logs::normalize_logs(msg_store, worktree_path, entry_index_provider);
+    fn normalize_logs(&self, msg_store: Arc<dyn ConversationSink>, worktree_path: &Path) {
+        normalize_logs::normalize_logs(msg_store, worktree_path);
     }
 
     fn default_mcp_config_path(&self) -> Option<std::path::PathBuf> {

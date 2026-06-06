@@ -998,12 +998,14 @@ async fn build_response_error(resp: reqwest::Response, context: &str) -> Executo
 }
 
 /// Lightweight API client for fetching task data when `task.updated` events arrive.
+#[allow(dead_code)]
 #[derive(Clone)]
 pub struct TaskApiClient {
     pub client: reqwest::Client,
     pub base_url: String,
 }
 
+#[allow(dead_code)]
 impl TaskApiClient {
     pub fn new(client: reqwest::Client, base_url: String) -> Self {
         Self { client, base_url }

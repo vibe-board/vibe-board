@@ -248,7 +248,6 @@ pub fn spawn_local_output_process()
         child,
         exit_signal: None,
         cancel: None,
-        protocol_peer_rx: None,
     };
 
     Ok((spawned, writer))

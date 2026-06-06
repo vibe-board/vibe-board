@@ -566,8 +566,7 @@ function GitOperations({
                 pushing ||
                 isAttemptRunning ||
                 hasConflictsCalculated ||
-                ((selectedRepoStatus?.commits_ahead ?? 0) === 0 &&
-                  !pushSuccess)
+                ((selectedRepoStatus?.commits_ahead ?? 0) === 0 && !pushSuccess)
               }
               variant="outline"
               size="xs"
