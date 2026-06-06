@@ -4,7 +4,7 @@ use axum::{
     Extension, Router,
     routing::{IntoMakeService, get},
 };
-use tower_http::validate_request::ValidateRequestHeaderLayer;
+use tower_http::{compression::CompressionLayer, validate_request::ValidateRequestHeaderLayer};
 
 use crate::{DeploymentImpl, e2ee_manager::BridgeManager, middleware};
 
@@ -60,6 +60,7 @@ pub fn router(
         .layer(ValidateRequestHeaderLayer::custom(
             middleware::validate_origin,
         ))
+        .layer(CompressionLayer::new())
         .layer(Extension(bridge_manager))
         .with_state(deployment);
 

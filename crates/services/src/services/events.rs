@@ -54,6 +54,8 @@ where
     Ok(None)
 }
 
+#[path = "events/patch_batcher.rs"]
+pub mod patch_batcher;
 #[path = "events/patches.rs"]
 pub mod patches;
 #[path = "events/streams.rs"]
@@ -61,6 +63,7 @@ mod streams;
 #[path = "events/types.rs"]
 pub mod types;
 
+pub use patch_batcher::PatchBatcher;
 pub use patches::{
     execution_process_patch, project_patch, scratch_patch, task_patch, workspace_diff_signal_patch,
     workspace_patch,
@@ -70,6 +73,7 @@ pub use types::{EventError, EventPatch, EventPatchInner, HookTables, RecordTypes
 #[derive(Clone)]
 pub struct EventService {
     msg_store: Arc<MsgStore>,
+    pub patch_batcher: Arc<PatchBatcher>,
     db: DBService,
     #[allow(dead_code)]
     entry_count: Arc<RwLock<usize>>,
@@ -78,8 +82,10 @@ pub struct EventService {
 impl EventService {
     /// Creates a new EventService that will work with a DBService configured with hooks
     pub fn new(db: DBService, msg_store: Arc<MsgStore>, entry_count: Arc<RwLock<usize>>) -> Self {
+        let patch_batcher = Arc::new(PatchBatcher::new(msg_store.clone()));
         Self {
             msg_store,
+            patch_batcher,
             db,
             entry_count,
         }
@@ -155,25 +161,25 @@ impl EventService {
 
     async fn push_task_update_for_task(
         pool: &SqlitePool,
-        msg_store: Arc<MsgStore>,
+        patch_batcher: Arc<PatchBatcher>,
         task_id: Uuid,
     ) -> Result<(), SqlxError> {
         if let Some(task) = Task::find_by_id(pool, task_id).await? {
-            msg_store.push_patch(task_patch::replace(&task));
+            patch_batcher.push_patch(task_patch::replace(&task));
         }
         Ok(())
     }
 
     async fn push_workspace_update_for_session(
         pool: &SqlitePool,
-        msg_store: Arc<MsgStore>,
+        patch_batcher: Arc<PatchBatcher>,
         session_id: Uuid,
     ) -> Result<(), SqlxError> {
         if let Some(session) = Session::find_by_id(pool, session_id).await?
             && let Some(workspace_with_status) =
                 Workspace::find_by_id_with_status(pool, session.workspace_id).await?
         {
-            msg_store.push_patch(workspace_patch::replace(&workspace_with_status));
+            patch_batcher.push_patch(workspace_patch::replace(&workspace_with_status));
         }
         Ok(())
     }
@@ -190,15 +196,17 @@ impl EventService {
     > + Send
     + Sync
     + 'static {
+        // PatchBatcher coalesces high-frequency DB patches into 10ms windows.
+        let patch_batcher = Arc::new(PatchBatcher::new(msg_store.clone()));
         move |conn: &mut sqlx::sqlite::SqliteConnection| {
-            let msg_store_for_hook = msg_store.clone();
+            let patch_batcher_for_hook = patch_batcher.clone();
             let entry_count_for_hook = entry_count.clone();
             let db_for_hook = db_service.clone();
             Box::pin(async move {
                 let mut handle = conn.lock_handle().await?;
                 let runtime_handle = tokio::runtime::Handle::current();
                 handle.set_preupdate_hook({
-                    let msg_store_for_preupdate = msg_store_for_hook.clone();
+                    let patch_batcher_for_preupdate = patch_batcher_for_hook.clone();
                     move |preupdate: sqlx::sqlite::PreupdateHookResult<'_>| {
                         if preupdate.operation != SqliteOperation::Delete {
                             return;
@@ -210,7 +218,7 @@ impl EventService {
                                     && let Ok(task_id) = <Uuid as Decode<Sqlite>>::decode(value)
                                 {
                                     let patch = task_patch::remove(task_id);
-                                    msg_store_for_preupdate.push_patch(patch);
+                                    patch_batcher_for_preupdate.push_patch(patch);
                                 }
                             }
                             "projects" => {
@@ -218,7 +226,7 @@ impl EventService {
                                     && let Ok(project_id) = <Uuid as Decode<Sqlite>>::decode(value)
                                 {
                                     let patch = project_patch::remove(project_id);
-                                    msg_store_for_preupdate.push_patch(patch);
+                                    patch_batcher_for_preupdate.push_patch(patch);
                                 }
                             }
                             "workspaces" => {
@@ -227,7 +235,7 @@ impl EventService {
                                         <Uuid as Decode<Sqlite>>::decode(value)
                                 {
                                     let patch = workspace_patch::remove(workspace_id);
-                                    msg_store_for_preupdate.push_patch(patch);
+                                    patch_batcher_for_preupdate.push_patch(patch);
                                 }
                             }
                             "execution_processes" => {
@@ -235,7 +243,7 @@ impl EventService {
                                     && let Ok(process_id) = <Uuid as Decode<Sqlite>>::decode(value)
                                 {
                                     let patch = execution_process_patch::remove(process_id);
-                                    msg_store_for_preupdate.push_patch(patch);
+                                    patch_batcher_for_preupdate.push_patch(patch);
                                 }
                             }
                             "scratch" => {
@@ -247,7 +255,7 @@ impl EventService {
                                         <String as Decode<Sqlite>>::decode(type_val)
                                 {
                                     let patch = scratch_patch::remove(scratch_id, &type_str);
-                                    msg_store_for_preupdate.push_patch(patch);
+                                    patch_batcher_for_preupdate.push_patch(patch);
                                 }
                             }
                             _ => {}
@@ -258,7 +266,7 @@ impl EventService {
                 handle.set_update_hook(move |hook: sqlx::sqlite::UpdateHookResult<'_>| {
                     let runtime_handle = runtime_handle.clone();
                     let entry_count_for_hook = entry_count_for_hook.clone();
-                    let msg_store_for_hook = msg_store_for_hook.clone();
+                    let patch_batcher_for_hook = patch_batcher_for_hook.clone();
                     let db = db_for_hook.clone();
 
                     if let Ok(table) = HookTables::from_str(hook.table) {
@@ -408,7 +416,7 @@ impl EventService {
                                             }
                                             _ => task_patch::replace(&fresh_task),
                                         };
-                                        msg_store_for_hook.push_patch(patch);
+                                        patch_batcher_for_hook.push_patch(patch);
                                     }
                                     return;
                                 }
@@ -417,7 +425,7 @@ impl EventService {
                                     ..
                                 } => {
                                     let patch = task_patch::remove(*task_id);
-                                    msg_store_for_hook.push_patch(patch);
+                                    patch_batcher_for_hook.push_patch(patch);
                                     return;
                                 }
                                 RecordTypes::Project(project) => {
@@ -426,7 +434,7 @@ impl EventService {
                                         SqliteOperation::Update => project_patch::replace(project),
                                         _ => project_patch::replace(project),
                                     };
-                                    msg_store_for_hook.push_patch(patch);
+                                    patch_batcher_for_hook.push_patch(patch);
                                     return;
                                 }
                                 RecordTypes::Scratch(scratch) => {
@@ -435,7 +443,7 @@ impl EventService {
                                         SqliteOperation::Update => scratch_patch::replace(scratch),
                                         _ => scratch_patch::replace(scratch),
                                     };
-                                    msg_store_for_hook.push_patch(patch);
+                                    patch_batcher_for_hook.push_patch(patch);
                                     return;
                                 }
                                 RecordTypes::DeletedScratch {
@@ -444,7 +452,7 @@ impl EventService {
                                     ..
                                 } => {
                                     let patch = scratch_patch::remove(*scratch_id, scratch_type_str);
-                                    msg_store_for_hook.push_patch(patch);
+                                    patch_batcher_for_hook.push_patch(patch);
                                     return;
                                 }
                                 RecordTypes::Workspace(workspace) => {
@@ -459,7 +467,7 @@ impl EventService {
                                             }
                                             _ => workspace_patch::replace(&workspace_with_status),
                                         };
-                                        msg_store_for_hook.push_patch(patch);
+                                        patch_batcher_for_hook.push_patch(patch);
                                     }
 
                                     // Update denormalized attempt status and push task update
@@ -476,7 +484,7 @@ impl EventService {
                                     }
                                     if let Err(err) = EventService::push_task_update_for_task(
                                         &db.pool,
-                                        msg_store_for_hook.clone(),
+                                        patch_batcher_for_hook.clone(),
                                         workspace.task_id,
                                     )
                                     .await
@@ -506,7 +514,7 @@ impl EventService {
                                     }
                                     if let Err(err) = EventService::push_task_update_for_task(
                                         &db.pool,
-                                        msg_store_for_hook.clone(),
+                                        patch_batcher_for_hook.clone(),
                                         *task_id,
                                     )
                                     .await
@@ -528,7 +536,7 @@ impl EventService {
                                         }
                                         _ => execution_process_patch::replace(process), // fallback
                                     };
-                                    msg_store_for_hook.push_patch(patch);
+                                    patch_batcher_for_hook.push_patch(patch);
 
                                     // Update denormalized attempt status for associated task
                                     if let Ok(Some(session)) =
@@ -550,7 +558,7 @@ impl EventService {
                                         }
                                         if let Err(err) = EventService::push_task_update_for_task(
                                             &db.pool,
-                                            msg_store_for_hook.clone(),
+                                            patch_batcher_for_hook.clone(),
                                             workspace.task_id,
                                         )
                                         .await
@@ -564,7 +572,7 @@ impl EventService {
 
                                     if let Err(err) = EventService::push_workspace_update_for_session(
                                         &db.pool,
-                                        msg_store_for_hook.clone(),
+                                        patch_batcher_for_hook.clone(),
                                         process.session_id,
                                     )
                                     .await
@@ -583,7 +591,7 @@ impl EventService {
                                     ..
                                 } => {
                                     let patch = execution_process_patch::remove(*process_id);
-                                    msg_store_for_hook.push_patch(patch);
+                                    patch_batcher_for_hook.push_patch(patch);
 
                                     if let Some(session_id) = session_id {
                                         // Update denormalized attempt status for associated task
@@ -608,7 +616,7 @@ impl EventService {
                                             if let Err(err) =
                                                 EventService::push_task_update_for_task(
                                                     &db.pool,
-                                                    msg_store_for_hook.clone(),
+                                                    patch_batcher_for_hook.clone(),
                                                     workspace.task_id,
                                                 )
                                                 .await
@@ -623,7 +631,7 @@ impl EventService {
                                         if let Err(err) =
                                             EventService::push_workspace_update_for_session(
                                                 &db.pool,
-                                                msg_store_for_hook.clone(),
+                                                patch_batcher_for_hook.clone(),
                                                 *session_id,
                                             )
                                             .await
@@ -662,7 +670,7 @@ impl EventService {
                                 ]))
                                 .unwrap();
 
-                            msg_store_for_hook.push_patch(patch);
+                            patch_batcher_for_hook.push_patch(patch);
                         });
                     }
                 });

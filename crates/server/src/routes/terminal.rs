@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 use axum::{
     Json, Router,
@@ -20,6 +20,11 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{DeploymentImpl, error::ApiError};
+
+/// Batch PTY output chunks within this window before sending as a single WS frame.
+const PTY_BATCH_WINDOW_MS: u64 = 16;
+/// Flush immediately when the buffer exceeds this size.
+const PTY_BATCH_MAX_BYTES: usize = 8 * 1024;
 
 #[derive(Debug, Deserialize)]
 pub struct TerminalQuery {
@@ -315,51 +320,74 @@ async fn handle_terminal_ws(
     let mut exit_rx_for_ws = exit_rx.clone();
 
     let output_task = tokio::spawn(async move {
-        if already_exited {
-            // Process already exited, send remaining output then exit message
-            while let Ok(data) = output_rx.try_recv() {
-                let msg = TerminalMessage::Output {
-                    data: BASE64.encode(&data),
-                };
-                if let Ok(json) = serde_json::to_string(&msg)
-                    && ws_sender.send(Message::Text(json.into())).await.is_err()
-                {
-                    return ws_sender;
+        // Accumulate PTY chunks; flush either when PTY_BATCH_WINDOW_MS elapses
+        // or when the buffer reaches PTY_BATCH_MAX_BYTES. This reduces the
+        // number of WS frames by 10-50x during active terminal output.
+        let mut buf: Vec<u8> = Vec::with_capacity(PTY_BATCH_MAX_BYTES);
+
+        macro_rules! flush_buf {
+            () => {
+                if !buf.is_empty() {
+                    let msg = TerminalMessage::Output {
+                        data: BASE64.encode(buf.as_slice()),
+                    };
+                    buf.clear();
+                    if let Ok(json) = serde_json::to_string(&msg) {
+                        if ws_sender.send(Message::Text(json.into())).await.is_err() {
+                            return ws_sender;
+                        }
+                    }
                 }
+            };
+        }
+
+        if already_exited {
+            // Process already exited — drain all remaining output as one frame.
+            while let Ok(data) = output_rx.try_recv() {
+                buf.extend_from_slice(&data);
             }
+            flush_buf!();
         } else {
-            // Race between output and process exit
+            let mut timer = std::pin::pin!(tokio::time::sleep(Duration::from_millis(
+                PTY_BATCH_WINDOW_MS
+            )));
+            let mut timer_armed = false;
+
             loop {
                 tokio::select! {
                     data = output_rx.recv() => {
                         match data {
                             Ok(data) => {
-                                let msg = TerminalMessage::Output {
-                                    data: BASE64.encode(&data),
-                                };
-                                let json = match serde_json::to_string(&msg) {
-                                    Ok(j) => j,
-                                    Err(_) => continue,
-                                };
-                                if ws_sender.send(Message::Text(json.into())).await.is_err() {
-                                    return ws_sender;
+                                if buf.is_empty() {
+                                    // Arm timer from the first byte in this batch.
+                                    timer.as_mut().reset(
+                                        tokio::time::Instant::now()
+                                            + Duration::from_millis(PTY_BATCH_WINDOW_MS),
+                                    );
+                                    timer_armed = true;
+                                }
+                                buf.extend_from_slice(&data);
+                                if buf.len() >= PTY_BATCH_MAX_BYTES {
+                                    flush_buf!();
+                                    timer_armed = false;
                                 }
                             }
-                            Err(_) => break,
-                        }
-                    }
-                    _ = exit_rx_for_ws.changed() => {
-                        // Process exited, drain any remaining output
-                        while let Ok(data) = output_rx.try_recv() {
-                            let msg = TerminalMessage::Output {
-                                data: BASE64.encode(&data),
-                            };
-                            if let Ok(json) = serde_json::to_string(&msg)
-                                && ws_sender.send(Message::Text(json.into())).await.is_err()
-                            {
-                                return ws_sender;
+                            Err(_) => {
+                                flush_buf!();
+                                break;
                             }
                         }
+                    }
+                    _ = &mut timer, if timer_armed => {
+                        flush_buf!();
+                        timer_armed = false;
+                    }
+                    _ = exit_rx_for_ws.changed() => {
+                        // Process exited — drain remaining output and flush.
+                        while let Ok(data) = output_rx.try_recv() {
+                            buf.extend_from_slice(&data);
+                        }
+                        flush_buf!();
                         break;
                     }
                 }
