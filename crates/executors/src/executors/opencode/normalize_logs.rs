@@ -35,11 +35,8 @@ fn system_message(content: String) -> NormalizedEntry {
     }
 }
 
-pub fn normalize_logs(
-    msg_store: Arc<dyn ConversationSink>,
-    worktree_path: &Path,
-    entry_index: EntryIndexProvider,
-) {
+pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path) {
+    let entry_index = EntryIndexProvider::start_from(msg_store.as_ref());
     normalize_stderr_logs(msg_store.clone(), entry_index.clone());
 
     let worktree_path = worktree_path.to_path_buf();

@@ -477,7 +477,6 @@ pub trait StandardCodingAgentExecutor {
         &self,
         _sink: std::sync::Arc<dyn crate::logs::utils::ConversationSink>,
         _worktree_path: &Path,
-        _entry_index_provider: crate::logs::utils::entry_index::EntryIndexProvider,
     );
 
     // MCP configuration methods
@@ -498,11 +497,6 @@ pub trait StandardCodingAgentExecutor {
         } else {
             AvailabilityInfo::NotFound
         }
-    }
-
-    /// Whether this executor supports continuous conversation mode.
-    fn supports_continuous(&self) -> bool {
-        false
     }
 }
 
@@ -531,9 +525,6 @@ pub struct SpawnedChild {
     pub exit_signal: Option<ExecutorExitSignal>,
     /// Container → Executor: signals when container wants to cancel the execution
     pub cancel: Option<CancellationToken>,
-    /// Receives the ProtocolPeer handle once the Claude executor has spawned it.
-    pub protocol_peer_rx:
-        Option<tokio::sync::oneshot::Receiver<crate::executors::claude::protocol::ProtocolPeer>>,
 }
 
 impl From<AsyncGroupChild> for SpawnedChild {
@@ -542,7 +533,6 @@ impl From<AsyncGroupChild> for SpawnedChild {
             child,
             exit_signal: None,
             cancel: None,
-            protocol_peer_rx: None,
         }
     }
 }

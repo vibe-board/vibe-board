@@ -64,7 +64,12 @@ function parseWithUserMessages(
     const processId = r.execution_process_id;
     const parsed = parseEntryJson(r.entry_json, processId, r.entry_index);
     if (!parsed) continue;
-    // Keep real user_message entries from DB (follow-ups in continuous mode)
+    if (
+      parsed.type === 'NORMALIZED_ENTRY' &&
+      parsed.content.entry_type.type === 'user_message'
+    ) {
+      continue;
+    }
     if (r.entry_index === 0 && !renderedProcesses.has(processId)) {
       const summary = summaries.get(processId);
       if (summary !== undefined) {

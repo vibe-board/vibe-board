@@ -784,24 +784,6 @@ export function createApi(makeReq: MakeRequestFn, uploadFd: UploadFormDataFn) {
       );
       return handleApiResponse<SessionConversationEntriesResponse>(response);
     },
-
-    stopProcess: async (sessionId: string): Promise<void> => {
-      const response = await makeReq(`/api/sessions/${sessionId}/stop`, {
-        method: 'POST',
-      });
-      return handleApiResponse<void>(response);
-    },
-
-    getProcessStatus: async (
-      sessionId: string
-    ): Promise<{ status: 'idle' | 'running' | 'stopped' }> => {
-      const response = await makeReq(
-        `/api/sessions/${sessionId}/process-status`
-      );
-      return handleApiResponse<{ status: 'idle' | 'running' | 'stopped' }>(
-        response
-      );
-    },
   };
 
   return {

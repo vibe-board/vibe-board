@@ -2,10 +2,7 @@ use std::{
     collections::HashMap,
     io,
     path::{Path, PathBuf},
-    sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicU32, Ordering},
-    },
+    sync::Arc,
     time::Duration,
 };
 
@@ -39,7 +36,7 @@ use executors::{
     env::{ExecutionEnv, RepoContext},
     executors::{
         BaseCodingAgent, CancellationToken, ExecutorExitResult, ExecutorExitSignal,
-        StandardCodingAgentExecutor, claude::protocol::ProtocolPeer,
+        StandardCodingAgentExecutor,
     },
     logs::{
         NormalizedEntry, NormalizedEntryType,
@@ -56,9 +53,7 @@ use services::services::{
     analytics::AnalyticsContext,
     approvals::{Approvals, executor_approvals::ExecutorApprovalBridge},
     config::{Config, DEFAULT_COMMIT_REMINDER_PROMPT, DEFAULT_LINTER_FIX_FOLLOW_UP_PROMPT},
-    container::{
-        ContainerError, ContainerRef, ContainerService, SendToActiveResult, SessionProcessStatus,
-    },
+    container::{ContainerError, ContainerRef, ContainerService},
     events::patches::{execution_process_patch, task_patch, workspace_diff_signal_patch},
     image::ImageService,
     normalized_entry_store::NormalizedEntryStore,
@@ -95,33 +90,12 @@ fn repo_worktree_path(
     }
 }
 
-/// Represents a running agent process that can accept follow-up messages.
-#[derive(Clone)]
-pub struct ActiveProcess {
-    pub protocol_peer: ProtocolPeer,
-    pub session_id: Uuid,
-    /// The execution process ID that owns the child process and its MsgStore.
-    /// Follow-up messages inject entries into this process's store.
-    pub execution_process_id: Uuid,
-    /// Shared entry-index provider used by both the LogProcessor (normalize_logs)
-    /// and follow-up injection (send_to_active_process) to avoid index collisions.
-    pub entry_index_provider: executors::logs::utils::entry_index::EntryIndexProvider,
-    pub last_active: Arc<tokio::sync::Mutex<tokio::time::Instant>>,
-    pub cancel: CancellationToken,
-    pub result_notify: Arc<tokio::sync::Notify>,
-    pub has_cron: Arc<AtomicBool>,
-    pub crash_count: Arc<AtomicU32>,
-    pub last_crash: Arc<tokio::sync::Mutex<Option<tokio::time::Instant>>>,
-}
-
 #[derive(Clone)]
 pub struct LocalContainerService {
     db: DBService,
     child_store: Arc<RwLock<HashMap<Uuid, Arc<RwLock<AsyncGroupChild>>>>>,
     cancellation_tokens: Arc<RwLock<HashMap<Uuid, CancellationToken>>>,
     msg_stores: Arc<RwLock<HashMap<Uuid, Arc<MsgStore>>>>,
-    entry_index_providers:
-        Arc<RwLock<HashMap<Uuid, executors::logs::utils::entry_index::EntryIndexProvider>>>,
     events: Arc<MsgStore>,
     normalized_entry_stores: Arc<RwLock<HashMap<Uuid, Arc<NormalizedEntryStore>>>>,
     /// Tracks background tasks that stream logs to the database.
@@ -129,7 +103,6 @@ pub struct LocalContainerService {
     db_stream_handles: Arc<RwLock<HashMap<Uuid, JoinHandle<()>>>>,
     raw_log_handles: Arc<RwLock<HashMap<Uuid, JoinHandle<()>>>>,
     exit_monitor_handles: Arc<RwLock<HashMap<Uuid, JoinHandle<()>>>>,
-    pub active_processes: Arc<RwLock<HashMap<Uuid, ActiveProcess>>>,
     config: Arc<RwLock<Config>>,
     git: GitService,
     image_service: ImageService,
@@ -157,8 +130,6 @@ impl LocalContainerService {
         let db_stream_handles = Arc::new(RwLock::new(HashMap::new()));
         let raw_log_handles = Arc::new(RwLock::new(HashMap::new()));
         let exit_monitor_handles = Arc::new(RwLock::new(HashMap::new()));
-        let active_processes = Arc::new(RwLock::new(HashMap::new()));
-        let entry_index_providers = Arc::new(RwLock::new(HashMap::new()));
         let normalized_entry_stores = Arc::new(RwLock::new(HashMap::new()));
         let notification_service = NotificationService::new(config.clone());
 
@@ -167,13 +138,11 @@ impl LocalContainerService {
             child_store,
             cancellation_tokens,
             msg_stores,
-            entry_index_providers,
             events,
             normalized_entry_stores,
             db_stream_handles,
             raw_log_handles,
             exit_monitor_handles,
-            active_processes,
             config,
             git,
             image_service,
@@ -201,24 +170,6 @@ impl LocalContainerService {
     pub async fn remove_child_from_store(&self, id: &Uuid) {
         let mut map = self.child_store.write().await;
         map.remove(id);
-    }
-
-    /// Find an active process for a session.
-    pub async fn find_active_process(&self, session_id: &Uuid) -> Option<ActiveProcess> {
-        let processes = self.active_processes.read().await;
-        processes.get(session_id).cloned()
-    }
-
-    /// Remove an active process.
-    pub async fn remove_active_process(&self, session_id: &Uuid) {
-        let mut processes = self.active_processes.write().await;
-        processes.remove(session_id);
-    }
-
-    /// Insert an active process.
-    pub async fn insert_active_process(&self, session_id: Uuid, process: ActiveProcess) {
-        let mut processes = self.active_processes.write().await;
-        processes.insert(session_id, process);
     }
 
     async fn add_cancellation_token(&self, id: Uuid, token: CancellationToken) {
@@ -818,141 +769,6 @@ impl LocalContainerService {
         })
     }
 
-    const IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15 * 60); // 15 minutes
-
-    /// Check if a normalized entry indicates a CronCreate tool call.
-    fn entry_indicates_cron(entry: &NormalizedEntry) -> bool {
-        if let NormalizedEntryType::ToolUse { tool_name, .. } = &entry.entry_type {
-            tool_name == "CronCreate"
-        } else {
-            false
-        }
-    }
-
-    /// Check if any entry in the normalized entry store indicates cron usage.
-    fn has_cron_in_store(store: &NormalizedEntryStore) -> bool {
-        store
-            .snapshot()
-            .iter()
-            .any(|(_, entry)| Self::entry_indicates_cron(entry))
-    }
-
-    pub fn spawn_continuous_exit_monitor(
-        &self,
-        exec_id: &Uuid,
-        session_id: Uuid,
-        active_process: ActiveProcess,
-    ) -> JoinHandle<()> {
-        let exec_id = *exec_id;
-        let container = self.clone();
-        let active_processes = container.active_processes.clone();
-        let normalized_entry_stores = container.normalized_entry_stores.clone();
-        let idle_timeout = Self::IDLE_TIMEOUT;
-
-        tokio::spawn(async move {
-            let mut process_exit_rx = container.spawn_os_exit_watcher(exec_id);
-            let cancel = active_process.cancel.clone();
-            let _protocol_peer = active_process.protocol_peer.clone(); // keep alive
-            let result_notify = active_process.result_notify.clone();
-            let last_active = active_process.last_active.clone();
-            let has_cron = active_process.has_cron.clone();
-
-            // Check for cron entries every 30 seconds
-            let cron_check_interval = tokio::time::Duration::from_secs(30);
-            let mut cron_check_tick = tokio::time::interval(cron_check_interval);
-            // Skip the first immediate tick
-            cron_check_tick.tick().await;
-
-            // Track when the idle timeout should fire (absolute deadline).
-            // Starts as None — only set after the first Result (agent enters idle).
-            let mut idle_deadline: Option<tokio::time::Instant> = None;
-
-            loop {
-                // Compute remaining time until idle deadline.
-                // If no deadline set yet (agent still processing), sleep forever.
-                let sleep_duration = match idle_deadline {
-                    Some(dl) => {
-                        let now = tokio::time::Instant::now();
-                        if dl > now {
-                            dl - now
-                        } else {
-                            std::time::Duration::ZERO
-                        }
-                    }
-                    None => std::time::Duration::from_secs(u64::MAX), // effectively forever
-                };
-
-                tokio::select! {
-                    // Round completed (signaled by send_to_active_process) — reset idle timer
-                    _ = result_notify.notified() => {
-                        *last_active.lock().await = tokio::time::Instant::now();
-                        if !has_cron.load(Ordering::Relaxed) {
-                            idle_deadline = Some(tokio::time::Instant::now() + idle_timeout);
-                        }
-                        continue;
-                    }
-                    // Periodic cron detection check
-                    _ = cron_check_tick.tick() => {
-                        if !has_cron.load(Ordering::Relaxed)
-                            && let Some(store) = normalized_entry_stores.read().await.get(&exec_id)
-                            && Self::has_cron_in_store(store)
-                        {
-                            tracing::info!("Detected CronCreate tool call for session {}", session_id);
-                            has_cron.store(true, Ordering::Relaxed);
-                            // Cancel idle deadline — cron tasks need the process alive
-                            idle_deadline = None;
-                        }
-                    }
-                    // Idle timeout (sleep until the absolute deadline)
-                    _ = tokio::time::sleep(sleep_duration) => {
-                        if last_active.lock().await.elapsed() >= idle_timeout
-                            && !has_cron.load(Ordering::Relaxed)
-                        {
-                            tracing::info!("Idle timeout for session {}", session_id);
-                            // Mark as completed (normal exit) before killing
-                            let _ = container
-                                .update_completion_and_push(
-                                    exec_id,
-                                    ExecutionProcessStatus::Completed,
-                                    Some(0),
-                                )
-                                .await;
-                            if let Some(child_lock) = container.child_store.read().await.get(&exec_id) {
-                                let mut child = child_lock.write().await;
-                                let _ = command::kill_process_group(&mut child).await;
-                            }
-                            break;
-                        }
-                    }
-                    // User cancelled — treat as normal completion
-                    _ = cancel.cancelled() => {
-                        tracing::info!("Cancel signal for session {}", session_id);
-                        let _ = container
-                            .update_completion_and_push(
-                                exec_id,
-                                ExecutionProcessStatus::Completed,
-                                Some(0),
-                            )
-                            .await;
-                        if let Some(child_lock) = container.child_store.read().await.get(&exec_id) {
-                            let mut child = child_lock.write().await;
-                            let _ = command::kill_process_group(&mut child).await;
-                        }
-                        break;
-                    }
-                    // Process exited on its own
-                    exit_result = &mut process_exit_rx => {
-                        tracing::info!("Process exited for session {}: {:?}", session_id, exit_result);
-                        break;
-                    }
-                }
-            }
-
-            // Clean up
-            active_processes.write().await.remove(&session_id);
-        })
-    }
-
     pub fn spawn_os_exit_watcher(
         &self,
         exec_id: Uuid,
@@ -1341,11 +1157,7 @@ impl LocalContainerService {
 
         // 5. Start normalizer (background tasks that push JsonPatch into msg_store)
         let sink: Arc<dyn ConversationSink> = ConversationMsgStore::wrap(msg_store.clone());
-        executor.normalize_logs(
-            sink.clone(),
-            working_dir,
-            executors::logs::utils::entry_index::EntryIndexProvider::start_from(sink.as_ref()),
-        );
+        executor.normalize_logs(sink, working_dir);
 
         // 6. Wait for process completion with 90s timeout
         const TIMEOUT: Duration = Duration::from_secs(90);
@@ -1409,12 +1221,6 @@ fn failure_exit_status() -> std::process::ExitStatus {
 impl ContainerService for LocalContainerService {
     fn msg_stores(&self) -> &Arc<RwLock<HashMap<Uuid, Arc<MsgStore>>>> {
         &self.msg_stores
-    }
-
-    fn entry_index_providers(
-        &self,
-    ) -> &Arc<RwLock<HashMap<Uuid, executors::logs::utils::entry_index::EntryIndexProvider>>> {
-        &self.entry_index_providers
     }
 
     fn normalized_entry_stores(&self) -> &Arc<RwLock<HashMap<Uuid, Arc<NormalizedEntryStore>>>> {
@@ -1760,83 +1566,15 @@ impl ContainerService for LocalContainerService {
         self.add_child_to_store(execution_process.id, spawned.child)
             .await;
 
-        // Create shared EntryIndexProvider from the MsgStore so that the
-        // LogProcessor (normalize_logs) and follow-up injection
-        // (send_to_active_process) share a single monotonic counter.
-        let entry_index_provider = {
-            let stores = self.msg_stores.read().await;
-            if let Some(store) = stores.get(&execution_process.id) {
-                let sink: Arc<dyn executors::logs::utils::ConversationSink> =
-                    executors::logs::utils::ConversationMsgStore::wrap(store.clone());
-                executors::logs::utils::entry_index::EntryIndexProvider::start_from(sink.as_ref())
-            } else {
-                executors::logs::utils::entry_index::EntryIndexProvider::default()
-            }
-        };
-
-        // Store the provider so the trait's start_execution default method
-        // can retrieve it for normalize_logs.
-        {
-            let mut providers = self.entry_index_providers.write().await;
-            providers.insert(execution_process.id, entry_index_provider.clone());
+        // Store cancellation token for graceful shutdown
+        if let Some(cancel) = spawned.cancel {
+            self.add_cancellation_token(execution_process.id, cancel)
+                .await;
         }
 
-        // Check if this executor supports continuous mode (has protocol_peer_rx)
-        if let Some(peer_rx) = spawned.protocol_peer_rx {
-            // Wait for the ProtocolPeer (should be available quickly since it's sent during spawn)
-            match tokio::time::timeout(Duration::from_secs(5), peer_rx).await {
-                Ok(Ok(protocol_peer)) => {
-                    let cancel = spawned.cancel.unwrap_or_else(CancellationToken::new);
-
-                    // Store cancellation token for graceful shutdown
-                    self.add_cancellation_token(execution_process.id, cancel.clone())
-                        .await;
-
-                    let active = ActiveProcess {
-                        protocol_peer,
-                        session_id: execution_process.session_id,
-                        execution_process_id: execution_process.id,
-                        entry_index_provider: entry_index_provider.clone(),
-                        last_active: Arc::new(tokio::sync::Mutex::new(tokio::time::Instant::now())),
-                        cancel,
-                        result_notify: Arc::new(tokio::sync::Notify::new()),
-                        has_cron: Arc::new(AtomicBool::new(false)),
-                        crash_count: Arc::new(AtomicU32::new(0)),
-                        last_crash: Arc::new(tokio::sync::Mutex::new(None)),
-                    };
-                    self.insert_active_process(execution_process.session_id, active.clone())
-                        .await;
-                    let hn = self.spawn_continuous_exit_monitor(
-                        &execution_process.id,
-                        execution_process.session_id,
-                        active,
-                    );
-                    self.add_exit_monitor_handle(execution_process.id, hn).await;
-                }
-                _ => {
-                    tracing::warn!(
-                        "Failed to receive ProtocolPeer for continuous mode, \
-                         falling back to standard exit monitor"
-                    );
-                    if let Some(cancel) = spawned.cancel {
-                        self.add_cancellation_token(execution_process.id, cancel)
-                            .await;
-                    }
-                    let hn = self.spawn_exit_monitor(&execution_process.id, spawned.exit_signal);
-                    self.add_exit_monitor_handle(execution_process.id, hn).await;
-                }
-            }
-        } else {
-            // Store cancellation token for graceful shutdown
-            if let Some(cancel) = spawned.cancel {
-                self.add_cancellation_token(execution_process.id, cancel)
-                    .await;
-            }
-
-            // Spawn unified exit monitor: watches OS exit and optional executor signal
-            let hn = self.spawn_exit_monitor(&execution_process.id, spawned.exit_signal);
-            self.add_exit_monitor_handle(execution_process.id, hn).await;
-        }
+        // Spawn unified exit monitor: watches OS exit and optional executor signal
+        let hn = self.spawn_exit_monitor(&execution_process.id, spawned.exit_signal);
+        self.add_exit_monitor_handle(execution_process.id, hn).await;
 
         Ok(())
     }
@@ -2030,107 +1768,6 @@ impl ContainerService for LocalContainerService {
         }
 
         Ok(())
-    }
-
-    async fn send_to_active_process(
-        &self,
-        session_id: Uuid,
-        prompt: &str,
-        _executor_profile_id: &ExecutorProfileId,
-    ) -> Result<SendToActiveResult, ContainerError> {
-        let active = self.find_active_process(&session_id).await;
-        let Some(active) = active else {
-            return Ok(SendToActiveResult::NotFound);
-        };
-
-        // Update last_active
-        *active.last_active.lock().await = tokio::time::Instant::now();
-
-        // Inject user_message into the original process's MsgStore
-        let ep_id = active.execution_process_id;
-        let msg_store = {
-            let stores = self.msg_stores.read().await;
-            stores.get(&ep_id).cloned()
-        };
-
-        if let Some(store) = msg_store {
-            use executors::logs::{
-                NormalizedEntry, NormalizedEntryType,
-                utils::{ConversationSink, patch::ConversationPatch},
-            };
-            // Use the shared provider from ActiveProcess to avoid index collisions
-            // with the LogProcessor's normalize_logs.
-            let next_index = active.entry_index_provider.next();
-
-            // Create a user_message NormalizedEntry
-            let user_entry = NormalizedEntry {
-                timestamp: None,
-                entry_type: NormalizedEntryType::UserMessage,
-                content: prompt.to_string(),
-                metadata: None,
-            };
-
-            // Push to the MsgStore (live streaming picks this up)
-            store.push_patch(ConversationPatch::add_normalized_entry(
-                next_index, user_entry,
-            ));
-        } else {
-            tracing::warn!(
-                "MsgStore not found for execution process {}, skipping user message injection",
-                ep_id
-            );
-        }
-
-        // Send message to the running agent
-        active
-            .protocol_peer
-            .send_user_message(prompt.to_string())
-            .await
-            .map_err(|e| ContainerError::Other(anyhow!("Failed to send message: {}", e)))?;
-
-        // Wait for result
-        active.protocol_peer.wait_for_result().await;
-
-        // Mark EP as completed so frontend knows the round is done
-        let _ = self
-            .update_completion_and_push(ep_id, ExecutionProcessStatus::Completed, Some(0))
-            .await;
-
-        // Aggregate cost and finalize task (same as oneshot exit monitor)
-        let _ = CodingAgentTurn::aggregate_turn_cost(&self.db.pool, ep_id).await;
-        if let Ok(ctx) = ExecutionProcess::load_context(&self.db.pool, ep_id).await {
-            self.finalize_task(&ctx).await;
-        }
-
-        // Signal exit monitor to reset idle deadline
-        active.result_notify.notify_one();
-
-        // Return the original execution process (entries are in its MsgStore)
-        let execution_process = ExecutionProcess::find_by_id(&self.db.pool, ep_id)
-            .await?
-            .ok_or_else(|| ContainerError::Other(anyhow!("Execution process not found")))?;
-
-        Ok(SendToActiveResult::Sent(Box::new(execution_process)))
-    }
-
-    async fn stop_session_process(&self, session_id: Uuid) -> Result<(), ContainerError> {
-        let active = {
-            let mut processes = self.active_processes.write().await;
-            processes.remove(&session_id)
-        };
-        if let Some(active) = active {
-            active.cancel.cancel();
-        }
-        Ok(())
-    }
-
-    async fn session_process_status(&self, session_id: Uuid) -> SessionProcessStatus {
-        let processes = self.active_processes.read().await;
-        if processes.contains_key(&session_id) {
-            SessionProcessStatus::Idle
-        } else {
-            SessionProcessStatus::Stopped
-        }
     }
 }
 fn success_exit_status() -> std::process::ExitStatus {

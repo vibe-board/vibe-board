@@ -10,7 +10,6 @@ use serde_json::{Map, Value};
 use tokio::{io::AsyncBufReadExt, process::Command};
 use ts_rs::TS;
 
-use self::sdk::TaskApiClient;
 use crate::{
     approvals::ExecutorApprovalService,
     command::{CmdOverrides, CommandBuildError, CommandBuilder, apply_overrides},
@@ -19,7 +18,7 @@ use crate::{
         AppendPrompt, AvailabilityInfo, ExecutorError, ExecutorExitResult, SpawnedChild,
         StandardCodingAgentExecutor, mimo_code::types::MiMoCodeExecutorEvent,
     },
-    logs::utils::{ConversationSink, EntryIndexProvider, patch},
+    logs::utils::{ConversationSink, patch},
     stdout_dup::create_stdout_pipe_writer,
 };
 
@@ -55,13 +54,6 @@ pub struct MiMoCode {
     #[ts(skip)]
     #[derivative(Debug = "ignore", PartialEq = "ignore")]
     pub approvals: Option<Arc<dyn ExecutorApprovalService>>,
-    /// Shared cell for the TaskApiClient. The spawned task writes it once the
-    /// MiMoCode server is ready; normalize_logs reads from it when handling
-    /// task.updated events.
-    #[serde(skip)]
-    #[ts(skip)]
-    #[derivative(Debug = "ignore", PartialEq = "ignore")]
-    task_api: Arc<tokio::sync::OnceCell<TaskApiClient>>,
 }
 
 /// Represents a spawned MiMoCode server with its base URL
@@ -202,8 +194,6 @@ impl MiMoCode {
         let commit_reminder = env.commit_reminder;
         let commit_reminder_prompt = env.commit_reminder_prompt.clone();
         let repo_context = env.repo_context.clone();
-        let task_api = self.task_api.clone();
-        let task_password = server_password.clone();
 
         tokio::spawn(async move {
             // Wait for server to print listening URL
@@ -218,11 +208,6 @@ impl MiMoCode {
                     return;
                 }
             };
-
-            // Store the TaskApiClient so normalize_logs can fetch task data.
-            if let Ok(client) = sdk::build_mimocode_client(&directory, &task_password) {
-                let _ = task_api.set(TaskApiClient::new(client, base_url.clone()));
-            }
 
             let config = RunConfig {
                 base_url,
@@ -263,7 +248,6 @@ impl MiMoCode {
             child,
             exit_signal: Some(exit_signal_rx),
             cancel: Some(cancel),
-            protocol_peer_rx: None,
         })
     }
 }
@@ -386,18 +370,8 @@ impl StandardCodingAgentExecutor for MiMoCode {
             .await
     }
 
-    fn normalize_logs(
-        &self,
-        msg_store: Arc<dyn ConversationSink>,
-        worktree_path: &Path,
-        entry_index_provider: EntryIndexProvider,
-    ) {
-        normalize_logs::normalize_logs_with_api(
-            msg_store,
-            worktree_path,
-            self.task_api.clone(),
-            entry_index_provider,
-        );
+    fn normalize_logs(&self, msg_store: Arc<dyn ConversationSink>, worktree_path: &Path) {
+        normalize_logs::normalize_logs(msg_store, worktree_path);
     }
 
     fn default_mcp_config_path(&self) -> Option<std::path::PathBuf> {
@@ -477,22 +451,6 @@ impl StandardCodingAgentExecutor for MiMoCode {
             AvailabilityInfo::InstallationFound
         } else {
             AvailabilityInfo::NotFound
-        }
-    }
-}
-
-impl Default for MiMoCode {
-    fn default() -> Self {
-        Self {
-            append_prompt: Default::default(),
-            model: None,
-            variant: None,
-            agent: None,
-            auto_approve: true,
-            auto_compact: true,
-            cmd: Default::default(),
-            approvals: None,
-            task_api: Arc::new(tokio::sync::OnceCell::new()),
         }
     }
 }

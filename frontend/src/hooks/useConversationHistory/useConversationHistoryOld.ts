@@ -341,8 +341,12 @@ export const useConversationHistoryOld = ({
                 .entry_type as TokenUsageInfo;
             }
 
-            // Keep real user_message entries from DB (follow-ups in continuous mode)
-            const filteredEntries = p.entries;
+            // Remove user messages (replaced with custom one)
+            const filteredEntries = p.entries.filter(
+              (e) =>
+                e.type !== 'NORMALIZED_ENTRY' ||
+                e.content.entry_type.type !== 'user_message'
+            );
 
             const hasPendingApprovalEntry = filteredEntries.some((entry) => {
               if (entry.type !== 'NORMALIZED_ENTRY') return false;
@@ -905,8 +909,13 @@ export const useConversationHistoryOld = ({
         )
       );
 
-      // Keep real user_message entries from DB (follow-ups in continuous mode)
-      flat.push(...proc.entries);
+      // Entries with user_message filtered out
+      const filtered = proc.entries.filter(
+        (e) =>
+          e.type !== 'NORMALIZED_ENTRY' ||
+          e.content.entry_type.type !== 'user_message'
+      );
+      flat.push(...filtered);
 
       // Duration entry for completed processes
       const live = getLiveExecutionProcess(ep.id);
@@ -1045,8 +1054,12 @@ export const useConversationHistoryOld = ({
         });
 
         if (newRawEntries.length > 0) {
-          // Keep real user_message entries from DB (follow-ups in continuous mode)
-          const toPrepend = newRawEntries;
+          // Filter out user_message entries (already represented by synthetic user msg)
+          const toPrepend = newRawEntries.filter(
+            (e) =>
+              e.type !== 'NORMALIZED_ENTRY' ||
+              e.content.entry_type.type !== 'user_message'
+          );
 
           if (toPrepend.length > 0) {
             // Reset scrollIntent so followOutput stops forcing scroll-to-bottom.

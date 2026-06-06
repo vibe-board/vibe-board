@@ -118,8 +118,6 @@ pub struct ClaudeCode {
     pub dangerously_skip_permissions: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub disable_api_key: Option<bool>,
-    #[serde(default)]
-    pub continuous: Option<bool>,
     #[serde(flatten)]
     pub cmd: CmdOverrides,
 
@@ -299,12 +297,9 @@ impl StandardCodingAgentExecutor for ClaudeCode {
             .await
     }
 
-    fn normalize_logs(
-        &self,
-        msg_store: Arc<dyn ConversationSink>,
-        current_dir: &Path,
-        entry_index_provider: EntryIndexProvider,
-    ) {
+    fn normalize_logs(&self, msg_store: Arc<dyn ConversationSink>, current_dir: &Path) {
+        let entry_index_provider = EntryIndexProvider::start_from(msg_store.as_ref());
+
         // Process stdout logs (Claude's JSON output)
         ClaudeLogProcessor::process_logs(
             msg_store.clone(),
@@ -365,10 +360,6 @@ impl StandardCodingAgentExecutor for ClaudeCode {
             futures::stream::once(async move { initial }).chain(discovery_stream),
         ))
     }
-
-    fn supports_continuous(&self) -> bool {
-        self.continuous.unwrap_or(true)
-    }
 }
 
 impl ClaudeCode {
@@ -421,9 +412,6 @@ impl ClaudeCode {
         // Create cancellation token for graceful shutdown
         let cancel = CancellationToken::new();
 
-        // Create oneshot channel to pass ProtocolPeer back to caller
-        let (peer_tx, peer_rx) = tokio::sync::oneshot::channel::<ProtocolPeer>();
-
         // Spawn task to handle the SDK client with control protocol
         let prompt_clone = combined_prompt.clone();
         let approvals_clone = self.approvals_service.clone();
@@ -431,7 +419,6 @@ impl ClaudeCode {
         let commit_reminder_prompt = env.commit_reminder_prompt.clone();
         let commit_reminder = env.commit_reminder;
         let cancel_for_task = cancel.clone();
-        let keep_alive = self.continuous.unwrap_or(true);
         tokio::spawn(async move {
             let log_writer = LogWriter::new(new_stdout);
             let client = ClaudeAgentClient::new(
@@ -447,9 +434,7 @@ impl ClaudeCode {
                 client.clone(),
                 cancel_for_task.clone(),
                 commit_reminder,
-                keep_alive,
             );
-            let _ = peer_tx.send(protocol_peer.clone());
 
             // Initialize control protocol
             if let Err(e) = protocol_peer.initialize(hooks).await {
@@ -479,7 +464,6 @@ impl ClaudeCode {
             child,
             exit_signal: None,
             cancel: Some(cancel),
-            protocol_peer_rx: Some(peer_rx),
         })
     }
 }
@@ -2999,7 +2983,6 @@ mod tests {
             agent: None,
             append_prompt: AppendPrompt::default(),
             dangerously_skip_permissions: None,
-            continuous: None,
             cmd: crate::command::CmdOverrides {
                 base_command_override: None,
                 additional_params: None,
@@ -3020,8 +3003,7 @@ mod tests {
 
         // Start normalization (this spawns async task)
         let sink: Arc<dyn crate::logs::utils::ConversationSink> = Arc::new(msg_store.clone());
-        let entry_index_provider = EntryIndexProvider::start_from(sink.as_ref());
-        executor.normalize_logs(sink, &current_dir, entry_index_provider);
+        executor.normalize_logs(sink, &current_dir);
 
         // Give some time for async processing
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;

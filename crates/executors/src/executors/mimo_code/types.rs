@@ -63,6 +63,7 @@ pub(super) struct SdkEventEnvelope {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub(super) enum SdkEvent {
     MessageUpdated(MessageUpdatedEvent),
     MessagePartUpdated(MessagePartUpdatedEvent),
@@ -440,6 +441,7 @@ pub(super) struct ActorRegisteredEvent {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub(super) struct ActorStatusChangedEvent {
     #[serde(rename = "actorID")]
     pub(super) actor_id: String,
@@ -457,6 +459,7 @@ pub(super) enum ActorStatus {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub(super) struct ActorStuckEvent {
     #[serde(rename = "actorID")]
     pub(super) actor_id: String,
@@ -573,6 +576,7 @@ impl std::fmt::Display for TaskStatusValue {
     }
 }
 
+#[allow(dead_code)]
 impl TaskStatusValue {
     pub(super) fn to_todo_status(&self) -> &'static str {
         match self {

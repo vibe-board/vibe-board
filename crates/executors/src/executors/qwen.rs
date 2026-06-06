@@ -14,7 +14,7 @@ use crate::{
         AppendPrompt, AvailabilityInfo, ExecutorError, SpawnedChild, StandardCodingAgentExecutor,
         gemini::AcpAgentHarness,
     },
-    logs::utils::{ConversationSink, EntryIndexProvider},
+    logs::utils::ConversationSink,
 };
 
 #[derive(Derivative, Clone, Serialize, Deserialize, TS, JsonSchema)]
@@ -121,13 +121,8 @@ impl StandardCodingAgentExecutor for QwenCode {
             .await
     }
 
-    fn normalize_logs(
-        &self,
-        msg_store: Arc<dyn ConversationSink>,
-        worktree_path: &Path,
-        entry_index_provider: EntryIndexProvider,
-    ) {
-        crate::executors::acp::normalize_logs(msg_store, worktree_path, entry_index_provider);
+    fn normalize_logs(&self, msg_store: Arc<dyn ConversationSink>, worktree_path: &Path) {
+        crate::executors::acp::normalize_logs(msg_store, worktree_path);
     }
 
     // MCP configuration methods

@@ -25,7 +25,7 @@ use executors::{
     profile::ExecutorProfileId,
 };
 use serde::Deserialize;
-use services::services::container::{ContainerService, SendToActiveResult};
+use services::services::container::ContainerService;
 use ts_rs::TS;
 use utils::{conversation_cursor::ConversationCursor, response::ApiResponse};
 use uuid::Uuid;
@@ -154,23 +154,6 @@ pub async fn follow_up(
         )))?;
 
     tracing::info!("{:?}", workspace);
-
-    // Try active process first — if the session has a running continuous-mode
-    // process, send the prompt directly instead of spawning a new one.
-    let result = deployment
-        .container()
-        .send_to_active_process(session.id, &payload.prompt, &payload.executor_profile_id)
-        .await?;
-
-    match result {
-        SendToActiveResult::Sent(ep) => {
-            let _ = Scratch::delete(pool, session.id, &ScratchType::DraftFollowUp).await;
-            return Ok(ResponseJson(ApiResponse::success(*ep)));
-        }
-        SendToActiveResult::NotFound => {
-            // Fall through to existing spawn logic
-        }
-    }
 
     deployment
         .container()
@@ -321,42 +304,6 @@ pub async fn reset_process(
     Ok(ResponseJson(ApiResponse::success(())))
 }
 
-pub async fn stop_session_process(
-    Extension(session): Extension<Session>,
-    State(deployment): State<DeploymentImpl>,
-) -> Result<ResponseJson<ApiResponse<()>>, ApiError> {
-    deployment
-        .container()
-        .stop_session_process(session.id)
-        .await?;
-    Ok(ResponseJson(ApiResponse::success(())))
-}
-
-#[derive(serde::Serialize, ts_rs::TS)]
-pub struct SessionProcessStatusResponse {
-    pub status: String,
-}
-
-pub async fn get_session_process_status(
-    Extension(session): Extension<Session>,
-    State(deployment): State<DeploymentImpl>,
-) -> Result<ResponseJson<ApiResponse<SessionProcessStatusResponse>>, ApiError> {
-    let status = deployment
-        .container()
-        .session_process_status(session.id)
-        .await;
-    let status_str = match status {
-        services::services::container::SessionProcessStatus::Idle => "idle",
-        services::services::container::SessionProcessStatus::Running => "running",
-        services::services::container::SessionProcessStatus::Stopped => "stopped",
-    };
-    Ok(ResponseJson(ApiResponse::success(
-        SessionProcessStatusResponse {
-            status: status_str.to_string(),
-        },
-    )))
-}
-
 pub async fn get_conversation_entries(
     Extension(session): Extension<Session>,
     State(deployment): State<DeploymentImpl>,
@@ -453,8 +400,6 @@ pub fn router(deployment: &DeploymentImpl) -> Router<DeploymentImpl> {
         .route("/conversation-entries", get(get_conversation_entries))
         .route("/follow-up", post(follow_up))
         .route("/reset", post(reset_process))
-        .route("/stop", post(stop_session_process))
-        .route("/process-status", get(get_session_process_status))
         .route("/review", post(review::start_review))
         .route("/queue", queue::routes())
         .layer(from_fn_with_state(

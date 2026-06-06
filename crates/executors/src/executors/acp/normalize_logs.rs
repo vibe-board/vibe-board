@@ -22,12 +22,9 @@ use crate::{
     },
 };
 
-pub fn normalize_logs(
-    msg_store: Arc<dyn ConversationSink>,
-    worktree_path: &Path,
-    entry_index: EntryIndexProvider,
-) {
+pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path) {
     // stderr normalization
+    let entry_index = EntryIndexProvider::start_from(msg_store.as_ref());
     normalize_stderr_logs(msg_store.clone(), entry_index.clone());
 
     // stdout normalization (main loop)
