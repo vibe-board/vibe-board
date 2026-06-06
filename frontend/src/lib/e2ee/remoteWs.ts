@@ -72,14 +72,12 @@ export class RemoteWs {
     if (this.readyState !== RemoteWs.OPEN) {
       throw new DOMException('WebSocket is not open', 'InvalidStateError');
     }
-    // Convert to base64 string for the bridge protocol
     let str: string;
     if (typeof data === 'string') {
-      str = btoa(unescape(encodeURIComponent(data)));
+      str = data;
     } else if (data instanceof ArrayBuffer) {
       str = btoa(String.fromCharCode(...new Uint8Array(data)));
     } else {
-      // Blob — not commonly used in our codebase, ignore for now
       console.warn('RemoteWs: Blob send not supported');
       return;
     }

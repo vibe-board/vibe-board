@@ -375,13 +375,13 @@ export class E2EEConnection {
   }
 
   /** Send data over a remote WebSocket stream */
-  private sendWsData(id: number, base64Data: string): void {
+  private sendWsData(id: number, wsData: string): void {
     if (!this._connected || !this.options || !this.dek) return;
 
     const request = {
       type: 'ws_data' as const,
       id,
-      data: base64Data,
+      data: wsData,
     };
 
     const payload = encryptJson(request, this.dek);
@@ -538,10 +538,8 @@ export class E2EEConnection {
     if (type === 'ws_data') {
       const stream = this.wsStreams.get(id);
       if (stream) {
-        // Decode base64 data back to UTF-8 string
         const raw = payload.data as string;
-        const decoded = decodeURIComponent(escape(atob(raw)));
-        stream._onData(decoded);
+        stream._onData(raw);
       }
       return;
     }

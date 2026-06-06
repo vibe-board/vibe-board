@@ -10,8 +10,8 @@ use tracing::{error, info, warn};
 
 use crate::{e2ee_config::Credentials, e2ee_crypto::BridgeCryptoService};
 
-/// Active WebSocket sub-connections (id → sender to local WS)
-type WsConnections = Arc<Mutex<HashMap<u32, mpsc::UnboundedSender<String>>>>;
+/// Active WebSocket sub-connections (id → bounded sender to local WS)
+type WsConnections = Arc<Mutex<HashMap<u32, mpsc::Sender<String>>>>;
 
 /// Per-client DEK state: client_id → DEK
 type DekState = Arc<Mutex<HashMap<String, [u8; 32]>>>;
@@ -426,12 +426,16 @@ async fn handle_forward(
 
             info!("Opening WS sub-connection id={id} to {ws_url}");
 
+            // TODO(perf): Enable permessage-deflate on this local WS connection once the
+            // patched tokio-tungstenite fork (JakkuSakura) exposes WebSocketConfig compression.
+            // With deflate, JSON Patch payloads would compress 50-70% before the e2ee layer.
+            // Track: connect_async_with_config(&ws_url, Some(WebSocketConfig { .. }), true)
             match connect_async(&ws_url).await {
                 Ok((ws_stream, _)) => {
                     let (mut ws_send, mut ws_recv) = ws_stream.split();
 
-                    // Channel for sending data from bridge → local WS
-                    let (sub_tx, mut sub_rx) = mpsc::unbounded_channel::<String>();
+                    // Channel for sending data from bridge → local WS (bounded for backpressure)
+                    let (sub_tx, mut sub_rx) = mpsc::channel::<String>(256);
                     ctx.ws_connections.lock().await.insert(id, sub_tx);
 
                     // Confirm opened
@@ -452,7 +456,7 @@ async fn handle_forward(
                                         &owner_client_id,
                                         e2ee_core::BridgeResponse::WsData {
                                             id,
-                                            data: BASE64.encode(text.as_bytes()),
+                                            data: text.to_string(),
                                         },
                                         &owner_dek,
                                     );
@@ -503,11 +507,22 @@ async fn handle_forward(
         }
 
         e2ee_core::BridgeRequest::WsData { id, data } => {
-            let decoded = BASE64.decode(&data).context("Invalid base64 in WsData")?;
-            let text = String::from_utf8(decoded).context("Invalid UTF-8 in WsData")?;
             let conns = ctx.ws_connections.lock().await;
             if let Some(sub_tx) = conns.get(&id) {
-                let _ = sub_tx.send(text);
+                use tokio::sync::mpsc::error::TrySendError;
+                match sub_tx.try_send(data) {
+                    Ok(()) => {}
+                    Err(TrySendError::Full(_)) => {
+                        warn!("e2ee bridge: WS sub-connection {id} channel full, dropping frame");
+                    }
+                    Err(TrySendError::Closed(_)) => {
+                        warn!(
+                            "e2ee bridge: WS sub-connection {id} receiver dropped, removing connection"
+                        );
+                        drop(conns);
+                        ctx.ws_connections.lock().await.remove(&id);
+                    }
+                }
             } else {
                 warn!("WsData for unknown sub-connection id={id}");
             }
@@ -883,7 +898,7 @@ mod tests {
         let (ctx, dek, _rx) = test_ctx_with_dek("client-1", "http://127.0.0.1:0".to_string()).await;
 
         // Pre-register a sub-connection channel for id=7, as `WsOpen` would.
-        let (sub_tx, mut sub_rx) = mpsc::unbounded_channel::<String>();
+        let (sub_tx, mut sub_rx) = mpsc::channel::<String>(16);
         ctx.ws_connections.lock().await.insert(7, sub_tx);
 
         // Forward three WsData frames in order. Each call must have delivered
@@ -891,7 +906,7 @@ mod tests {
         for ch in ["a", "b", "c"] {
             let req = e2ee_core::BridgeRequest::WsData {
                 id: 7,
-                data: BASE64.encode(ch.as_bytes()),
+                data: ch.to_string(),
             };
             let payload =
                 serde_json::to_value(e2ee_core::encrypt_json(&req, &dek).unwrap()).unwrap();
