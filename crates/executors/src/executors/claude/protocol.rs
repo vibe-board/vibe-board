@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::{ChildStdin, ChildStdout},
-    sync::{Mutex, Notify},
+    sync::{Mutex, Notify, oneshot},
 };
 use tokio_util::sync::CancellationToken;
 
@@ -11,7 +11,7 @@ use super::types::{CLIMessage, ControlRequestType, ControlResponseMessage, Contr
 use crate::{
     approvals::ExecutorApprovalError,
     executors::{
-        ExecutorError,
+        ExecutorError, ExecutorExitResult,
         claude::{
             client::{ClaudeAgentClient, STOP_GIT_CHECK_CALLBACK_ID},
             types::{Message, PermissionMode, SDKControlRequest, SDKControlRequestType},
@@ -25,6 +25,7 @@ pub struct ProtocolPeer {
     stdin: Arc<Mutex<Option<ChildStdin>>>,
     keep_alive: bool,
     result_tx: Arc<Notify>,
+    exit_signal_tx: Arc<Mutex<Option<oneshot::Sender<ExecutorExitResult>>>>,
 }
 
 impl ProtocolPeer {
@@ -38,11 +39,13 @@ impl ProtocolPeer {
         cancel: CancellationToken,
         expect_stop_hook: bool,
         keep_alive: bool,
+        exit_signal_tx: oneshot::Sender<ExecutorExitResult>,
     ) -> Self {
         let peer = Self {
             stdin: Arc::new(Mutex::new(Some(stdin))),
             keep_alive,
             result_tx: Arc::new(Notify::new()),
+            exit_signal_tx: Arc::new(Mutex::new(Some(exit_signal_tx))),
         };
 
         let reader_peer = peer.clone();
@@ -211,8 +214,13 @@ impl ProtocolPeer {
     }
 
     /// Close stdin so the CLI can exit; we will then get EOF on stdout.
+    /// Also signals exit so the execution process is marked as completed
+    /// even if the CLI process doesn't terminate promptly.
     async fn close_stdin(&self) {
         let _ = self.stdin.lock().await.take();
+        if let Some(tx) = self.exit_signal_tx.lock().await.take() {
+            let _ = tx.send(ExecutorExitResult::Success);
+        }
     }
 
     async fn send_json<T: serde::Serialize>(&self, message: &T) -> Result<(), ExecutorError> {
@@ -235,6 +243,12 @@ impl ProtocolPeer {
     /// Wait for the next Result message from the agent.
     pub async fn wait_for_result(&self) {
         self.result_tx.notified().await;
+    }
+
+    /// Get a clone of the result Notify so callers can wait for the result
+    /// without holding a reference to the ProtocolPeer.
+    pub fn result_notify(&self) -> Arc<Notify> {
+        self.result_tx.clone()
     }
 
     pub async fn initialize(&self, hooks: Option<serde_json::Value>) -> Result<(), ExecutorError> {

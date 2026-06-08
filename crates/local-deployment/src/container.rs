@@ -1762,7 +1762,7 @@ impl ContainerService for LocalContainerService {
             // Wait for ProtocolPeer to be ready
             match peer_rx.await {
                 Ok(protocol_peer) => {
-                    let result_notify = Arc::new(tokio::sync::Notify::new());
+                    let result_notify = protocol_peer.result_notify();
                     let active = ActiveProcess {
                         protocol_peer,
                         session_id: execution_process.session_id,

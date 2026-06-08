@@ -423,6 +423,9 @@ impl ClaudeCode {
         let (peer_tx, peer_rx) = tokio::sync::oneshot::channel::<ProtocolPeer>();
         let keep_alive = self.supports_continuous();
 
+        // Create exit signal channel so ProtocolPeer can signal completion
+        let (exit_signal_tx, exit_signal_rx) = tokio::sync::oneshot::channel();
+
         // Spawn task to handle the SDK client with control protocol
         let prompt_clone = combined_prompt.clone();
         let approvals_clone = self.approvals_service.clone();
@@ -446,6 +449,7 @@ impl ClaudeCode {
                 cancel_for_task.clone(),
                 commit_reminder,
                 keep_alive,
+                exit_signal_tx,
             );
 
             // Send ProtocolPeer back to caller for continuous mode
@@ -477,7 +481,7 @@ impl ClaudeCode {
 
         Ok(SpawnedChild {
             child,
-            exit_signal: None,
+            exit_signal: Some(exit_signal_rx),
             cancel: Some(cancel),
             protocol_peer_rx: Some(peer_rx),
         })
