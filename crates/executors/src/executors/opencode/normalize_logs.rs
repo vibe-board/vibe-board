@@ -32,6 +32,7 @@ fn system_message(content: String) -> NormalizedEntry {
         entry_type: NormalizedEntryType::SystemMessage,
         content,
         metadata: None,
+        agent_id: None,
     }
 }
 
@@ -113,6 +114,7 @@ pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path
                                 format!("Tokens used: {}", total_tokens)
                             },
                             metadata: None,
+                            agent_id: None,
                         },
                     );
                 }
@@ -125,6 +127,7 @@ pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path
                             entry_type: NormalizedEntryType::AssistantMessage,
                             content: message,
                             metadata: None,
+                            agent_id: None,
                         },
                     );
                 }
@@ -175,6 +178,7 @@ pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path
                                 entry_type: NormalizedEntryType::SystemMessage,
                                 content,
                                 metadata: None,
+                                agent_id: None,
                             },
                         ),
                     );
@@ -191,6 +195,7 @@ pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path
                                 },
                                 content: message,
                                 metadata: None,
+                                agent_id: None,
                             },
                         ),
                     );
@@ -334,6 +339,7 @@ impl LogState {
                         entry_type: NormalizedEntryType::ErrorMessage { error_type },
                         content: message,
                         metadata: None,
+                        agent_id: None,
                     },
                 );
             }
@@ -397,6 +403,7 @@ impl LogState {
             },
             content: "TODO list updated".to_string(),
             metadata: None,
+            agent_id: None,
         };
 
         if let Some(index) = self.todo_update_entry {
@@ -562,6 +569,7 @@ impl LogState {
                         .trim()
                         .to_string(),
                     metadata: None,
+                    agent_id: None,
                 },
             );
         }
@@ -619,6 +627,7 @@ impl LogState {
                     if answers.len() != 1 { "s" } else { "" }
                 ),
                 metadata: None,
+                agent_id: None,
             });
         }
     }
@@ -779,6 +788,7 @@ fn update_streaming_text(
         entry_type,
         content: state.content.clone(),
         metadata: None,
+        agent_id: None,
     };
     upsert_normalized_entry(msg_store, state.index, entry, is_new);
 }
@@ -1205,6 +1215,7 @@ impl ToolCallState {
                 tool_call_id: self.call_id.clone(),
             })
             .ok(),
+            agent_id: None,
         }
     }
 

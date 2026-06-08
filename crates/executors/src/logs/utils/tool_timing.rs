@@ -318,6 +318,7 @@ mod tests {
             },
             content: String::new(),
             metadata: None,
+            agent_id: None,
         }
     }
 
@@ -447,6 +448,7 @@ mod tests {
             entry_type: NormalizedEntryType::AssistantMessage,
             content: "hi".into(),
             metadata: None,
+            agent_id: None,
         }
     }
 

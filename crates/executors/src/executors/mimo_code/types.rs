@@ -183,6 +183,8 @@ pub(super) struct MessageUpdatedEvent {
 pub(super) struct MessageInfo {
     pub(super) id: String,
     pub(super) role: MessageRole,
+    #[serde(rename = "agentID", alias = "agent_id", default)]
+    pub(super) agent_id: Option<String>,
     #[serde(default)]
     pub(super) time: Option<MessageTime>,
     #[serde(default)]

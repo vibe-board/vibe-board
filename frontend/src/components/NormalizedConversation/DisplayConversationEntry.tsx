@@ -768,6 +768,23 @@ function DisplayConversationEntry({
   const isUserFeedback = entryType.type === 'user_feedback';
   const isLoading = entryType.type === 'loading';
 
+  // SubagentStarted: show a compact indicator in the main agent stream
+  if (entryType.type === 'subagent_started') {
+    const { actor_id, description } = entryType;
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
+        <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 shrink-0" />
+        <span>
+          Subagent started:{' '}
+          <span className="font-medium text-foreground">
+            {description ?? actor_id}
+          </span>{' '}
+          <span className="opacity-50">({actor_id})</span>
+        </span>
+      </div>
+    );
+  }
+
   // Task progress dice indicator
   if (isTaskProgressEntry(entry) && isNormalizedEntry(entry)) {
     if (!isLastEntry) {

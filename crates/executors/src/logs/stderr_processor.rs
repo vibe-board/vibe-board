@@ -51,6 +51,7 @@ pub fn normalize_stderr_logs(
                 },
                 content: strip_ansi_escapes::strip_str(&content),
                 metadata: None,
+                agent_id: None,
             }))
             .time_gap(Duration::from_secs(2)) // Break messages if they are 2 seconds apart
             .index_provider(entry_index_provider)

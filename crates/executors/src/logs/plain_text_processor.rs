@@ -407,6 +407,7 @@ mod tests {
                 entry_type: NormalizedEntryType::SystemMessage,
                 content: content.to_string(),
                 metadata: None,
+                agent_id: None,
             }
         };
 
@@ -439,6 +440,7 @@ mod tests {
                     },
                     content,
                     metadata: None,
+                    agent_id: None,
                 }
             } else {
                 NormalizedEntry {
@@ -446,6 +448,7 @@ mod tests {
                     entry_type: NormalizedEntryType::SystemMessage,
                     content: content.to_string(),
                     metadata: None,
+                    agent_id: None,
                 }
             }
         };
@@ -467,6 +470,7 @@ mod tests {
                 entry_type: NormalizedEntryType::SystemMessage,
                 content,
                 metadata: None,
+                agent_id: None,
             }
         };
 

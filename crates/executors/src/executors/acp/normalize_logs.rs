@@ -57,6 +57,7 @@ pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path
                             },
                             content: msg,
                             metadata: None,
+                            agent_id: None,
                         };
                         msg_store.push_patch(ConversationPatch::add_normalized_entry(idx, entry));
                     }
@@ -85,6 +86,7 @@ pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path
                                     entry_type: NormalizedEntryType::AssistantMessage,
                                     content: s.content.clone(),
                                     metadata: None,
+                                    agent_id: None,
                                 };
                                 let patch = if is_new {
                                     ConversationPatch::add_normalized_entry(s.index, entry)
@@ -113,6 +115,7 @@ pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path
                                     entry_type: NormalizedEntryType::Thinking,
                                     content: s.content.clone(),
                                     metadata: None,
+                                    agent_id: None,
                                 };
                                 let patch = if is_new {
                                     ConversationPatch::add_normalized_entry(s.index, entry)
@@ -157,6 +160,7 @@ pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path
                             },
                             content: "Plan updated".to_string(),
                             metadata: None,
+                            agent_id: None,
                         };
                         msg_store.push_patch(ConversationPatch::add_normalized_entry(idx, entry));
                     }
@@ -171,6 +175,7 @@ pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path
                             entry_type: NormalizedEntryType::SystemMessage,
                             content: body,
                             metadata: None,
+                            agent_id: None,
                         };
                         msg_store.push_patch(ConversationPatch::add_normalized_entry(idx, entry));
                     }
@@ -181,6 +186,7 @@ pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path
                             entry_type: NormalizedEntryType::SystemMessage,
                             content: format!("Current mode: {}", mode_id.0),
                             metadata: None,
+                            agent_id: None,
                         };
                         msg_store.push_patch(ConversationPatch::add_normalized_entry(idx, entry));
                     }
@@ -244,6 +250,7 @@ pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path
                                 },
                                 content: get_tool_content(tool_data),
                                 metadata: None,
+                                agent_id: None,
                             };
                             msg_store
                                 .push_patch(ConversationPatch::replace(tool_data.index, entry));
@@ -270,6 +277,7 @@ pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path
                                         tool_call_id: tool_data.id.0.to_string(),
                                     })
                                     .ok(),
+                                    agent_id: None,
                                 };
                                 msg_store
                                     .push_patch(ConversationPatch::replace(tool_data.index, entry));
@@ -297,6 +305,7 @@ pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path
                                     .trim()
                                     .to_string(),
                                 metadata: None,
+                                agent_id: None,
                             };
                             msg_store
                                 .push_patch(ConversationPatch::add_normalized_entry(idx, entry));
@@ -340,6 +349,7 @@ pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path
                     tool_call_id: tool_data.id.0.to_string(),
                 })
                 .ok(),
+                agent_id: None,
             };
             let patch = if is_new {
                 ConversationPatch::add_normalized_entry(tool_data.index, entry)

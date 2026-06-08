@@ -54,6 +54,7 @@ pub fn normalize_logs(
                             },
                             content: error.message,
                             metadata: None,
+                            agent_id: None,
                         };
                         add_normalized_entry(&msg_store, &entry_index_provider, entry);
                         continue;
@@ -65,6 +66,7 @@ pub fn normalize_logs(
                             entry_type: NormalizedEntryType::SystemMessage,
                             content: strip_ansi_escapes::strip_str(trimmed).to_string(),
                             metadata: None,
+                            agent_id: None,
                         };
 
                         add_normalized_entry(&msg_store, &entry_index_provider, entry);
@@ -91,6 +93,7 @@ pub fn normalize_logs(
                             entry_type: NormalizedEntryType::SystemMessage,
                             content: format!("model: {model}"),
                             metadata: None,
+                            agent_id: None,
                         };
                         add_normalized_entry(&msg_store, &entry_index_provider, entry);
                     }
@@ -112,6 +115,7 @@ pub fn normalize_logs(
                         entry_type,
                         content: text.clone(),
                         metadata: None,
+                        agent_id: None,
                     };
 
                     add_normalized_entry(&msg_store, &entry_index_provider, entry);
@@ -646,6 +650,7 @@ pub fn normalize_logs(
                         entry_type: NormalizedEntryType::AssistantMessage,
                         content: final_text.clone(),
                         metadata: None,
+                        agent_id: None,
                     };
                     add_normalized_entry(&msg_store, &entry_index_provider, entry);
                     sent_completion = true;
@@ -659,6 +664,7 @@ pub fn normalize_logs(
                         },
                         content: message.clone(),
                         metadata: None,
+                        agent_id: None,
                     };
                     add_normalized_entry(&msg_store, &state.entry_index, entry);
                 }
@@ -682,6 +688,7 @@ fn normalize_stderr_logs(
                 },
                 content,
                 metadata: None,
+                agent_id: None,
             }))
             .transform_lines(Box::new(|lines| {
                 lines.iter_mut().for_each(|line| {
@@ -1030,6 +1037,7 @@ impl ToNormalizedEntry for FileReadState {
             },
             content: self.path.clone(),
             metadata: None,
+            agent_id: None,
         }
     }
 }
@@ -1059,6 +1067,7 @@ impl ToNormalizedEntry for FileEditState {
             },
             content: self.path.clone(),
             metadata: None,
+            agent_id: None,
         }
     }
 }
@@ -1104,6 +1113,7 @@ impl ToNormalizedEntry for CommandRunState {
             },
             content: self.command.clone(),
             metadata: None,
+            agent_id: None,
         }
     }
 }
@@ -1138,6 +1148,7 @@ impl ToNormalizedEntry for TodoManagementState {
             },
             content,
             metadata: None,
+            agent_id: None,
         }
     }
 }
@@ -1165,6 +1176,7 @@ impl ToNormalizedEntry for SearchState {
             },
             content: self.query.clone(),
             metadata: None,
+            agent_id: None,
         }
     }
 }
@@ -1192,6 +1204,7 @@ impl ToNormalizedEntry for WebFetchState {
             },
             content: self.url.clone(),
             metadata: None,
+            agent_id: None,
         }
     }
 }
@@ -1229,6 +1242,7 @@ impl ToNormalizedEntry for GenericToolState {
             },
             content: self.name.clone(),
             metadata: None,
+            agent_id: None,
         }
     }
 }

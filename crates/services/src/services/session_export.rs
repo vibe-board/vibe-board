@@ -564,7 +564,8 @@ pub fn render_entry(entry: &NormalizedEntry) -> String {
         | NormalizedEntryType::TokenUsageInfo(_)
         | NormalizedEntryType::ToolUsageStats(_)
         | NormalizedEntryType::Loading
-        | NormalizedEntryType::NextAction { .. } => String::new(),
+        | NormalizedEntryType::NextAction { .. }
+        | NormalizedEntryType::SubagentStarted { .. } => String::new(),
     }
 }
 
@@ -657,6 +658,7 @@ mod tests {
             timestamp: None,
             entry_type: NormalizedEntryType::UserMessage,
             content: "<script>alert(1)</script>".to_string(),
+            agent_id: None,
             metadata: None,
         };
         let html = render_entry(&e);
@@ -674,6 +676,7 @@ mod tests {
             timestamp: None,
             entry_type: NormalizedEntryType::AssistantMessage,
             content: "Here is **bold** text".to_string(),
+            agent_id: None,
             metadata: None,
         };
         let html = render_entry(&e);
@@ -700,6 +703,7 @@ mod tests {
                 completed_at: None,
             },
             content: "patch body".to_string(),
+            agent_id: None,
             metadata: None,
         };
         let html = render_entry(&e);
@@ -714,6 +718,7 @@ mod tests {
             timestamp: None,
             entry_type: NormalizedEntryType::Loading,
             content: "".to_string(),
+            agent_id: None,
             metadata: None,
         };
         assert_eq!(render_entry(&e), "");
@@ -729,6 +734,7 @@ mod tests {
                 needs_setup: false,
             },
             content: "".to_string(),
+            agent_id: None,
             metadata: None,
         };
         assert_eq!(render_entry(&e), "");
@@ -742,6 +748,7 @@ mod tests {
                 error_type: NormalizedEntryError::Other,
             },
             content: "boom".to_string(),
+            agent_id: None,
             metadata: None,
         };
         let html = render_entry(&e);
@@ -904,6 +911,7 @@ mod tests {
                 timestamp: None,
                 entry_type: NormalizedEntryType::AssistantMessage,
                 content: "hi".to_string(),
+                agent_id: None,
                 metadata: None,
             }],
             normalize_status: NormalizeStatus::Ok,

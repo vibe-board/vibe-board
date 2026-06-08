@@ -32,6 +32,7 @@ fn system_message(content: String) -> NormalizedEntry {
         entry_type: NormalizedEntryType::SystemMessage,
         content,
         metadata: None,
+        agent_id: None,
     }
 }
 
@@ -113,6 +114,7 @@ pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path
                                 format!("Tokens used: {}", total_tokens)
                             },
                             metadata: None,
+                            agent_id: None,
                         },
                     );
                 }
@@ -125,6 +127,7 @@ pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path
                             entry_type: NormalizedEntryType::AssistantMessage,
                             content: message,
                             metadata: None,
+                            agent_id: None,
                         },
                     );
                 }
@@ -175,6 +178,7 @@ pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path
                                 entry_type: NormalizedEntryType::SystemMessage,
                                 content,
                                 metadata: None,
+                                agent_id: None,
                             },
                         ),
                     );
@@ -191,6 +195,7 @@ pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path
                                 },
                                 content: message,
                                 metadata: None,
+                                agent_id: None,
                             },
                         ),
                     );
@@ -221,6 +226,7 @@ struct LogState {
     entry_index: EntryIndexProvider,
     msg_store: Arc<dyn ConversationSink>,
     message_roles: HashMap<String, MessageRole>,
+    message_agent_ids: HashMap<String, String>,
     assistant_text: HashMap<String, StreamingText>,
     thinking_text: HashMap<String, StreamingText>,
     tool_states: HashMap<String, ToolCallState>,
@@ -237,6 +243,7 @@ impl LogState {
             entry_index,
             msg_store,
             message_roles: HashMap::new(),
+            message_agent_ids: HashMap::new(),
             assistant_text: HashMap::new(),
             thinking_text: HashMap::new(),
             tool_states: HashMap::new(),
@@ -273,6 +280,10 @@ impl LogState {
             SdkEvent::MessageUpdated(event) => {
                 let info = event.info;
                 self.maybe_emit_model_system_message(&info);
+                if let Some(agent_id) = &info.agent_id {
+                    self.message_agent_ids
+                        .insert(info.id.clone(), agent_id.clone());
+                }
                 self.message_roles.insert(info.id, info.role);
             }
             SdkEvent::MessagePartUpdated(event) => {
@@ -334,11 +345,32 @@ impl LogState {
                         entry_type: NormalizedEntryType::ErrorMessage { error_type },
                         content: message,
                         metadata: None,
+                        agent_id: None,
                     },
                 );
             }
-            SdkEvent::ActorRegistered(_)
-            | SdkEvent::ActorStatusChanged(_)
+            SdkEvent::ActorRegistered(event) => {
+                let agent = event.agent.as_deref().unwrap_or("");
+                // Skip internal actors that are not user-visible subagents
+                if agent == "checkpoint-writer" || event.mode.as_deref() != Some("subagent") {
+                    return;
+                }
+                self.add_normalized_entry(NormalizedEntry {
+                    timestamp: None,
+                    entry_type: NormalizedEntryType::SubagentStarted {
+                        actor_id: event.actor_id.clone(),
+                        description: event.description.clone(),
+                    },
+                    content: event
+                        .description
+                        .as_deref()
+                        .unwrap_or(&event.actor_id)
+                        .to_string(),
+                    metadata: None,
+                    agent_id: None,
+                });
+            }
+            SdkEvent::ActorStatusChanged(_)
             | SdkEvent::ActorStuck(_)
             | SdkEvent::TaskUpdated(_) => {}
             SdkEvent::Unknown { type_, properties } => {
@@ -401,6 +433,7 @@ impl LogState {
             },
             content: "TODO list updated".to_string(),
             metadata: None,
+            agent_id: None,
         };
 
         if let Some(index) = self.todo_update_entry {
@@ -446,6 +479,12 @@ impl LogState {
                     return;
                 }
 
+                let agent_id = self
+                    .message_agent_ids
+                    .get(&part.message_id)
+                    .filter(|id| !id.is_empty() && id.as_str() != "main")
+                    .cloned();
+
                 let (text, mode) = if let Some(delta) = delta {
                     (delta, UpdateMode::Append)
                 } else {
@@ -461,9 +500,16 @@ impl LogState {
                     &mut self.assistant_text,
                     msg_store,
                     mode,
+                    agent_id,
                 );
             }
             Part::Reasoning(part) => {
+                let agent_id = self
+                    .message_agent_ids
+                    .get(&part.message_id)
+                    .filter(|id| !id.is_empty() && id.as_str() != "main")
+                    .cloned();
+
                 let (text, mode) = if let Some(delta) = delta {
                     (delta, UpdateMode::Append)
                 } else {
@@ -479,6 +525,7 @@ impl LogState {
                     &mut self.thinking_text,
                     msg_store,
                     mode,
+                    agent_id,
                 );
             }
             Part::Tool(part) => {
@@ -490,11 +537,18 @@ impl LogState {
                     );
                 }
 
+                let agent_id = self
+                    .message_agent_ids
+                    .get(&part.message_id)
+                    .filter(|id| !id.is_empty() && id.as_str() != "main")
+                    .cloned();
+
                 let tool_state = self
                     .tool_states
                     .entry(part.call_id.clone())
                     .or_insert_with(|| ToolCallState::new(part.call_id.clone()));
 
+                tool_state.agent_id = agent_id;
                 tool_state.set_approval_if_missing(self.approvals.get(&part.call_id).cloned());
 
                 tool_state.update_from_part(part);
@@ -566,6 +620,7 @@ impl LogState {
                         .trim()
                         .to_string(),
                     metadata: None,
+                    agent_id: None,
                 },
             );
         }
@@ -623,6 +678,7 @@ impl LogState {
                     if answers.len() != 1 { "s" } else { "" }
                 ),
                 metadata: None,
+                agent_id: None,
             });
         }
     }
@@ -747,6 +803,7 @@ impl LogState {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn update_streaming_text(
     entry_index: &EntryIndexProvider,
     text: &str,
@@ -755,6 +812,7 @@ fn update_streaming_text(
     map: &mut HashMap<String, StreamingText>,
     msg_store: &Arc<dyn ConversationSink>,
     mode: UpdateMode,
+    agent_id: Option<String>,
 ) {
     if text.is_empty() {
         return;
@@ -783,6 +841,7 @@ fn update_streaming_text(
         entry_type,
         content: state.content.clone(),
         metadata: None,
+        agent_id,
     };
     upsert_normalized_entry(msg_store, state.index, entry, is_new);
 }
@@ -798,6 +857,7 @@ struct ToolCallState {
     question: Option<QuestionStatus>,
     approval_id: Option<String>,
     data: ToolData,
+    agent_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -877,6 +937,7 @@ impl ToolCallState {
                 output: None,
                 error: None,
             },
+            agent_id: None,
         }
     }
 
@@ -1209,6 +1270,7 @@ impl ToolCallState {
                 tool_call_id: self.call_id.clone(),
             })
             .ok(),
+            agent_id: self.agent_id.clone(),
         }
     }
 
