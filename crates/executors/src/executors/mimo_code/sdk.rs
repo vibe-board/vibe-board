@@ -998,14 +998,12 @@ async fn build_response_error(resp: reqwest::Response, context: &str) -> Executo
 }
 
 /// Lightweight API client for fetching task data when `task.updated` events arrive.
-#[allow(dead_code)]
 #[derive(Clone)]
 pub struct TaskApiClient {
     pub client: reqwest::Client,
     pub base_url: String,
 }
 
-#[allow(dead_code)]
 impl TaskApiClient {
     pub fn new(client: reqwest::Client, base_url: String) -> Self {
         Self { client, base_url }
@@ -1353,6 +1351,41 @@ async fn process_event_stream(
         match event_type {
             "message.updated" => {
                 maybe_emit_token_usage(&ctx, &data).await;
+            }
+            "task.updated" => {
+                let client = ctx.client.clone();
+                let base_url = ctx.base_url.to_string();
+                let session_id = ctx.session_id.to_string();
+                let log_writer = ctx.log_writer.clone();
+                tokio::spawn(async move {
+                    let task_api = TaskApiClient::new(client, base_url);
+                    if let Some(tasks) = task_api.fetch_tasks(&session_id).await {
+                        if tasks.is_empty() {
+                            return;
+                        }
+                        let todos: Vec<serde_json::Value> = tasks
+                            .iter()
+                            .map(|t| {
+                                serde_json::json!({
+                                    "id": t.id,
+                                    "content": t.summary,
+                                    "status": t.status.to_todo_status(),
+                                    "priority": "medium"
+                                })
+                            })
+                            .collect();
+                        let synthetic_event = MiMoCodeExecutorEvent::SdkEvent {
+                            event: serde_json::json!({
+                                "type": "todo.updated",
+                                "properties": {
+                                    "sessionID": session_id,
+                                    "todos": todos
+                                }
+                            }),
+                        };
+                        let _ = log_writer.log_event(&synthetic_event).await;
+                    }
+                });
             }
             "session.status" => {
                 if let Some(status) = data
