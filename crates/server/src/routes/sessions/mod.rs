@@ -139,11 +139,18 @@ pub struct ConversationEntriesResponse {
     pub has_more_after: bool,
 }
 
+#[derive(Debug, serde::Serialize, Deserialize, TS)]
+#[serde(tag = "type", rename_all = "snake_case")]
+#[ts(tag = "type", rename_all = "snake_case")]
+pub enum FollowUpError {
+    ProcessAlreadyRunning,
+}
+
 pub async fn follow_up(
     Extension(session): Extension<Session>,
     State(deployment): State<DeploymentImpl>,
     Json(payload): Json<CreateFollowUpAttempt>,
-) -> Result<ResponseJson<ApiResponse<ExecutionProcess>>, ApiError> {
+) -> Result<ResponseJson<ApiResponse<ExecutionProcess, FollowUpError>>, ApiError> {
     let pool = &deployment.db().pool;
 
     // Load workspace from session
@@ -152,6 +159,15 @@ pub async fn follow_up(
         .ok_or(ApiError::Workspace(WorkspaceError::ValidationError(
             "Workspace not found".to_string(),
         )))?;
+
+    // Check if any non-dev-server processes are already running for this workspace
+    if ExecutionProcess::has_running_non_dev_server_processes_for_workspace(pool, workspace.id)
+        .await?
+    {
+        return Ok(ResponseJson(ApiResponse::error_with_data(
+            FollowUpError::ProcessAlreadyRunning,
+        )));
+    }
 
     tracing::info!("{:?}", workspace);
 
