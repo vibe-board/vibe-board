@@ -103,6 +103,10 @@ module.exports = {
           DEFAULT: "hsl(var(--neutral))",
           foreground: "hsl(var(--neutral-foreground))",
         },
+        purple: {
+          DEFAULT: "hsl(var(--purple))",
+          foreground: "hsl(var(--purple-foreground))",
+        },
         status: {
           init: "hsl(var(--status-init))",
           "init-foreground": "hsl(var(--status-init-foreground))",
