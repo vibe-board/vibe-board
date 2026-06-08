@@ -17,7 +17,7 @@ const DEFAULT_BASE_COMMAND_PLACEHOLDERS: Record<BaseCodingAgent, string> = {
   [BaseCodingAgent.AMP]: 'npx -y @sourcegraph/amp@latest',
   [BaseCodingAgent.AUGGIE]: 'npx -y @augmentcode/auggie@0.19.0',
   [BaseCodingAgent.AUTOHAND]: 'npx -y @autohandai/autohand-acp@0.2.1',
-  [BaseCodingAgent.CLAUDE_CODE]: 'npx -y @anthropic-ai/claude-code@2.1.32',
+  [BaseCodingAgent.CLAUDE_CODE]: 'pnpm dlx @anthropic-ai/claude-code@latest',
   [BaseCodingAgent.CLINE]: 'npx -y cline@2.7.0',
   [BaseCodingAgent.CODEBUDDY_CODE]: 'npx -y @tencent-ai/codebuddy-code@2.62.0',
   [BaseCodingAgent.CODEX]: 'npx -y @openai/codex@0.124.0',

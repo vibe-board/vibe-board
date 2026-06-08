@@ -327,6 +327,8 @@ export type StartReviewRequest = { executor_profile_id: ExecutorProfileId, addit
 
 export type ReviewError = { "type": "process_already_running" };
 
+export type FollowUpError = { "type": "process_already_running" };
+
 export type OpenEditorRequest = { editor_type: string | null, file_path: string | null, };
 
 export type OpenEditorResponse = { url: string | null, };
@@ -548,7 +550,7 @@ export type AvailabilityInfo = { "type": "LOGIN_DETECTED", last_auth_timestamp: 
 
 export type CommandBuilder = { 
 /**
- * Base executable command (e.g., "npx -y @anthropic-ai/claude-code@latest")
+ * Base executable command (e.g., "pnpm dlx @anthropic-ai/claude-code@latest")
  */
 base: string, 
 /**
