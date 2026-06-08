@@ -540,15 +540,16 @@ pub(super) struct ProviderModelLimit {
 // Task types for task.updated event handling
 
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
 pub struct TaskInfo {
     pub id: String,
     #[serde(default)]
     pub status: TaskStatusValue,
     pub summary: String,
     #[serde(default)]
+    #[allow(dead_code)]
     pub owner: Option<String>,
     #[serde(default)]
+    #[allow(dead_code)]
     pub parent_task_id: Option<String>,
 }
 
@@ -578,9 +579,8 @@ impl std::fmt::Display for TaskStatusValue {
     }
 }
 
-#[allow(dead_code)]
 impl TaskStatusValue {
-    pub(super) fn to_todo_status(&self) -> &'static str {
+    pub fn to_todo_status(&self) -> &'static str {
         match self {
             TaskStatusValue::Open => "pending",
             TaskStatusValue::InProgress => "in_progress",
