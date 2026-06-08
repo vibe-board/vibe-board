@@ -488,6 +488,7 @@ const ToolCallCard: React.FC<{
   const actionType = entryType?.action_type;
   const isCommand = actionType?.action === 'command_run';
   const isTool = actionType?.action === 'tool';
+  const isTaskCreate = actionType?.action === 'task_create';
 
   // Label and content
   const label = isCommand ? 'Ran' : entryType?.tool_name || 'Tool';
@@ -510,10 +511,11 @@ const ToolCallCard: React.FC<{
   // Tool details
   const hasArgs = isTool && !!actionType.arguments;
   const hasResult = isTool && !!actionType.result;
+  const hasTaskResult = isTaskCreate && !!actionType.result;
 
   const hasExpandableDetails = isCommand
     ? Boolean(argsText) || Boolean(output)
-    : hasArgs || hasResult;
+    : hasArgs || hasResult || hasTaskResult;
 
   const HeaderWrapper: React.ElementType = hasExpandableDetails
     ? 'button'
@@ -594,27 +596,36 @@ const ToolCallCard: React.FC<{
             </>
           ) : (
             <>
-              {isTool && actionType && (
+              {(isTool || isTaskCreate) && actionType && (
                 <>
-                  <div className="font-normal uppercase bg-background border-b border-dashed px-2 py-1">
-                    {t('conversation.args')}
-                  </div>
-                  <div className="px-2 py-1">
-                    {renderJson(actionType.arguments)}
-                  </div>
-                  <div className="font-normal uppercase bg-background border-y border-dashed px-2 py-1">
-                    {t('conversation.result')}
-                  </div>
-                  <div className="px-2 py-1">
-                    {actionType.result?.type.type === 'markdown' &&
-                      actionType.result.value && (
-                        <ReadOnlyMarkdown
-                          content={actionType.result.value?.toString() ?? ''}
-                        />
-                      )}
-                    {actionType.result?.type.type === 'json' &&
-                      renderJson(actionType.result.value)}
-                  </div>
+                  {isTool && (
+                    <>
+                      <div className="font-normal uppercase bg-background border-b border-dashed px-2 py-1">
+                        {t('conversation.args')}
+                      </div>
+                      <div className="px-2 py-1">
+                        {renderJson(actionType.arguments)}
+                      </div>
+                    </>
+                  )}
+                  {((isTool && actionType.result) ||
+                    (isTaskCreate && actionType.result)) && (
+                    <>
+                      <div className="font-normal uppercase bg-background border-y border-dashed px-2 py-1">
+                        {t('conversation.result')}
+                      </div>
+                      <div className="px-2 py-1">
+                        {actionType.result?.type.type === 'markdown' &&
+                          actionType.result.value && (
+                            <ReadOnlyMarkdown
+                              content={actionType.result.value?.toString() ?? ''}
+                            />
+                          )}
+                        {actionType.result?.type.type === 'json' &&
+                          renderJson(actionType.result.value)}
+                      </div>
+                    </>
+                  )}
                 </>
               )}
             </>

@@ -1328,11 +1328,29 @@ impl ToolCallState {
             ActionType::Search { query } => query.clone(),
             ActionType::WebFetch { url } => url.clone(),
             ActionType::TodoManagement { .. } => "TODO list updated".to_string(),
-            ActionType::TaskCreate { description, .. } => {
-                if description.is_empty() {
+            ActionType::TaskCreate {
+                description,
+                result,
+                ..
+            } => {
+                let desc = if description.is_empty() {
                     "Task".to_string()
                 } else {
                     format!("Task: `{description}`")
+                };
+                if let Some(r) = result {
+                    if let Some(s) = r.value.as_str() {
+                        let trimmed = s.trim();
+                        if !trimmed.is_empty() {
+                            format!("{desc} → {trimmed}")
+                        } else {
+                            desc
+                        }
+                    } else {
+                        desc
+                    }
+                } else {
+                    desc
                 }
             }
             ActionType::AskUserQuestion { questions } => {
