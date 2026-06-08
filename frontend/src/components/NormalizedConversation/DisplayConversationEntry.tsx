@@ -618,7 +618,9 @@ const ToolCallCard: React.FC<{
                         {actionType.result?.type.type === 'markdown' &&
                           actionType.result.value && (
                             <ReadOnlyMarkdown
-                              content={actionType.result.value?.toString() ?? ''}
+                              content={
+                                actionType.result.value?.toString() ?? ''
+                              }
                             />
                           )}
                         {actionType.result?.type.type === 'json' &&
