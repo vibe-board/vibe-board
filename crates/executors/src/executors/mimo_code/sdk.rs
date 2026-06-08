@@ -21,7 +21,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use workspace_utils::approvals::{ApprovalStatus, QuestionAnswer, QuestionStatus};
 
-use super::{slash_commands, types::MiMoCodeExecutorEvent};
+use super::{slash_commands, types::{MiMoCodeExecutorEvent, SdkEvent}};
 use crate::{
     approvals::{ExecutorApprovalError, ExecutorApprovalService},
     env::RepoContext,
@@ -1039,32 +1039,6 @@ async fn build_response_error(resp: reqwest::Response, context: &str) -> Executo
     )))
 }
 
-/// Lightweight API client for fetching task data when `task.updated` events arrive.
-#[derive(Clone)]
-pub struct TaskApiClient {
-    pub client: reqwest::Client,
-    pub base_url: String,
-}
-
-impl TaskApiClient {
-    pub fn new(client: reqwest::Client, base_url: String) -> Self {
-        Self { client, base_url }
-    }
-
-    pub async fn fetch_tasks(&self, session_id: &str) -> Option<Vec<super::types::TaskInfo>> {
-        let resp = self
-            .client
-            .get(format!("{}/session/{}/task", self.base_url, session_id))
-            .send()
-            .await
-            .ok()?;
-        if !resp.status().is_success() {
-            return None;
-        }
-        resp.json::<Vec<super::types::TaskInfo>>().await.ok()
-    }
-}
-
 pub async fn send_abort(
     client: &reqwest::Client,
     base_url: &str,
@@ -1395,39 +1369,29 @@ async fn process_event_stream(
             "message.updated" => {
                 maybe_emit_token_usage(&ctx, &data).await;
             }
-            "task.updated" => {
-                let client = ctx.client.clone();
-                let base_url = ctx.base_url.to_string();
-                let session_id = ctx.session_id.to_string();
+            "task.created" | "task.updated" => {
+                let (session_id, task) = match SdkEvent::parse(&data) {
+                    Some(SdkEvent::TaskCreated(e)) => (e.session_id, e.task),
+                    Some(SdkEvent::TaskUpdated(e)) => (e.session_id, e.task),
+                    _ => continue,
+                };
                 let log_writer = ctx.log_writer.clone();
                 tokio::spawn(async move {
-                    let task_api = TaskApiClient::new(client, base_url);
-                    if let Some(tasks) = task_api.fetch_tasks(&session_id).await {
-                        if tasks.is_empty() {
-                            return;
-                        }
-                        let todos: Vec<serde_json::Value> = tasks
-                            .iter()
-                            .map(|t| {
-                                serde_json::json!({
-                                    "id": t.id,
-                                    "content": t.summary,
-                                    "status": t.status.to_todo_status(),
+                    let synthetic_event = MiMoCodeExecutorEvent::SdkEvent {
+                        event: serde_json::json!({
+                            "type": "todo.updated",
+                            "properties": {
+                                "sessionID": session_id,
+                                "todos": [{
+                                    "id": task.id,
+                                    "content": task.summary,
+                                    "status": task.status.to_todo_status(),
                                     "priority": "medium"
-                                })
-                            })
-                            .collect();
-                        let synthetic_event = MiMoCodeExecutorEvent::SdkEvent {
-                            event: serde_json::json!({
-                                "type": "todo.updated",
-                                "properties": {
-                                    "sessionID": session_id,
-                                    "todos": todos
-                                }
-                            }),
-                        };
-                        let _ = log_writer.log_event(&synthetic_event).await;
-                    }
+                                }]
+                            }
+                        }),
+                    };
+                    let _ = log_writer.log_event(&synthetic_event).await;
                 });
             }
             "session.status" => {

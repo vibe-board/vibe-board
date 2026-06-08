@@ -372,6 +372,7 @@ impl LogState {
             }
             SdkEvent::ActorStatusChanged(_)
             | SdkEvent::ActorStuck(_)
+            | SdkEvent::TaskCreated(_)
             | SdkEvent::TaskUpdated(_) => {}
             SdkEvent::Unknown { type_, properties } => {
                 self.add_normalized_entry(system_message(format!(
