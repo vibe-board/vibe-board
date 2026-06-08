@@ -90,6 +90,7 @@ pub(super) enum SdkEvent {
     ActorRegistered(ActorRegisteredEvent),
     ActorStatusChanged(ActorStatusChangedEvent),
     ActorStuck(ActorStuckEvent),
+    TaskCreated(TaskCreatedEvent),
     TaskUpdated(TaskUpdatedEvent),
     Unknown {
         type_: String,
@@ -153,6 +154,9 @@ impl SdkEvent {
             }
             "actor.stuck" => {
                 SdkEvent::ActorStuck(serde_json::from_value(envelope.properties).ok()?)
+            }
+            "task.created" => {
+                SdkEvent::TaskCreated(serde_json::from_value(envelope.properties).ok()?)
             }
             "task.updated" => {
                 SdkEvent::TaskUpdated(serde_json::from_value(envelope.properties).ok()?)
@@ -473,9 +477,19 @@ pub(super) struct ActorStuckEvent {
 
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
+pub(super) struct TaskCreatedEvent {
+    #[serde(rename = "sessionID")]
+    pub(super) session_id: String,
+    pub(super) task: TaskInfo,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub(super) struct TaskUpdatedEvent {
     #[serde(rename = "sessionID")]
     pub(super) session_id: String,
+    pub(super) task: TaskInfo,
+    pub(super) kind: String,
 }
 
 #[derive(Debug)]
