@@ -1673,38 +1673,26 @@ struct SubagentEventFilter {
 
 impl SubagentEventFilter {
     fn should_log(&mut self, event_type: &str, event: &Value) -> bool {
-        match event_type {
-            "message.updated" => {
-                let Some(message_id) = event.pointer("/properties/info/id").and_then(Value::as_str)
-                else {
-                    return true;
-                };
-                let agent_id = event
-                    .pointer("/properties/info/agentID")
-                    .or_else(|| event.pointer("/properties/info/agent_id"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("main");
-                self.message_agent_ids
-                    .insert(message_id.to_string(), agent_id.to_string());
-                is_main_agent(agent_id)
-            }
-            "message.part.updated" => self.message_id_for_part(event).is_none_or(|message_id| {
-                self.message_agent_ids
-                    .get(message_id)
-                    .is_none_or(|agent_id| is_main_agent(agent_id))
-            }),
-            "message.part.delta" | "message.part.removed" => event
-                .pointer("/properties/messageID")
+        if event_type == "message.updated"
+            && let Some(message_id) = event.pointer("/properties/info/id").and_then(Value::as_str)
+        {
+            let agent_id = event
+                .pointer("/properties/info/agentID")
+                .or_else(|| event.pointer("/properties/info/agent_id"))
                 .and_then(Value::as_str)
-                .is_none_or(|message_id| {
-                    self.message_agent_ids
-                        .get(message_id)
-                        .is_none_or(|agent_id| is_main_agent(agent_id))
-                }),
-            _ => true,
+                .unwrap_or("main");
+            self.message_agent_ids
+                .insert(message_id.to_string(), agent_id.to_string());
         }
+        true
     }
 
+    #[allow(dead_code)]
+    fn agent_id_for_message<'a>(&'a self, message_id: &str) -> Option<&'a str> {
+        self.message_agent_ids.get(message_id).map(|s| s.as_str())
+    }
+
+    #[allow(dead_code)]
     fn message_id_for_part<'a>(&self, event: &'a Value) -> Option<&'a str> {
         event
             .pointer("/properties/part/messageID")
@@ -1713,6 +1701,7 @@ impl SubagentEventFilter {
     }
 }
 
+#[allow(dead_code)]
 fn is_main_agent(agent_id: &str) -> bool {
     agent_id == "main" || agent_id.trim().is_empty()
 }

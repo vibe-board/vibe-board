@@ -121,6 +121,7 @@ impl ToNormalizedEntry for CommandState {
                 tool_call_id: self.call_id.clone(),
             })
             .ok(),
+            agent_id: None,
         }
     }
 }
@@ -162,6 +163,7 @@ impl ToNormalizedEntry for DynamicToolState {
                 tool_call_id: self.call_id.clone(),
             })
             .ok(),
+            agent_id: None,
         }
     }
 }
@@ -185,6 +187,7 @@ impl ToNormalizedEntry for McpToolState {
             },
             content: self.invocation.tool.clone(),
             metadata: None,
+            agent_id: None,
         }
     }
 }
@@ -221,6 +224,7 @@ impl ToNormalizedEntry for WebSearchState {
                 .clone()
                 .unwrap_or_else(|| "Web search".to_string()),
             metadata: None,
+            agent_id: None,
         }
     }
 }
@@ -248,6 +252,7 @@ impl ToNormalizedEntry for UserInputRequestState {
             },
             content: self.content.clone(),
             metadata: None,
+            agent_id: None,
         }
     }
 }
@@ -274,6 +279,7 @@ impl ToNormalizedEntry for PlanState {
             },
             content: "Plan".to_string(),
             metadata: None,
+            agent_id: None,
         }
     }
 }
@@ -347,6 +353,7 @@ impl ToNormalizedEntry for ReviewState {
             },
             content: String::new(),
             metadata: None,
+            agent_id: None,
         }
     }
 }
@@ -387,6 +394,7 @@ impl ToNormalizedEntry for PatchEntry {
                 tool_call_id: self.call_id.clone(),
             })
             .ok(),
+            agent_id: None,
         }
     }
 }
@@ -471,6 +479,7 @@ impl LogState {
             },
             content: content.clone(),
             metadata: None,
+            agent_id: None,
         };
         (normalized_entry, index, is_new)
     }
@@ -788,6 +797,7 @@ fn add_thread_token_usage(
                     .unwrap_or_default()
             ),
             metadata: None,
+            agent_id: None,
         },
     );
 }
@@ -1224,6 +1234,7 @@ fn handle_direct_item_completed(
                     },
                     content: relative_path,
                     metadata: None,
+                    agent_id: None,
                 },
             );
         }
@@ -1245,6 +1256,7 @@ fn handle_direct_item_completed(
                     entry_type: NormalizedEntryType::SystemMessage,
                     content: "Context compacted".to_string(),
                     metadata: None,
+                    agent_id: None,
                 },
             );
         }
@@ -1403,6 +1415,7 @@ fn handle_direct_notification(
                         notification.from_model, notification.to_model
                     ),
                     metadata: None,
+                    agent_id: None,
                 },
             );
             true
@@ -1425,6 +1438,7 @@ fn handle_direct_notification(
                     },
                     content: format!("{}{}", notification.summary, details),
                     metadata: None,
+                    agent_id: None,
                 },
             );
             true
@@ -1440,6 +1454,7 @@ fn handle_direct_notification(
                     },
                     content: format!("Error: {}", notification.error.message),
                     metadata: None,
+                    agent_id: None,
                 },
             );
             true
@@ -1453,6 +1468,7 @@ fn handle_direct_notification(
                     entry_type: NormalizedEntryType::SystemMessage,
                     content: "Context compacted".to_string(),
                     metadata: None,
+                    agent_id: None,
                 },
             );
             true
@@ -1493,6 +1509,7 @@ fn normalize_codex_stderr_logs(
                 },
                 content: strip_ansi_escapes::strip_str(&content),
                 metadata: None,
+                agent_id: None,
             })
             .time_gap(Duration::from_secs(2))
             .index_provider(entry_index_provider)
@@ -1883,6 +1900,7 @@ pub fn normalize_logs(
                             entry_type: NormalizedEntryType::SystemMessage,
                             content: format!("Background event: {message}"),
                             metadata: None,
+                            agent_id: None,
                         },
                     );
                 }
@@ -1901,6 +1919,7 @@ pub fn normalize_logs(
                             },
                             content: format!("Stream error: {message} {codex_error_info:?}"),
                             metadata: None,
+                            agent_id: None,
                         },
                     );
                 }
@@ -2177,6 +2196,7 @@ pub fn normalize_logs(
                             },
                             content: relative_path.to_string(),
                             metadata: None,
+                            agent_id: None,
                         },
                     );
                 }
@@ -2220,6 +2240,7 @@ pub fn normalize_logs(
                             },
                             content,
                             metadata: None,
+                            agent_id: None,
                         },
                     );
                 }
@@ -2234,6 +2255,7 @@ pub fn normalize_logs(
                             },
                             content: message,
                             metadata: None,
+                            agent_id: None,
                         },
                     );
                 }
@@ -2252,6 +2274,7 @@ pub fn normalize_logs(
                                 "warning: model rerouted from {from_model} to {to_model}"
                             ),
                             metadata: None,
+                            agent_id: None,
                         },
                     );
                 }
@@ -2269,6 +2292,7 @@ pub fn normalize_logs(
                             },
                             content: format!("Error: {message} {codex_error_info:?}"),
                             metadata: None,
+                            agent_id: None,
                         },
                     );
                 }
@@ -2294,6 +2318,7 @@ pub fn normalize_logs(
                                     info.model_context_window.unwrap_or_default()
                                 ),
                                 metadata: None,
+                                agent_id: None,
                             },
                         );
                     }
@@ -2373,6 +2398,7 @@ pub fn normalize_logs(
                             entry_type: NormalizedEntryType::SystemMessage,
                             content: "Context compacted".to_string(),
                             metadata: None,
+                            agent_id: None,
                         },
                     );
                 }
@@ -2531,6 +2557,7 @@ fn handle_model_params(
         entry_type: NormalizedEntryType::SystemMessage,
         content: params.join("  "),
         metadata: None,
+        agent_id: None,
     };
     upsert_normalized_entry(msg_store, index, entry, is_new);
 }
@@ -2591,6 +2618,7 @@ impl ToNormalizedEntry for Error {
                 },
                 content: error.clone(),
                 metadata: None,
+                agent_id: None,
             },
             Error::AuthRequired { error } => NormalizedEntry {
                 timestamp: None,
@@ -2599,6 +2627,7 @@ impl ToNormalizedEntry for Error {
                 },
                 content: error.clone(),
                 metadata: None,
+                agent_id: None,
             },
         }
     }
@@ -2698,6 +2727,7 @@ impl ToNormalizedEntryOpt for Approval {
                                 if answers.len() != 1 { "s" } else { "" }
                             ),
                             metadata: None,
+                            agent_id: None,
                         })
                     }
                     QuestionStatus::TimedOut => None,
@@ -2720,6 +2750,7 @@ impl ToNormalizedEntryOpt for Approval {
                     .trim()
                     .to_string(),
                 metadata: None,
+                agent_id: None,
             }),
             ApprovalStatus::TimedOut => Some(NormalizedEntry {
                 timestamp: None,
@@ -2728,6 +2759,7 @@ impl ToNormalizedEntryOpt for Approval {
                 },
                 content: format!("Approval timed out for tool {tool_name}"),
                 metadata: None,
+                agent_id: None,
             }),
         }
     }

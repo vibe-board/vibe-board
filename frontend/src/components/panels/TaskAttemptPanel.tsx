@@ -11,7 +11,8 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { DollarSign, ChevronDown, List } from 'lucide-react';
-import { type ReactNode, useRef, useState } from 'react';
+import { type ReactNode, useMemo, useRef, useState } from 'react';
+import { useEntries } from '@/contexts/EntriesContext';
 
 const formatCost = (n: number) =>
   n >= 1 ? `$${n.toFixed(2)}` : `$${n.toFixed(4)}`;
@@ -70,6 +71,78 @@ const SessionCost = ({ session }: { session: SessionWithCost }) => {
   );
 };
 
+interface Agent {
+  id: string | null;
+  label: string;
+}
+
+const AgentTabBar = ({
+  agents,
+  activeAgentId,
+  onSelect,
+}: {
+  agents: Agent[];
+  activeAgentId: string | null;
+  onSelect: (id: string | null) => void;
+}) => {
+  if (agents.length <= 1) return null;
+  return (
+    <div className="flex items-center gap-1 px-2 py-1 border-b border-border shrink-0 overflow-x-auto">
+      {agents.map((agent) => (
+        <button
+          key={agent.id ?? '__main__'}
+          onClick={() => onSelect(agent.id)}
+          className={`px-2 py-0.5 text-xs rounded transition-colors whitespace-nowrap ${
+            activeAgentId === agent.id
+              ? 'bg-muted text-foreground font-medium'
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+          }`}
+        >
+          {agent.label}
+        </button>
+      ))}
+    </div>
+  );
+};
+
+const AgentTabBarConnected = ({
+  activeAgentId,
+  onSelect,
+}: {
+  activeAgentId: string | null;
+  onSelect: (id: string | null) => void;
+}) => {
+  const { entries } = useEntries();
+
+  const agents: Agent[] = useMemo(() => {
+    const subagents: Agent[] = [];
+    const seen = new Set<string>();
+    for (const entry of entries) {
+      if (
+        entry.type === 'NORMALIZED_ENTRY' &&
+        entry.content.entry_type.type === 'subagent_started' &&
+        !seen.has(entry.content.entry_type.actor_id)
+      ) {
+        seen.add(entry.content.entry_type.actor_id);
+        const raw =
+          entry.content.entry_type.description ??
+          entry.content.entry_type.actor_id;
+        const label = raw.length > 20 ? raw.slice(0, 20) + '\u2026' : raw;
+        subagents.push({ id: entry.content.entry_type.actor_id, label });
+      }
+    }
+    return [{ id: null, label: 'Main' }, ...subagents];
+  }, [entries]);
+
+  return (
+    <AgentTabBar
+      agents={agents}
+      activeAgentId={activeAgentId}
+      onSelect={onSelect}
+    />
+  );
+};
+
 interface TaskAttemptPanelProps {
   attempt: WorkspaceWithSession | undefined;
   task: Task | null;
@@ -83,6 +156,7 @@ const TaskAttemptPanel = ({
 }: TaskAttemptPanelProps) => {
   const [tocOpen, setTocOpen] = useState(false);
   const [activeProcessId, setActiveProcessId] = useState<string | null>(null);
+  const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
   const jumpToRef = useRef<
     | ((
         anchorCursor: string,
@@ -119,10 +193,15 @@ const TaskAttemptPanel = ({
                   <List className="h-4 w-4" />
                 </button>
               </div>
+              <AgentTabBarConnected
+                activeAgentId={activeAgentId}
+                onSelect={setActiveAgentId}
+              />
               <VirtualizedList
                 key={attempt.id}
                 attempt={attempt}
                 task={task}
+                activeAgentId={activeAgentId}
                 onJumpToReady={(fn) => {
                   jumpToRef.current = fn;
                 }}

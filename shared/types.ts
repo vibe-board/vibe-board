@@ -704,7 +704,7 @@ export type CommandExitStatus = { "type": "exit_code", code: number, } | { "type
 
 export type CommandRunResult = { exit_status: CommandExitStatus | null, output: string | null, };
 
-export type NormalizedEntry = { timestamp: string | null, entry_type: NormalizedEntryType, content: string, };
+export type NormalizedEntry = { timestamp: string | null, entry_type: NormalizedEntryType, content: string, agent_id?: string | null, };
 
 export type NormalizedEntryType = { "type": "user_message" } | { "type": "user_feedback", denied_tool: string, } | { "type": "assistant_message" } | { "type": "tool_use", tool_name: string, action_type: ActionType, status: ToolStatus, 
 /**
@@ -722,7 +722,7 @@ approved_at?: string | null,
  * Wall-clock instant the wrapper observed `status` becoming terminal
  * (Success / Failed / Denied / TimedOut).
  */
-completed_at?: string | null, } | { "type": "system_message" } | { "type": "error_message", error_type: NormalizedEntryError, } | { "type": "thinking" } | { "type": "loading" } | { "type": "next_action", failed: boolean, execution_processes: number, needs_setup: boolean, } | { "type": "token_usage_info" } & TokenUsageInfo | { "type": "task_duration", started_at: string, completed_at: string, duration_seconds: number, } | { "type": "tool_usage_stats" } & ToolUsageStats | { "type": "user_answered_questions", answers: Array<AnsweredQuestion>, };
+completed_at?: string | null, } | { "type": "system_message" } | { "type": "error_message", error_type: NormalizedEntryError, } | { "type": "thinking" } | { "type": "loading" } | { "type": "next_action", failed: boolean, execution_processes: number, needs_setup: boolean, } | { "type": "token_usage_info" } & TokenUsageInfo | { "type": "task_duration", started_at: string, completed_at: string, duration_seconds: number, } | { "type": "tool_usage_stats" } & ToolUsageStats | { "type": "user_answered_questions", answers: Array<AnsweredQuestion>, } | { "type": "subagent_started", actor_id: string, description: string | null, };
 
 export type TokenUsageInfo = { total_tokens: number, model_name: string | null, input_tokens: bigint | null, output_tokens: bigint | null, reasoning_tokens: bigint | null, cache_read_input_tokens: bigint | null, cache_creation_input_tokens: bigint | null, cost_usd: number | null, context_window: number | null, model_context_window: number | null, max_output_tokens: number | null, };
 

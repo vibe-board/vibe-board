@@ -19,6 +19,7 @@ import { ApprovalFormProvider } from '@/contexts/ApprovalFormContext';
 interface VirtualizedListProps {
   attempt: WorkspaceWithSession;
   task?: Task;
+  activeAgentId?: string | null;
   onJumpToReady?: (
     fn: (
       anchorCursor: string,
@@ -38,6 +39,7 @@ const AT_TOP_THRESHOLD = 100;
 const VirtualizedList = ({
   attempt,
   task,
+  activeAgentId,
   onJumpToReady,
   onVisibleProcessIdChange,
 }: VirtualizedListProps) => {
@@ -61,6 +63,21 @@ const VirtualizedList = ({
   } = useConversationWindow({ attempt });
 
   const { setEntries, reset } = useEntries();
+
+  const filteredEntries = useMemo(() => {
+    if (activeAgentId === undefined || activeAgentId === null) {
+      return entries.filter(
+        (e) =>
+          !(e.type === 'NORMALIZED_ENTRY' && e.content.agent_id) ||
+          (e.type === 'NORMALIZED_ENTRY' &&
+            e.content.entry_type.type === 'subagent_started')
+      );
+    }
+    return entries.filter(
+      (e) =>
+        e.type === 'NORMALIZED_ENTRY' && e.content.agent_id === activeAgentId
+    );
+  }, [entries, activeAgentId]);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const prevTotalSizeRef = useRef(0);
   const isAtBottomRef = useRef(true);
@@ -96,11 +113,11 @@ const VirtualizedList = ({
   }, [entries, setEntries]);
 
   const virtualizer = useVirtualizer({
-    count: entries.length,
+    count: filteredEntries.length,
     getScrollElement: () => scrollContainerRef.current,
     estimateSize: () => 120,
     overscan: 5,
-    getItemKey: (i) => entries[i]?.patchKey ?? `idx-${i}`,
+    getItemKey: (i) => filteredEntries[i]?.patchKey ?? `idx-${i}`,
   });
 
   // --- Prepend scroll compensation ---
@@ -117,7 +134,7 @@ const VirtualizedList = ({
     if (delta > 0) {
       container.scrollTop += delta;
     }
-  }, [entries, virtualizer, lastPrependCountRef]);
+  }, [filteredEntries, virtualizer, lastPrependCountRef]);
 
   // --- Anchor-jump scroll reset ---
   // When jumpTo switches us into anchored mode, or switches the anchor to a
@@ -134,7 +151,7 @@ const VirtualizedList = ({
       if (container) container.scrollTop = 0;
     }
     prevAnchorProcessIdRef.current = currentAnchor;
-  }, [windowMode, entries.length]);
+  }, [windowMode, filteredEntries.length]);
 
   // Track totalSize for next prepend compensation
   useEffect(() => {
@@ -198,11 +215,11 @@ const VirtualizedList = ({
       if (atBottom) loadAfter();
       if (atTop) loadMore();
     });
-  }, [entries.length, windowMode.mode, loadAfter, loadMore]);
+  }, [filteredEntries.length, windowMode.mode, loadAfter, loadMore]);
 
   // --- Follow-output / auto-scroll ---
   useEffect(() => {
-    if (entries.length === 0) return;
+    if (filteredEntries.length === 0) return;
     const container = scrollContainerRef.current;
     if (!container) return;
 
@@ -214,7 +231,7 @@ const VirtualizedList = ({
         behavior: 'smooth',
       });
     }
-  }, [entries.length, scrollIntent]);
+  }, [filteredEntries.length, scrollIntent]);
 
   // --- Track visible process ID for TOC highlight ---
   const virtualItems = virtualizer.getVirtualItems();
@@ -223,7 +240,7 @@ const VirtualizedList = ({
     if (virtualItems.length === 0) return;
 
     for (const item of virtualItems) {
-      const entry = entries[item.index];
+      const entry = filteredEntries[item.index];
       if (
         entry &&
         entry.type === 'NORMALIZED_ENTRY' &&
@@ -233,7 +250,7 @@ const VirtualizedList = ({
         return;
       }
     }
-  }, [virtualItems, entries, onVisibleProcessIdChange]);
+  }, [virtualItems, filteredEntries, onVisibleProcessIdChange]);
 
   const context = useMemo(() => ({ attempt, task }), [attempt, task]);
 
@@ -323,8 +340,8 @@ const VirtualizedList = ({
               }}
             >
               {virtualItems.map((virtualRow) => {
-                const entry = entries[virtualRow.index];
-                const isLast = virtualRow.index === entries.length - 1;
+                const entry = filteredEntries[virtualRow.index];
+                const isLast = virtualRow.index === filteredEntries.length - 1;
                 return (
                   <div
                     key={virtualRow.key}

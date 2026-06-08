@@ -118,6 +118,10 @@ pub enum NormalizedEntryType {
     UserAnsweredQuestions {
         answers: Vec<AnsweredQuestion>,
     },
+    SubagentStarted {
+        actor_id: String,
+        description: Option<String>,
+    },
 }
 
 /// A question–answer pair from a completed AskUserQuestion interaction.
@@ -190,8 +194,18 @@ pub struct NormalizedEntry {
     pub timestamp: Option<String>,
     pub entry_type: NormalizedEntryType,
     pub content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(skip)]
     pub metadata: Option<serde_json::Value>,
+}
+
+impl NormalizedEntry {
+    pub fn with_agent_id(mut self, agent_id: Option<String>) -> Self {
+        self.agent_id = agent_id;
+        self
+    }
 }
 
 impl NormalizedEntry {
