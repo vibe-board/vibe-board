@@ -394,8 +394,9 @@ impl LogState {
                 }
                 self.retry_status_fingerprint = Some(fingerprint);
 
+                let next_display = format_retry_next(next);
                 self.add_normalized_entry(system_message(format!(
-                    "MiMoCode retry (attempt {attempt}): {message} (next in {next}ms)"
+                    "MiMoCode retry (attempt {attempt}): {message} (next {next_display})"
                 )));
             }
             SessionStatus::Idle | SessionStatus::Busy | SessionStatus::Other => {}
@@ -1487,6 +1488,55 @@ fn make_relative_path(path: &str, worktree_path: &Path) -> String {
     make_path_relative(path, &worktree_path.to_string_lossy())
 }
 
+fn format_retry_next(next_ms: u64) -> String {
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    format_retry_next_with_now(next_ms, now_ms)
+}
+
+fn format_retry_next_with_now(next_ms: u64, now_ms: u64) -> String {
+    // mimo currently sends `next` as an absolute epoch-ms timestamp; older versions
+    // may have sent a relative duration. Disambiguate by magnitude: any value past
+    // ~1973 in epoch ms (10^11) is overwhelmingly likely to be an absolute timestamp.
+    const ABSOLUTE_THRESHOLD_MS: u64 = 100_000_000_000;
+    let delay_ms = if next_ms > ABSOLUTE_THRESHOLD_MS {
+        next_ms.saturating_sub(now_ms)
+    } else {
+        next_ms
+    };
+    format_delay(delay_ms)
+}
+
+fn format_delay(ms: u64) -> String {
+    if ms == 0 {
+        return "now".to_string();
+    }
+    if ms < 1_000 {
+        return format!("in {ms}ms");
+    }
+    let secs = ms / 1_000;
+    if secs < 60 {
+        return format!("in {secs}s");
+    }
+    let mins = secs / 60;
+    let rem_secs = secs % 60;
+    if mins < 60 {
+        if rem_secs == 0 {
+            return format!("in {mins}m");
+        }
+        return format!("in {mins}m{rem_secs}s");
+    }
+    let hours = mins / 60;
+    let rem_mins = mins % 60;
+    if rem_mins == 0 {
+        format!("in {hours}h")
+    } else {
+        format!("in {hours}h{rem_mins}m")
+    }
+}
+
 fn fingerprint_todos(todos: &[SdkTodo]) -> String {
     let mut parts = todos
         .iter()
@@ -1548,4 +1598,41 @@ fn parse_question_items(items: &[Value]) -> Vec<AskUserQuestionItem> {
         .filter_map(|v| serde_json::from_value(v.clone()).ok())
         .collect();
     parse_question_items_from_info(&infos)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_retry_next_treats_large_values_as_epoch_ms() {
+        // Reproduces the live log: mimo sends `next` as an absolute epoch ms.
+        let now = 1_780_900_770_000_u64;
+        let next = 1_780_900_777_684_u64; // ~7.7s ahead of "now"
+        assert_eq!(format_retry_next_with_now(next, now), "in 7s");
+    }
+
+    #[test]
+    fn format_retry_next_keeps_small_values_as_relative_ms() {
+        // Older / hypothetical mimo versions sending a relative duration must
+        // still render correctly.
+        assert_eq!(format_retry_next_with_now(750, 0), "in 750ms");
+        assert_eq!(format_retry_next_with_now(2_500, 0), "in 2s");
+    }
+
+    #[test]
+    fn format_retry_next_handles_past_or_equal_epoch_targets() {
+        // If the retry was already due by the time we render, show "now".
+        let now = 1_780_900_777_684_u64;
+        assert_eq!(format_retry_next_with_now(now, now), "now");
+        assert_eq!(format_retry_next_with_now(now - 5_000, now), "now");
+    }
+
+    #[test]
+    fn format_delay_covers_minute_and_hour_buckets() {
+        assert_eq!(format_delay(75_000), "in 1m15s");
+        assert_eq!(format_delay(60_000), "in 1m");
+        assert_eq!(format_delay(3_600_000), "in 1h");
+        assert_eq!(format_delay(3_900_000), "in 1h5m");
+    }
 }

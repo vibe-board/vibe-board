@@ -447,6 +447,18 @@ pub fn build_mimocode_client(
 
 const MIMOCODE_PROMPT_TIMEOUT: Duration = Duration::from_secs(60 * 30);
 
+/// SSE event streams are long-lived. The client-level default timeout (30s) would
+/// otherwise cancel the response body after 30s, forcing a reconnect every interval
+/// and dropping events whose IDs the server doesn't replay (manifests as gaps in
+/// `MiMoCode retry (attempt N)` logs).
+const MIMOCODE_EVENT_STREAM_TIMEOUT: Duration = Duration::from_secs(60 * 60 * 24 * 7);
+
+/// After a `session.error` is observed but the prompt request has already returned,
+/// give the server this long to also emit `session.idle` before surfacing the error.
+/// Without this bound, an upstream that fails mid-stream and never re-enters idle
+/// would leave the executor waiting forever.
+const MIMOCODE_IDLE_AFTER_ERROR_TIMEOUT: Duration = Duration::from_secs(30);
+
 fn append_session_error(session_error: &mut Option<String>, message: String) {
     match session_error {
         Some(existing) => {
@@ -500,13 +512,43 @@ where
     if !idle_seen {
         // The MiMoCode server streams events independently; wait for `session.idle` so we capture
         // tail updates reliably (e.g. final tool completion events).
+        //
+        // Bound the wait once a `session.error` has been observed: the server may have already
+        // declared this turn finished and will never emit `session.idle`, in which case waiting
+        // here would hang forever. The deadline gives the server a short window to still emit
+        // idle (some flows do error-then-idle) before we surface the accumulated error.
+        let mut idle_deadline: Option<tokio::time::Instant> = session_error
+            .as_ref()
+            .map(|_| tokio::time::Instant::now() + MIMOCODE_IDLE_AFTER_ERROR_TIMEOUT);
         loop {
+            let timeout_fut = async {
+                match idle_deadline {
+                    Some(deadline) => tokio::time::sleep_until(deadline).await,
+                    None => std::future::pending::<()>().await,
+                }
+            };
+
             tokio::select! {
                 _ = cancel.cancelled() => return Ok(()),
+                _ = timeout_fut => {
+                    tracing::warn!(
+                        "MiMoCode session.idle not received within {:?} after session.error; \
+                         surfacing accumulated error",
+                        MIMOCODE_IDLE_AFTER_ERROR_TIMEOUT
+                    );
+                    break;
+                }
                 event = control_rx.recv() => match event {
                     Some(ControlEvent::Idle) | None => break,
                     Some(ControlEvent::AuthRequired { message }) => return Err(ExecutorError::AuthRequired(message)),
-                    Some(ControlEvent::SessionError { message }) => append_session_error(&mut session_error, message),
+                    Some(ControlEvent::SessionError { message }) => {
+                        append_session_error(&mut session_error, message);
+                        if idle_deadline.is_none() {
+                            idle_deadline = Some(
+                                tokio::time::Instant::now() + MIMOCODE_IDLE_AFTER_ERROR_TIMEOUT,
+                            );
+                        }
+                    }
                     Some(ControlEvent::Disconnected) if !cancel.is_cancelled() => {
                         return Err(ExecutorError::Io(io::Error::other(
                             "MiMoCode event stream disconnected while waiting for session to go idle",
@@ -1118,6 +1160,7 @@ pub async fn connect_event_stream(
     let mut req = client
         .get(format!("{base_url}/event"))
         .header(reqwest::header::ACCEPT, "text/event-stream")
+        .timeout(MIMOCODE_EVENT_STREAM_TIMEOUT)
         .query(&[("directory", directory)]);
 
     if let Some(last_event_id) = last_event_id {
@@ -1987,5 +2030,71 @@ mod tests {
                 }
             })
         ));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn run_request_with_control_breaks_idle_wait_after_session_error() {
+        // Reproduces the upstream-mid-stream hang: prompt completes, mimo emits
+        // `session.error` over SSE but never emits `session.idle`. Without the
+        // bounded wait, the second loop would block forever.
+        let (control_tx, mut control_rx) = mpsc::unbounded_channel::<ControlEvent>();
+        let pending = PendingApprovals::new();
+        let cancel = CancellationToken::new();
+
+        // Send the SSE-side error after the prompt request "returns" but never send Idle.
+        let tx = control_tx.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            let _ = tx.send(ControlEvent::SessionError {
+                message: "Bad Gateway".to_string(),
+            });
+        });
+
+        let request_fut = Box::pin(async {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            Ok::<(), ExecutorError>(())
+        });
+
+        let result = tokio::time::timeout(
+            Duration::from_secs(120),
+            run_request_with_control(request_fut, &mut control_rx, &pending, cancel),
+        )
+        .await
+        .expect("run_request_with_control must not hang past the idle-after-error deadline");
+
+        let err = result.expect_err("accumulated session error must surface");
+        assert!(
+            err.to_string().contains("Bad Gateway"),
+            "expected accumulated message in error, got: {err}"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn run_request_with_control_returns_ok_when_idle_arrives() {
+        // Sanity check: the bounded wait still completes successfully when mimo
+        // does emit `session.idle` after a normal prompt.
+        let (control_tx, mut control_rx) = mpsc::unbounded_channel::<ControlEvent>();
+        let pending = PendingApprovals::new();
+        let cancel = CancellationToken::new();
+
+        let tx = control_tx.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            let _ = tx.send(ControlEvent::Idle);
+        });
+
+        let request_fut = Box::pin(async {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            Ok::<(), ExecutorError>(())
+        });
+
+        let result = tokio::time::timeout(
+            Duration::from_secs(120),
+            run_request_with_control(request_fut, &mut control_rx, &pending, cancel),
+        )
+        .await
+        .expect("must not hang on the happy path");
+
+        result.expect("happy path must return Ok");
     }
 }
