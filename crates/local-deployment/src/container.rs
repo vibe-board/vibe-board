@@ -2,7 +2,10 @@ use std::{
     collections::HashMap,
     io,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 
@@ -36,7 +39,7 @@ use executors::{
     env::{ExecutionEnv, RepoContext},
     executors::{
         BaseCodingAgent, CancellationToken, ExecutorExitResult, ExecutorExitSignal,
-        StandardCodingAgentExecutor,
+        StandardCodingAgentExecutor, claude::protocol::ProtocolPeer,
     },
     logs::{
         NormalizedEntry, NormalizedEntryType,
@@ -90,6 +93,17 @@ fn repo_worktree_path(
     }
 }
 
+/// Represents a running agent process that can accept follow-up messages.
+#[derive(Clone)]
+pub struct ActiveProcess {
+    pub protocol_peer: ProtocolPeer,
+    pub session_id: Uuid,
+    pub execution_process_id: Uuid,
+    pub cancel: CancellationToken,
+    pub result_notify: Arc<tokio::sync::Notify>,
+    pub has_cron: Arc<AtomicBool>,
+}
+
 #[derive(Clone)]
 pub struct LocalContainerService {
     db: DBService,
@@ -103,6 +117,7 @@ pub struct LocalContainerService {
     db_stream_handles: Arc<RwLock<HashMap<Uuid, JoinHandle<()>>>>,
     raw_log_handles: Arc<RwLock<HashMap<Uuid, JoinHandle<()>>>>,
     exit_monitor_handles: Arc<RwLock<HashMap<Uuid, JoinHandle<()>>>>,
+    pub active_processes: Arc<RwLock<HashMap<Uuid, ActiveProcess>>>,
     config: Arc<RwLock<Config>>,
     git: GitService,
     image_service: ImageService,
@@ -130,6 +145,7 @@ impl LocalContainerService {
         let db_stream_handles = Arc::new(RwLock::new(HashMap::new()));
         let raw_log_handles = Arc::new(RwLock::new(HashMap::new()));
         let exit_monitor_handles = Arc::new(RwLock::new(HashMap::new()));
+        let active_processes = Arc::new(RwLock::new(HashMap::new()));
         let normalized_entry_stores = Arc::new(RwLock::new(HashMap::new()));
         let notification_service = NotificationService::new(config.clone());
 
@@ -143,6 +159,7 @@ impl LocalContainerService {
             db_stream_handles,
             raw_log_handles,
             exit_monitor_handles,
+            active_processes,
             config,
             git,
             image_service,
@@ -210,6 +227,41 @@ impl LocalContainerService {
     async fn take_exit_monitor_handle(&self, id: &Uuid) -> Option<JoinHandle<()>> {
         let mut map = self.exit_monitor_handles.write().await;
         map.remove(id)
+    }
+
+    /// Find an active process for a session.
+    pub async fn find_active_process(&self, session_id: &Uuid) -> Option<ActiveProcess> {
+        let processes = self.active_processes.read().await;
+        processes.get(session_id).cloned()
+    }
+
+    /// Remove an active process.
+    pub async fn remove_active_process(&self, session_id: &Uuid) {
+        let mut processes = self.active_processes.write().await;
+        processes.remove(session_id);
+    }
+
+    /// Insert an active process.
+    pub async fn insert_active_process(&self, session_id: Uuid, process: ActiveProcess) {
+        let mut processes = self.active_processes.write().await;
+        processes.insert(session_id, process);
+    }
+
+    /// Check if a normalized entry indicates a CronCreate tool call.
+    fn entry_indicates_cron(entry: &NormalizedEntry) -> bool {
+        if let NormalizedEntryType::ToolUse { tool_name, .. } = &entry.entry_type {
+            tool_name == "CronCreate"
+        } else {
+            false
+        }
+    }
+
+    /// Check if any entry in the normalized entry store indicates cron usage.
+    fn has_cron_in_store(store: &NormalizedEntryStore) -> bool {
+        store
+            .snapshot()
+            .iter()
+            .any(|(_, entry)| Self::entry_indicates_cron(entry))
     }
 
     pub async fn cleanup_workspace(db: &DBService, workspace: &Workspace) {
@@ -766,6 +818,138 @@ impl LocalContainerService {
 
             // Cleanup child handle
             child_store.write().await.remove(&exec_id);
+        })
+    }
+
+    /// Spawn a continuous exit monitor that keeps the process alive when cron jobs exist.
+    ///
+    /// Instead of exiting after one Result, this monitor loops:
+    /// 1. Wait for Result notification from ProtocolPeer
+    /// 2. Check normalized entry store for CronCreate entries
+    /// 3. If cron exists: loop back (process stays alive)
+    /// 4. If no cron: run cleanup and exit normally
+    pub fn spawn_continuous_exit_monitor(
+        &self,
+        exec_id: &Uuid,
+        session_id: Uuid,
+        active_process: ActiveProcess,
+    ) -> JoinHandle<()> {
+        let exec_id = *exec_id;
+        let container = self.clone();
+        let active_processes = container.active_processes.clone();
+        let normalized_entry_stores = container.normalized_entry_stores.clone();
+        let child_store = container.child_store.clone();
+        let msg_stores = container.msg_stores.clone();
+        let db = container.db.clone();
+
+        tokio::spawn(async move {
+            let mut process_exit_rx = container.spawn_os_exit_watcher(exec_id);
+            let cancel = active_process.cancel.clone();
+            let _protocol_peer = active_process.protocol_peer.clone(); // keep alive
+            let result_notify = active_process.result_notify.clone();
+            let has_cron = active_process.has_cron.clone();
+
+            // Check for cron entries every 30 seconds
+            let cron_check_interval = tokio::time::Duration::from_secs(30);
+            let mut cron_check_tick = tokio::time::interval(cron_check_interval);
+            cron_check_tick.tick().await; // skip the first immediate tick
+
+            loop {
+                tokio::select! {
+                    // Result notification from ProtocolPeer
+                    _ = result_notify.notified() => {
+                        // Check for cron entries in the normalized entry store
+                        if let Some(ne_store) = normalized_entry_stores.read().await.get(&exec_id)
+                            && Self::has_cron_in_store(ne_store)
+                        {
+                            has_cron.store(true, Ordering::Relaxed);
+                            tracing::debug!("Cron jobs detected, keeping process alive");
+                        }
+
+                        if has_cron.load(Ordering::Relaxed) {
+                            // Cron exists: loop back, process stays alive
+                            continue;
+                        }
+
+                        // No cron: proceed with cleanup
+                        break;
+                    }
+                    // Periodic cron check
+                    _ = cron_check_tick.tick() => {
+                        if let Some(ne_store) = normalized_entry_stores.read().await.get(&exec_id)
+                            && Self::has_cron_in_store(ne_store)
+                        {
+                            has_cron.store(true, Ordering::Relaxed);
+                        }
+                    }
+                    // Cancel signal
+                    _ = cancel.cancelled() => {
+                        tracing::info!("Continuous exit monitor cancelled for {}", exec_id);
+                        if let Some(child_lock) = child_store.read().await.get(&exec_id).cloned() {
+                            let mut child = child_lock.write().await;
+                            if let Err(err) = command::kill_process_group(&mut child).await {
+                                tracing::error!("Failed to kill process group on cancel: {} {}", exec_id, err);
+                            }
+                        }
+                        break;
+                    }
+                    // Process exit (crash or unexpected termination)
+                    exit_status_result = &mut process_exit_rx => {
+                        tracing::info!("Process exited unexpectedly: {:?}, {}", exit_status_result, exec_id);
+                        break;
+                    }
+                }
+            }
+
+            // Run the same cleanup as the normal exit monitor
+            // Determine exit code and status
+            let status = ExecutionProcessStatus::Completed;
+            let exit_code = Some(0i64);
+            let was_stopped = ExecutionProcess::was_stopped(&db.pool, exec_id).await;
+
+            // Pre-completion: commit changes
+            if !was_stopped
+                && let Ok(ctx) = ExecutionProcess::load_context(&db.pool, exec_id).await
+                && let Err(e) = container.try_commit_changes(&ctx).await
+            {
+                tracing::error!("Failed to commit changes after execution: {}", e);
+            }
+
+            // Mark completed
+            if !was_stopped
+                && let Err(e) = container
+                    .update_completion_and_push(exec_id, status, exit_code)
+                    .await
+            {
+                tracing::error!("Failed to update execution process completion: {}", e);
+            }
+
+            // Aggregate cost data
+            if let Err(e) = CodingAgentTurn::aggregate_turn_cost(&db.pool, exec_id).await {
+                tracing::warn!("Failed to aggregate turn cost for {}: {}", exec_id, e);
+            }
+
+            // Safety cleanup
+            let raw_log_handle = container.take_raw_log_handle(&exec_id).await;
+            let db_stream_handle = container.take_db_stream_handle(&exec_id).await;
+            if let Some(msg_arc) = msg_stores.write().await.remove(&exec_id) {
+                msg_arc.push_finished();
+            }
+            if let Some(handle) = raw_log_handle {
+                let _ = tokio::time::timeout(Duration::from_secs(5), handle).await;
+            }
+            if let Some(handle) = db_stream_handle {
+                let _ = tokio::time::timeout(Duration::from_secs(5), handle).await;
+            }
+
+            // Safety cleanup: remove NormalizedEntryStore
+            normalized_entry_stores.write().await.remove(&exec_id);
+
+            // Cleanup child handle
+            child_store.write().await.remove(&exec_id);
+
+            // Remove from active processes
+            active_processes.write().await.remove(&session_id);
         })
     }
 
@@ -1567,14 +1751,51 @@ impl ContainerService for LocalContainerService {
             .await;
 
         // Store cancellation token for graceful shutdown
+        let cancel = spawned.cancel.clone();
         if let Some(cancel) = spawned.cancel {
             self.add_cancellation_token(execution_process.id, cancel)
                 .await;
         }
 
-        // Spawn unified exit monitor: watches OS exit and optional executor signal
-        let hn = self.spawn_exit_monitor(&execution_process.id, spawned.exit_signal);
-        self.add_exit_monitor_handle(execution_process.id, hn).await;
+        // Check if executor supports continuous mode and has a ProtocolPeer
+        if let Some(peer_rx) = spawned.protocol_peer_rx {
+            // Wait for ProtocolPeer to be ready
+            match peer_rx.await {
+                Ok(protocol_peer) => {
+                    let result_notify = Arc::new(tokio::sync::Notify::new());
+                    let active = ActiveProcess {
+                        protocol_peer,
+                        session_id: execution_process.session_id,
+                        execution_process_id: execution_process.id,
+                        cancel: cancel.unwrap_or_else(CancellationToken::new),
+                        result_notify,
+                        has_cron: Arc::new(AtomicBool::new(false)),
+                    };
+                    self.insert_active_process(execution_process.session_id, active.clone())
+                        .await;
+
+                    // Spawn continuous exit monitor instead of normal one
+                    let hn = self.spawn_continuous_exit_monitor(
+                        &execution_process.id,
+                        execution_process.session_id,
+                        active,
+                    );
+                    self.add_exit_monitor_handle(execution_process.id, hn).await;
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to receive ProtocolPeer: {}, falling back to normal exit monitor",
+                        e
+                    );
+                    let hn = self.spawn_exit_monitor(&execution_process.id, spawned.exit_signal);
+                    self.add_exit_monitor_handle(execution_process.id, hn).await;
+                }
+            }
+        } else {
+            // Spawn unified exit monitor: watches OS exit and optional executor signal
+            let hn = self.spawn_exit_monitor(&execution_process.id, spawned.exit_signal);
+            self.add_exit_monitor_handle(execution_process.id, hn).await;
+        }
 
         Ok(())
     }

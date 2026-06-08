@@ -479,6 +479,11 @@ pub trait StandardCodingAgentExecutor {
         _worktree_path: &Path,
     );
 
+    /// Whether this executor supports continuous conversation mode.
+    fn supports_continuous(&self) -> bool {
+        false
+    }
+
     // MCP configuration methods
     fn default_mcp_config_path(&self) -> Option<std::path::PathBuf>;
 
@@ -525,6 +530,9 @@ pub struct SpawnedChild {
     pub exit_signal: Option<ExecutorExitSignal>,
     /// Container → Executor: signals when container wants to cancel the execution
     pub cancel: Option<CancellationToken>,
+    /// Receives the ProtocolPeer handle once the Claude executor has spawned it.
+    pub protocol_peer_rx:
+        Option<tokio::sync::oneshot::Receiver<crate::executors::claude::protocol::ProtocolPeer>>,
 }
 
 impl From<AsyncGroupChild> for SpawnedChild {
@@ -533,6 +541,7 @@ impl From<AsyncGroupChild> for SpawnedChild {
             child,
             exit_signal: None,
             cancel: None,
+            protocol_peer_rx: None,
         }
     }
 }
