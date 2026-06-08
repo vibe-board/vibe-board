@@ -144,13 +144,14 @@ export const useConversationWindow = (
       allSummaries: Array<{
         execution_process_id: string;
         summary: string;
+        full_prompt: string;
       }>
     ) => {
       if (!sessionId) return;
       setIsJumping(true);
       try {
         summariesMapRef.current = new Map(
-          allSummaries.map((s) => [s.execution_process_id, s.summary])
+          allSummaries.map((s) => [s.execution_process_id, s.full_prompt])
         );
         renderedProcessesRef.current = new Set();
 

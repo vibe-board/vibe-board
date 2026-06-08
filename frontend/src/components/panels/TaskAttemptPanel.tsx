@@ -164,6 +164,7 @@ const TaskAttemptPanel = ({
         allSummaries: Array<{
           execution_process_id: string;
           summary: string;
+          full_prompt: string;
         }>
       ) => Promise<void>)
     | null

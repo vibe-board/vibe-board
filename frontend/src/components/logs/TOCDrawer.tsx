@@ -11,7 +11,11 @@ interface TOCDrawerProps {
   onJumpTo: (
     anchorCursor: string,
     processId: string,
-    allSummaries: Array<{ execution_process_id: string; summary: string }>
+    allSummaries: Array<{
+      execution_process_id: string;
+      summary: string;
+      full_prompt: string;
+    }>
   ) => void;
   activeProcessId: string | null;
 }
@@ -106,6 +110,7 @@ export function TOCDrawer({
                   messages.map((m) => ({
                     execution_process_id: m.execution_process_id,
                     summary: m.summary,
+                    full_prompt: m.full_prompt,
                   }))
                 );
                 onClose();

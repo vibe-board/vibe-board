@@ -326,6 +326,7 @@ pub struct UserMessageSummary {
     pub execution_process_id: Uuid,
     pub entry_index: i64,
     pub summary: String,
+    pub full_prompt: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
     /// Opaque cursor that, when used as `?after=`, starts loading entries
     /// from the very beginning of this process.
@@ -376,6 +377,7 @@ pub async fn get_user_messages(
                 execution_process_id: ep.id,
                 entry_index: 0,
                 summary,
+                full_prompt: prompt.clone(),
                 created_at: ep.created_at,
                 anchor_cursor,
             })

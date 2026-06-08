@@ -106,6 +106,7 @@ export type UserMessageSummary = {
   execution_process_id: string;
   entry_index: number;
   summary: string;
+  full_prompt: string;
   created_at: string;
   anchor_cursor: string;
 };

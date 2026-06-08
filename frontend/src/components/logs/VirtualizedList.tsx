@@ -27,6 +27,7 @@ interface VirtualizedListProps {
       allSummaries: Array<{
         execution_process_id: string;
         summary: string;
+        full_prompt: string;
       }>
     ) => Promise<void>
   ) => void;
