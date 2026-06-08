@@ -21,7 +21,10 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use workspace_utils::approvals::{ApprovalStatus, QuestionAnswer, QuestionStatus};
 
-use super::{slash_commands, types::{MiMoCodeExecutorEvent, SdkEvent}};
+use super::{
+    slash_commands,
+    types::{MiMoCodeExecutorEvent, SdkEvent},
+};
 use crate::{
     approvals::{ExecutorApprovalError, ExecutorApprovalService},
     env::RepoContext,
