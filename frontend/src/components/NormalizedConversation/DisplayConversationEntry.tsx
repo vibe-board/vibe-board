@@ -43,6 +43,8 @@ import {
   formatDuration,
   formatDurationFine,
 } from '@/utils/date';
+import { useElapsedTimer } from '@/hooks/useElapsedTimer';
+import { useExecutionProcessesContext } from '@/contexts/ExecutionProcessesContext';
 import RawLogText from '../common/RawLogText';
 import UserMessage from './UserMessage';
 import PendingApprovalEntry from './PendingApprovalEntry';
@@ -713,13 +715,30 @@ const ScriptToolCallCard: React.FC<{
   );
 };
 
-const LoadingCard = () => {
+const LoadingCard = ({
+  executionProcessId,
+}: {
+  executionProcessId?: string;
+}) => {
+  const { executionProcessesByIdVisible } = useExecutionProcessesContext();
+  const startedAt = executionProcessId
+    ? executionProcessesByIdVisible[executionProcessId]?.started_at
+    : undefined;
+  const elapsed = useElapsedTimer(startedAt);
+
   return (
-    <div className="flex animate-pulse space-x-2 items-center">
-      <div className="size-3 bg-foreground/10"></div>
-      <div className="flex-1 h-3 bg-foreground/10"></div>
-      <div className="flex-1 h-3"></div>
-      <div className="flex-1 h-3"></div>
+    <div className="flex items-center gap-3">
+      <div className="flex animate-pulse space-x-2 items-center flex-1">
+        <div className="size-3 bg-foreground/10"></div>
+        <div className="flex-1 h-3 bg-foreground/10"></div>
+        <div className="flex-1 h-3"></div>
+        <div className="flex-1 h-3"></div>
+      </div>
+      {startedAt && elapsed > 0 && (
+        <span className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
+          {formatDuration(elapsed)}
+        </span>
+      )}
     </div>
   );
 };
@@ -1062,7 +1081,7 @@ function DisplayConversationEntry({
   if (isLoading) {
     return (
       <div className="px-4 py-2 text-sm">
-        <LoadingCard />
+        <LoadingCard executionProcessId={executionProcessId} />
       </div>
     );
   }
