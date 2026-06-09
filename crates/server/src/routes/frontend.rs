@@ -19,6 +19,14 @@ pub async fn serve_frontend_root() -> impl IntoResponse {
     serve_file("index.html").await
 }
 
+fn cache_control(path: &str) -> HeaderValue {
+    if path.starts_with("assets/") {
+        HeaderValue::from_static("public, max-age=31536000, immutable")
+    } else {
+        HeaderValue::from_static("no-cache")
+    }
+}
+
 async fn serve_file(path: &str) -> impl IntoResponse + use<> {
     let file = Assets::get(path);
 
@@ -32,6 +40,7 @@ async fn serve_file(path: &str) -> impl IntoResponse + use<> {
                     header::CONTENT_TYPE,
                     HeaderValue::from_str(mime.as_ref()).unwrap(),
                 )
+                .header(header::CACHE_CONTROL, cache_control(path))
                 .body(Body::from(content.data.into_owned()))
                 .unwrap()
         }
@@ -41,6 +50,7 @@ async fn serve_file(path: &str) -> impl IntoResponse + use<> {
                 Response::builder()
                     .status(StatusCode::OK)
                     .header(header::CONTENT_TYPE, HeaderValue::from_static("text/html"))
+                    .header(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"))
                     .body(Body::from(index.data.into_owned()))
                     .unwrap()
             } else {
