@@ -7,9 +7,12 @@ import {
   WifiOff,
   Monitor,
   AlertCircle,
+  MoreHorizontal,
 } from 'lucide-react';
 import { useConnectionStore } from '@/stores/connection-store';
 import { MachinePairingForm } from './MachinePairingForm';
+import { UnpairMachineDialog } from '@/components/dialogs';
+import { clearAllCachedEntries } from '@/utils/conversationCache';
 import type { MachineStatus } from '@/lib/e2ee';
 
 export function GatewayHomeTab({ connectionId }: { connectionId: string }) {
@@ -74,8 +77,20 @@ function MachineRow({
   const openMachineProjectsTab = useConnectionStore(
     (s) => s.openMachineProjectsTab
   );
+  const unpairMachine = useConnectionStore((s) => s.unpairMachine);
   const [showPair, setShowPair] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
   const label = machine.hostname || machine.machine_id.slice(0, 8);
+
+  const handleUnpair = async () => {
+    setShowMenu(false);
+    const result = await UnpairMachineDialog.show({ hostname: label });
+    if (!result.confirmed) return;
+    unpairMachine(connectionId, machine.machine_id);
+    if (result.clearCache) {
+      await clearAllCachedEntries();
+    }
+  };
 
   const handleClick = () => {
     if (isPaired) {
@@ -105,6 +120,33 @@ function MachineRow({
         </span>
         {!isPaired && (
           <span className="text-xs text-foreground/40">Not paired</span>
+        )}
+        {isPaired && (
+          <div className="relative shrink-0">
+            <button
+              aria-label="Machine actions"
+              className="p-1.5 rounded hover:bg-foreground/10"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowMenu((v) => !v);
+              }}
+            >
+              <MoreHorizontal size={16} className="text-foreground/50" />
+            </button>
+            {showMenu && (
+              <div className="absolute right-0 top-full mt-1 bg-background border border-border rounded shadow-lg z-10 py-1 min-w-[140px]">
+                <button
+                  className="flex items-center gap-2 w-full px-3 py-2 text-sm text-destructive hover:bg-destructive/10"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleUnpair();
+                  }}
+                >
+                  <WifiOff size={14} /> Unpair
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </div>
 

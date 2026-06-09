@@ -93,6 +93,11 @@ export {
 // Shared/Generic dialogs
 export { ConfirmDialog, type ConfirmDialogProps } from './shared/ConfirmDialog';
 export {
+  UnpairMachineDialog,
+  type UnpairMachineDialogProps,
+  type UnpairMachineResult,
+} from './UnpairMachineDialog';
+export {
   FolderPickerDialog,
   type FolderPickerDialogProps,
 } from './shared/FolderPickerDialog';
