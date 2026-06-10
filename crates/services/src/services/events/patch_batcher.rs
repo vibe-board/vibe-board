@@ -83,3 +83,55 @@ fn dedupe_ops(ops: Vec<PatchOperation>) -> Vec<PatchOperation> {
     kept.sort_by_key(|(i, _)| *i);
     kept.into_iter().map(|(_, op)| op).collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use json_patch::ReplaceOperation;
+    use serde_json::json;
+
+    fn replace(path: &str, value: serde_json::Value) -> PatchOperation {
+        PatchOperation::Replace(ReplaceOperation {
+            path: path.to_string().try_into().expect("valid pointer"),
+            value,
+        })
+    }
+
+    #[test]
+    fn merges_multi_path_ops_into_one_patch() {
+        // Reflects the production scenario: when a task transitions to InReview,
+        // execution_process / task / workspace patches all arrive within 10ms
+        // and get merged into a single Patch with mixed paths. Downstream
+        // stream filters MUST iterate every op or the task update is lost.
+        let ops = vec![
+            replace("/execution_processes/aaa", json!({"id": "aaa"})),
+            replace("/tasks/bbb", json!({"id": "bbb", "status": "inreview"})),
+            replace("/workspaces/ccc", json!({"id": "ccc"})),
+        ];
+        let merged = dedupe_ops(ops);
+        assert_eq!(merged.len(), 3);
+        assert_eq!(merged[0].path().as_str(), "/execution_processes/aaa");
+        assert_eq!(merged[1].path().as_str(), "/tasks/bbb");
+        assert_eq!(merged[2].path().as_str(), "/workspaces/ccc");
+    }
+
+    #[test]
+    fn dedupe_keeps_last_write_per_path() {
+        let ops = vec![
+            replace("/tasks/abc", json!({"status": "inprogress"})),
+            replace("/workspaces/xyz", json!({"id": "xyz"})),
+            replace("/tasks/abc", json!({"status": "inreview"})),
+        ];
+        let merged = dedupe_ops(ops);
+        assert_eq!(merged.len(), 2);
+        // /workspaces/xyz first (kept at original idx 1)
+        assert_eq!(merged[0].path().as_str(), "/workspaces/xyz");
+        // /tasks/abc kept at idx 2 with the InReview value
+        assert_eq!(merged[1].path().as_str(), "/tasks/abc");
+        if let PatchOperation::Replace(r) = &merged[1] {
+            assert_eq!(r.value["status"], "inreview");
+        } else {
+            panic!("expected replace op");
+        }
+    }
+}
