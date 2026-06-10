@@ -30,6 +30,7 @@ const UnpairMachineDialogImpl = NiceModal.create<UnpairMachineDialogProps>(
 
     const handleConfirm = () => {
       modal.resolve({ confirmed: true, clearCache } as UnpairMachineResult);
+      modal.hide();
     };
 
     const handleCancel = () => {
@@ -37,11 +38,12 @@ const UnpairMachineDialogImpl = NiceModal.create<UnpairMachineDialogProps>(
         confirmed: false,
         clearCache: false,
       } as UnpairMachineResult);
+      modal.hide();
     };
 
     return (
-      <Dialog open={modal.visible} onOpenChange={handleCancel}>
-        <DialogContent className="sm:max-w-[440px]">
+      <Dialog open={modal.visible} onOpenChange={handleCancel} className="sm:max-w-[440px]">
+        <DialogContent>
           <DialogHeader>
             <div className="flex items-center gap-3">
               <AlertTriangle className="h-6 w-6 text-destructive" />
