@@ -2,11 +2,52 @@ use std::sync::Arc;
 
 use axum::{
     Extension, Router,
+    body::HttpBody,
+    http::header,
     routing::{IntoMakeService, get},
 };
-use tower_http::{compression::CompressionLayer, validate_request::ValidateRequestHeaderLayer};
+use tower_http::{
+    compression::{
+        CompressionLayer,
+        predicate::{DefaultPredicate, Predicate},
+    },
+    validate_request::ValidateRequestHeaderLayer,
+};
 
 use crate::{DeploymentImpl, e2ee_manager::BridgeManager, middleware};
+
+/// Skip compression for responses larger than ~4 MB.
+///
+/// Why: gzipping a giant JSON response (e.g. workspace diff with many large
+/// files) replaces a precise `Content-Length` with `Transfer-Encoding: chunked`,
+/// forcing the browser to grow its read buffer dynamically. For 50 MB+ payloads
+/// this peaks at 2–3× memory and OOMs the tab. In the e2ee-gateway path the
+/// compressed-but-base64'd body also approaches the 64 MB tungstenite message
+/// cap and saturates the 256-frame sub-channel, producing "Machine offline"
+/// the instant the diff page mounts. Below this threshold compression still
+/// gives the documented 60–80% bandwidth win on REST responses.
+const COMPRESSION_MAX_SIZE: u64 = 4 * 1024 * 1024;
+
+#[derive(Clone, Copy)]
+struct SizeBelow(u64);
+
+impl Predicate for SizeBelow {
+    fn should_compress<B: HttpBody>(&self, response: &axum::http::Response<B>) -> bool {
+        let content_size = response.body().size_hint().exact().or_else(|| {
+            response
+                .headers()
+                .get(header::CONTENT_LENGTH)
+                .and_then(|h| h.to_str().ok())
+                .and_then(|val| val.parse().ok())
+        });
+        match content_size {
+            Some(size) => size <= self.0,
+            // Unknown size: refuse to compress to avoid the chunked-encoding
+            // dynamic-buffer-growth blow-up described above.
+            None => false,
+        }
+    }
+}
 
 pub mod approvals;
 pub mod config;
@@ -60,7 +101,10 @@ pub fn router(
         .layer(ValidateRequestHeaderLayer::custom(
             middleware::validate_origin,
         ))
-        .layer(CompressionLayer::new())
+        .layer(
+            CompressionLayer::new()
+                .compress_when(DefaultPredicate::new().and(SizeBelow(COMPRESSION_MAX_SIZE))),
+        )
         .layer(Extension(bridge_manager))
         .with_state(deployment);
 

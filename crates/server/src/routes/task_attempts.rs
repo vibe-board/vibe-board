@@ -431,6 +431,23 @@ pub async fn get_workspace_diffs(
             base_commit = %base_commit_str,
             "get_diffs returned empty diffs for workspace"
         );
+    } else {
+        // Log payload size so OOM/hang reports on the diff page can be triaged:
+        // a small file count with a large total size means a single huge file;
+        // a large total size points at the response itself blowing up the FE.
+        let total_bytes: usize = diffs
+            .iter()
+            .map(|d| d.old_content.as_ref().map(|s| s.len()).unwrap_or(0)
+                + d.new_content.as_ref().map(|s| s.len()).unwrap_or(0))
+            .sum();
+        let omitted = diffs.iter().filter(|d| d.content_omitted).count();
+        tracing::warn!(
+            workspace_id = %workspace.id,
+            file_count = diffs.len(),
+            omitted,
+            total_content_bytes = total_bytes,
+            "[diff-trace] get_workspace_diffs returning",
+        );
     }
 
     Ok(ResponseJson(ApiResponse::success(diffs)))

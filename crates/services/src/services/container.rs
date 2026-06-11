@@ -240,10 +240,15 @@ pub trait ContainerService {
 
     /// Finalize task execution by updating status to InReview and sending notifications
     async fn finalize_task(&self, ctx: &ExecutionContext) {
-        if let Err(e) =
-            Task::update_status(&self.db().pool, ctx.task.id, TaskStatus::InReview).await
-        {
-            tracing::error!("Failed to update task status to InReview: {e}");
+        tracing::warn!(
+            task_id = %ctx.task.id,
+            ep_id = %ctx.execution_process.id,
+            run_reason = ?ctx.execution_process.run_reason,
+            "[finalize-trace] finalize_task ENTERED — updating to InReview",
+        );
+        match Task::update_status(&self.db().pool, ctx.task.id, TaskStatus::InReview).await {
+            Ok(()) => tracing::warn!(task_id = %ctx.task.id, "[finalize-trace] Task::update_status(InReview) OK"),
+            Err(e) => tracing::error!(task_id = %ctx.task.id, "[finalize-trace] Task::update_status FAILED: {e}"),
         }
 
         // Skip notification if process was intentionally killed by user

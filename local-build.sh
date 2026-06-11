@@ -49,7 +49,11 @@ mkdir -p npx-cli/dist/$PLATFORM
 echo "🔨 Building frontend (local-direct mode, for server/mcp binaries)..."
 (cd frontend && VITE_APP_MODE=local-direct npm run build)
 
+# Force rust-embed to re-scan frontend/dist by touching the source file that holds
+# `#[derive(RustEmbed)]`. The proc-macro reads dist contents at compile time, but
+# cargo can't see asset-only changes unless a tracked Rust source is dirty.
 echo "🔨 Building Rust binaries that embed the local-direct frontend..."
+touch crates/server/src/routes/frontend.rs
 cargo build --release --manifest-path Cargo.toml
 cargo build --release --bin mcp_task_server --manifest-path Cargo.toml
 
@@ -57,6 +61,7 @@ echo "🔨 Rebuilding frontend (gateway mode, for e2ee-gateway binary)..."
 (cd frontend && VITE_APP_MODE=gateway npm run build)
 
 echo "🔨 Building e2ee-gateway with the gateway-mode frontend..."
+touch crates/e2ee-gateway/src/routes/frontend.rs
 cargo build --release --bin e2ee-gateway --manifest-path Cargo.toml
 
 echo "📦 Creating distribution package..."

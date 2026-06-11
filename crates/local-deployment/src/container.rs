@@ -633,7 +633,23 @@ impl LocalContainerService {
                 tracing::warn!("Failed to aggregate turn cost for {}: {}", exec_id, e);
             }
 
-            if let Ok(ctx) = ExecutionProcess::load_context(&db.pool, exec_id).await {
+            tracing::warn!(
+                exec_id = %exec_id,
+                was_stopped,
+                success,
+                cleanup_done,
+                changes_committed,
+                "[finalize-trace] reached load_context",
+            );
+
+            let ctx_result = ExecutionProcess::load_context(&db.pool, exec_id).await;
+            if let Err(e) = &ctx_result {
+                tracing::error!(
+                    exec_id = %exec_id,
+                    "[finalize-trace] load_context FAILED — task patch will NOT be pushed: {e}"
+                );
+            }
+            if let Ok(ctx) = ctx_result {
                 // Update executor session summary if available
                 if let Err(e) = container.update_executor_session_summary(&exec_id).await {
                     tracing::warn!("Failed to update executor session summary: {}", e);
@@ -666,11 +682,21 @@ impl LocalContainerService {
                         );
 
                         // Manually finalize task since we're bypassing normal execution flow
+                        tracing::warn!(exec_id = %exec_id, "[finalize-trace] calling finalize_task: no-changes branch");
                         container.finalize_task(&ctx).await;
                     }
                 }
 
-                if container.should_finalize(&ctx) {
+                let should_final = container.should_finalize(&ctx);
+                tracing::warn!(
+                    exec_id = %exec_id,
+                    task_id = %ctx.task.id,
+                    run_reason = ?ctx.execution_process.run_reason,
+                    ep_status = ?ctx.execution_process.status,
+                    should_final,
+                    "[finalize-trace] post-success-block, evaluating should_finalize",
+                );
+                if should_final {
                     // Only execute queued messages if the execution succeeded
                     // If it failed or was killed, just clear the queue and finalize
                     let should_execute_queued = !matches!(
@@ -708,6 +734,7 @@ impl LocalContainerService {
                             {
                                 tracing::error!("Failed to start queued follow-up: {}", e);
                                 // Fall back to finalization if follow-up fails
+                                tracing::warn!(exec_id = %exec_id, "[finalize-trace] calling finalize_task: queued follow-up failed");
                                 container.finalize_task(&ctx).await;
                             }
                         } else {
@@ -717,6 +744,7 @@ impl LocalContainerService {
                                 ctx.session.id,
                                 ctx.execution_process.status
                             );
+                            tracing::warn!(exec_id = %exec_id, "[finalize-trace] calling finalize_task: discarding queued msg");
                             container.finalize_task(&ctx).await;
                         }
                     } else {
@@ -758,23 +786,47 @@ impl LocalContainerService {
                                                     "Failed to start linter-fix follow-up: {}",
                                                     e
                                                 );
+                                                tracing::warn!(exec_id = %exec_id, "[finalize-trace] calling finalize_task: linter-fix start failed");
                                                 container.finalize_task(&ctx).await;
+                                            } else {
+                                                tracing::warn!(exec_id = %exec_id, "[finalize-trace] linter-fix follow-up STARTED — current process not finalized; task stays InProgress until follow-up completes");
                                             }
                                         }
-                                        _ => container.finalize_task(&ctx).await,
+                                        other => {
+                                            tracing::warn!(exec_id = %exec_id, ?other, "[finalize-trace] calling finalize_task: dirty workspace, no executor profile");
+                                            container.finalize_task(&ctx).await;
+                                        }
                                     }
                                 }
-                                _ => container.finalize_task(&ctx).await,
+                                other => {
+                                    tracing::warn!(exec_id = %exec_id, ?other, "[finalize-trace] calling finalize_task: is_container_clean returned non-Ok(false)");
+                                    container.finalize_task(&ctx).await;
+                                }
                             }
                         } else {
+                            tracing::warn!(exec_id = %exec_id, "[finalize-trace] calling finalize_task: !should_auto_linter_fix branch");
                             container.finalize_task(&ctx).await;
                         }
                     }
                 }
 
                 // Push task patch so frontend sees the updated status (InReview etc.)
-                if let Ok(Some(task)) = Task::find_by_id(&db.pool, ctx.task.id).await {
-                    container.events.push_patch(task_patch::replace(&task));
+                match Task::find_by_id(&db.pool, ctx.task.id).await {
+                    Ok(Some(task)) => {
+                        tracing::warn!(
+                            exec_id = %exec_id,
+                            task_id = %task.id,
+                            task_status = ?task.status,
+                            "[finalize-trace] direct task patch push",
+                        );
+                        container.events.push_patch(task_patch::replace(&task));
+                    }
+                    Ok(None) => {
+                        tracing::error!(exec_id = %exec_id, task_id = %ctx.task.id, "[finalize-trace] task NOT FOUND for direct push");
+                    }
+                    Err(e) => {
+                        tracing::error!(exec_id = %exec_id, task_id = %ctx.task.id, "[finalize-trace] task fetch FAILED: {e}");
+                    }
                 }
 
                 // Fire analytics event when CodingAgent execution has finished
