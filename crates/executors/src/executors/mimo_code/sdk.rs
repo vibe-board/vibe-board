@@ -3,7 +3,10 @@ use std::{
     future::Future,
     io,
     path::Path,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
     time::Duration,
 };
 
@@ -16,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::{
     io::{AsyncWrite, AsyncWriteExt, BufWriter},
-    sync::{Mutex as AsyncMutex, mpsc, oneshot},
+    sync::{Mutex as AsyncMutex, Notify, mpsc},
 };
 use tokio_util::sync::CancellationToken;
 use workspace_utils::approvals::{ApprovalStatus, QuestionAnswer, QuestionStatus};
@@ -210,46 +213,100 @@ struct TextPartInput {
 #[derive(Debug, Clone)]
 pub enum ControlEvent {
     Idle,
-    AuthRequired { message: String },
-    SessionError { message: String },
+    AuthRequired {
+        message: String,
+    },
+    SessionError {
+        message: String,
+    },
     Disconnected,
+    /// Emitted by the event listener the moment a `question.asked` /
+    /// `permission.asked` event is observed on the stream, before the approval
+    /// waiter is awaited. Lets the request loop know an approval is in flight so
+    /// it does not treat a concurrently-arriving `session.idle` as turn
+    /// completion and exit before the user has answered.
+    ApprovalStarted,
 }
 
+/// Tracks in-flight approval/question requests so the request loop does not
+/// declare a turn complete (and abort the event listener) while the user still
+/// has a question or permission prompt waiting for an answer.
+///
+/// `started` is incremented synchronously the moment a `question.asked` /
+/// `permission.asked` event is parsed by the listener — before the handler task
+/// is spawned — so the count is observable regardless of task scheduling. The
+/// handler signals completion via the returned guard, which decrements the
+/// counter and wakes any waiter.
 #[derive(Clone)]
 pub(crate) struct PendingApprovals {
-    inner: Arc<AsyncMutex<Vec<oneshot::Receiver<()>>>>,
+    inner: Arc<PendingApprovalsInner>,
+}
+
+struct PendingApprovalsInner {
+    in_flight: AtomicUsize,
+    notify: Notify,
+}
+
+/// Dropped by an approval handler to mark its request settled. Decrements the
+/// in-flight counter and wakes the request loop.
+pub(crate) struct ApprovalGuard {
+    inner: Arc<PendingApprovalsInner>,
+}
+
+impl Drop for ApprovalGuard {
+    fn drop(&mut self) {
+        self.inner.in_flight.fetch_sub(1, Ordering::SeqCst);
+        self.inner.notify.notify_waiters();
+    }
 }
 
 impl PendingApprovals {
     pub(crate) fn new() -> Self {
         Self {
-            inner: Arc::new(AsyncMutex::new(Vec::new())),
+            inner: Arc::new(PendingApprovalsInner {
+                in_flight: AtomicUsize::new(0),
+                notify: Notify::new(),
+            }),
         }
     }
 
-    async fn push(&self) -> oneshot::Sender<()> {
-        let (tx, rx) = oneshot::channel();
-        self.inner.lock().await.push(rx);
-        tx
+    /// Register a new in-flight approval. Call synchronously while parsing the
+    /// triggering event, before spawning the handler, so the count is visible to
+    /// the request loop immediately. The returned guard settles the approval
+    /// when dropped.
+    fn start(&self) -> ApprovalGuard {
+        self.inner.in_flight.fetch_add(1, Ordering::SeqCst);
+        ApprovalGuard {
+            inner: self.inner.clone(),
+        }
     }
 
+    fn has_pending(&self) -> bool {
+        self.inner.in_flight.load(Ordering::SeqCst) > 0
+    }
+
+    /// Block until no approvals are in flight (or cancelled). Returns `true` if
+    /// it had to wait for at least one approval.
     async fn wait(&self, cancel: CancellationToken) -> bool {
         let mut waited = false;
         loop {
-            let receivers = {
-                let mut guard = self.inner.lock().await;
-                if guard.is_empty() {
-                    return waited;
-                }
-                waited = true;
-                guard.drain(..).collect::<Vec<_>>()
-            };
-
-            for rx in receivers {
-                tokio::select! {
-                    _ = cancel.cancelled() => return waited,
-                    _ = rx => {}
-                }
+            if !self.has_pending() {
+                return waited;
+            }
+            waited = true;
+            // Arm the notification before re-checking the counter. `enable()`
+            // registers this waiter immediately, so a `notify_waiters()` that
+            // fires after the re-check below is guaranteed to wake us (no lost
+            // wakeup between the check and the await).
+            let notified = self.inner.notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            if !self.has_pending() {
+                return waited;
+            }
+            tokio::select! {
+                _ = cancel.cancelled() => return waited,
+                _ = notified.as_mut() => {}
             }
         }
     }
@@ -462,6 +519,12 @@ const MIMOCODE_EVENT_STREAM_TIMEOUT: Duration = Duration::from_secs(60 * 60 * 24
 /// would leave the executor waiting forever.
 const MIMOCODE_IDLE_AFTER_ERROR_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// When the prompt response and `session.idle` race ahead of the listener
+/// parsing a `question.asked` / `permission.asked` event, wait at most this long
+/// for the in-flight approval counter to catch up before treating the turn as
+/// complete. Kept small so a turn that genuinely has no approval doesn't stall.
+const MIMOCODE_APPROVAL_REGISTER_GRACE: Duration = Duration::from_secs(2);
+
 fn append_session_error(session_error: &mut Option<String>, message: String) {
     match session_error {
         Some(existing) => {
@@ -483,6 +546,7 @@ where
 {
     let mut idle_seen = false;
     let mut session_error: Option<String> = None;
+    let mut approval_started = false;
 
     let request_result = loop {
         tokio::select! {
@@ -496,6 +560,7 @@ where
                 }
                 Some(ControlEvent::Disconnected) => return Ok(()),
                 Some(ControlEvent::Idle) => idle_seen = true,
+                Some(ControlEvent::ApprovalStarted) => approval_started = true,
                 None => {}
             }
         }
@@ -506,6 +571,69 @@ where
             return Ok(());
         }
         return Err(err);
+    }
+
+    // The request future may win the select above while control events are still
+    // queued (e.g. `session.idle` and `ApprovalStarted` emitted by the listener
+    // just before the prompt response returned). Drain whatever is already
+    // buffered so we observe an in-flight approval before deciding the turn is
+    // done.
+    loop {
+        match control_rx.try_recv() {
+            Ok(ControlEvent::AuthRequired { message }) => {
+                return Err(ExecutorError::AuthRequired(message));
+            }
+            Ok(ControlEvent::SessionError { message }) => {
+                append_session_error(&mut session_error, message)
+            }
+            Ok(ControlEvent::Disconnected) if !cancel.is_cancelled() => {
+                return Err(ExecutorError::Io(io::Error::other(
+                    "MiMoCode event stream disconnected while request was running",
+                )));
+            }
+            Ok(ControlEvent::Disconnected) => return Ok(()),
+            Ok(ControlEvent::Idle) => idle_seen = true,
+            Ok(ControlEvent::ApprovalStarted) => approval_started = true,
+            Err(_) => break,
+        }
+    }
+
+    // A `question.asked` / `permission.asked` can race with the prompt response
+    // and `session.idle`: the server may declare the turn idle (paused awaiting an
+    // answer) and return the prompt body before — or in the same instant as — the
+    // listener task parses the approval event. If we saw an `ApprovalStarted`
+    // signal but the in-flight counter hasn't caught up yet, give the listener a
+    // brief grace window to register it so the wait below actually blocks on the
+    // user's answer instead of returning immediately and ending the turn while the
+    // question UI is still showing.
+    if approval_started && !pending_approvals.has_pending() {
+        let grace = tokio::time::Instant::now() + MIMOCODE_APPROVAL_REGISTER_GRACE;
+        loop {
+            tokio::select! {
+                _ = cancel.cancelled() => return Ok(()),
+                _ = tokio::time::sleep_until(grace) => break,
+                event = control_rx.recv() => match event {
+                    Some(ControlEvent::ApprovalStarted) => {}
+                    Some(ControlEvent::Idle) => idle_seen = true,
+                    Some(ControlEvent::AuthRequired { message }) => {
+                        return Err(ExecutorError::AuthRequired(message))
+                    }
+                    Some(ControlEvent::SessionError { message }) => {
+                        append_session_error(&mut session_error, message)
+                    }
+                    Some(ControlEvent::Disconnected) if !cancel.is_cancelled() => {
+                        return Err(ExecutorError::Io(io::Error::other(
+                            "MiMoCode event stream disconnected while request was running",
+                        )));
+                    }
+                    Some(ControlEvent::Disconnected) => return Ok(()),
+                    None => break,
+                }
+            }
+            if pending_approvals.has_pending() {
+                break;
+            }
+        }
     }
 
     if pending_approvals.wait(cancel.clone()).await {
@@ -543,6 +671,7 @@ where
                 }
                 event = control_rx.recv() => match event {
                     Some(ControlEvent::Idle) | None => break,
+                    Some(ControlEvent::ApprovalStarted) => {}
                     Some(ControlEvent::AuthRequired { message }) => return Err(ExecutorError::AuthRequired(message)),
                     Some(ControlEvent::SessionError { message }) => {
                         append_session_error(&mut session_error, message);
@@ -1461,8 +1590,10 @@ async fn process_event_stream(
                 let log_writer = ctx.log_writer.clone();
                 let auto_approve = ctx.auto_approve;
                 let cancel = ctx.cancel.clone();
-                let done_tx = ctx.pending_approvals.push().await;
+                let guard = ctx.pending_approvals.start();
+                let _ = ctx.control_tx.send(ControlEvent::ApprovalStarted);
                 tokio::spawn(async move {
+                    let _guard = guard;
                     let created = match create_permission_approval(
                         auto_approve,
                         approvals.clone(),
@@ -1485,7 +1616,6 @@ async fn process_event_stream(
                                 .json(&serde_json::json!({ "reply": "once" }))
                                 .send()
                                 .await;
-                            let _ = done_tx.send(());
                             return;
                         }
                         Err(err) => {
@@ -1499,7 +1629,6 @@ async fn process_event_stream(
                                 false,
                             )
                             .await;
-                            let _ = done_tx.send(());
                             return;
                         }
                     };
@@ -1527,7 +1656,6 @@ async fn process_event_stream(
                                 false,
                             )
                             .await;
-                                let _ = done_tx.send(());
                                 return;
                             }
                         };
@@ -1578,8 +1706,6 @@ async fn process_event_stream(
                         .json(&payload)
                         .send()
                         .await;
-
-                    let _ = done_tx.send(());
                 });
             }
             "question.asked" => {
@@ -1611,8 +1737,10 @@ async fn process_event_stream(
                 let directory = ctx.directory.to_string();
                 let log_writer = ctx.log_writer.clone();
                 let cancel = ctx.cancel.clone();
-                let done_tx = ctx.pending_approvals.push().await;
+                let guard = ctx.pending_approvals.start();
+                let _ = ctx.control_tx.send(ControlEvent::ApprovalStarted);
                 tokio::spawn(async move {
+                    let _guard = guard;
                     let created = match create_question_approval(approvals.clone(), questions.len())
                         .await
                     {
@@ -1635,7 +1763,6 @@ async fn process_event_stream(
                                 .json(&serde_json::json!({}))
                                 .send()
                                 .await;
-                            let _ = done_tx.send(());
                             return;
                         }
                     };
@@ -1672,7 +1799,6 @@ async fn process_event_stream(
                                 .json(&serde_json::json!({}))
                                 .send()
                                 .await;
-                            let _ = done_tx.send(());
                             return;
                         }
                     };
@@ -1698,8 +1824,6 @@ async fn process_event_stream(
                                 .await;
                         }
                     }
-
-                    let _ = done_tx.send(());
                 });
             }
             _ => {}
@@ -2061,6 +2185,108 @@ mod tests {
         )
         .await
         .expect("must not hang on the happy path");
+
+        result.expect("happy path must return Ok");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn pending_approvals_wait_wakes_on_guard_drop() {
+        let pending = PendingApprovals::new();
+        let cancel = CancellationToken::new();
+        let guard = pending.start();
+        assert!(pending.has_pending());
+
+        let p = pending.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(3)).await;
+            drop(guard);
+        });
+
+        let waited = tokio::time::timeout(Duration::from_secs(60), pending.wait(cancel))
+            .await
+            .expect("wait must wake when the guard drops");
+        assert!(waited, "wait should report it had to wait");
+        assert!(!pending.has_pending());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn run_request_with_control_waits_for_question_racing_with_idle() {
+        // Regression: when the agent asks a question, the prompt response and
+        // `session.idle` can arrive before the listener finishes registering the
+        // approval. Previously the request loop would call `wait()` against an
+        // empty set, return Ok, and the turn would exit while the question UI was
+        // still showing ("saw the question component, but the process exited").
+        //
+        // Here we simulate the listener sending `ApprovalStarted` (it does this
+        // synchronously after `start()`), then registering the in-flight approval
+        // a bit later, and finally settling it. The request loop must stay alive
+        // until the approval is settled.
+        let (control_tx, mut control_rx) = mpsc::unbounded_channel::<ControlEvent>();
+        let pending = PendingApprovals::new();
+        let cancel = CancellationToken::new();
+
+        // Prompt resolves immediately, and `Idle` is already queued — the turn
+        // looks "done" before the approval is registered.
+        let _ = control_tx.send(ControlEvent::Idle);
+        let _ = control_tx.send(ControlEvent::ApprovalStarted);
+
+        // The listener registers the approval shortly after, then settles it
+        // (user answers) after a delay. The guard models the handler's lifetime.
+        // After the answer the server resumes and emits a fresh `session.idle`.
+        let pending_for_handler = pending.clone();
+        let tx = control_tx.clone();
+        tokio::spawn(async move {
+            let guard = pending_for_handler.start();
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            drop(guard);
+            let _ = tx.send(ControlEvent::Idle);
+        });
+        // Let the handler run far enough to register the approval before the
+        // request loop evaluates the grace window.
+        tokio::task::yield_now().await;
+
+        let request_fut = Box::pin(async { Ok::<(), ExecutorError>(()) });
+
+        let start = tokio::time::Instant::now();
+        let result = tokio::time::timeout(
+            Duration::from_secs(120),
+            run_request_with_control(request_fut, &mut control_rx, &pending, cancel),
+        )
+        .await
+        .expect("must not hang");
+
+        result.expect("must return Ok after the question is answered");
+        // It must have actually waited for the approval rather than exiting early.
+        assert!(
+            start.elapsed() >= Duration::from_secs(5),
+            "request loop returned before the question was answered (elapsed {:?})",
+            start.elapsed()
+        );
+        assert!(
+            !pending.has_pending(),
+            "no approvals should remain in flight"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn run_request_with_control_does_not_stall_without_approval() {
+        // Guard against the grace window leaking into the no-approval path: when
+        // no `ApprovalStarted` is seen, the loop must not wait for the grace
+        // window.
+        let (control_tx, mut control_rx) = mpsc::unbounded_channel::<ControlEvent>();
+        let pending = PendingApprovals::new();
+        let cancel = CancellationToken::new();
+
+        let _ = control_tx.send(ControlEvent::Idle);
+
+        let request_fut = Box::pin(async { Ok::<(), ExecutorError>(()) });
+
+        let result = tokio::time::timeout(
+            Duration::from_secs(1),
+            run_request_with_control(request_fut, &mut control_rx, &pending, cancel),
+        )
+        .await
+        .expect("must return quickly when no approval is pending");
 
         result.expect("happy path must return Ok");
     }
