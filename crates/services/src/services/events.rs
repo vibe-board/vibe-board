@@ -82,7 +82,7 @@ pub struct EventService {
 impl EventService {
     /// Creates a new EventService that will work with a DBService configured with hooks
     pub fn new(db: DBService, msg_store: Arc<MsgStore>, entry_count: Arc<RwLock<usize>>) -> Self {
-        let patch_batcher = Arc::new(PatchBatcher::new(msg_store.clone()));
+        let patch_batcher = Arc::new(PatchBatcher::new(msg_store.clone(), db.clone()));
         Self {
             msg_store,
             patch_batcher,
@@ -197,7 +197,7 @@ impl EventService {
     + Sync
     + 'static {
         // PatchBatcher coalesces high-frequency DB patches into 10ms windows.
-        let patch_batcher = Arc::new(PatchBatcher::new(msg_store.clone()));
+        let patch_batcher = Arc::new(PatchBatcher::new(msg_store.clone(), db_service.clone()));
         move |conn: &mut sqlx::sqlite::SqliteConnection| {
             let patch_batcher_for_hook = patch_batcher.clone();
             let entry_count_for_hook = entry_count.clone();

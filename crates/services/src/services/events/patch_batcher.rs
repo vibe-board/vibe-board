@@ -1,8 +1,10 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use json_patch::{Patch, PatchOperation};
+use db::{DBService, models::{task::Task, workspace::Workspace}};
+use json_patch::{Patch, PatchOperation, ReplaceOperation};
 use tokio::sync::mpsc;
 use utils::{log_msg::LogMsg, msg_store::MsgStore};
+use uuid::Uuid;
 
 /// Accumulate JSON Patches within a short window and broadcast only the
 /// merged result.  Patches that touch the same path are deduplicated: only
@@ -17,7 +19,7 @@ pub struct PatchBatcher {
 }
 
 impl PatchBatcher {
-    pub fn new(msg_store: Arc<MsgStore>) -> Self {
+    pub fn new(msg_store: Arc<MsgStore>, db: DBService) -> Self {
         let (tx, mut rx) = mpsc::unbounded_channel::<Patch>();
 
         tokio::spawn(async move {
@@ -41,7 +43,7 @@ impl PatchBatcher {
                                 Some(p) => ops.extend(p.0),
                                 None => {
                                     // Channel closed — flush what we have and exit.
-                                    let merged = dedupe_ops(ops);
+                                    let merged = refresh_and_dedupe(ops, &db).await;
                                     if !merged.is_empty() {
                                         msg_store.push(LogMsg::JsonPatch(Patch(merged)));
                                     }
@@ -52,7 +54,7 @@ impl PatchBatcher {
                     }
                 }
 
-                let merged = dedupe_ops(ops);
+                let merged = refresh_and_dedupe(ops, &db).await;
                 if !merged.is_empty() {
                     msg_store.push(LogMsg::JsonPatch(Patch(merged)));
                 }
@@ -82,6 +84,89 @@ fn dedupe_ops(ops: Vec<PatchOperation>) -> Vec<PatchOperation> {
         .collect();
     kept.sort_by_key(|(i, _)| *i);
     kept.into_iter().map(|(_, op)| op).collect()
+}
+
+/// Dedupe by path and then re-fetch /tasks/{id} and /workspaces/{id} ops
+/// from the database so the emitted patch carries the freshest state.
+///
+/// Why: hooks that fire during rapid sequences (EP completion → denormalized
+/// task UPDATE → finalize_task UPDATE) spawn multiple async tasks that each
+/// `find_by_id` the entity at slightly different times. tokio scheduling can
+/// cause an early task that fetched STALE data to push AFTER a later task
+/// that fetched FRESH data. With path-based last-write-wins dedup, the stale
+/// op then wins. Re-fetching at flush time guarantees the value matches DB
+/// truth, regardless of scheduling order.
+///
+/// Remove ops are passed through untouched (no entity to fetch). If the
+/// entity has since been deleted, the Replace is dropped — the corresponding
+/// Remove op (from preupdate hook) will be in the same batch.
+async fn refresh_and_dedupe(ops: Vec<PatchOperation>, db: &DBService) -> Vec<PatchOperation> {
+    let kept = dedupe_ops(ops);
+    let mut refreshed: Vec<PatchOperation> = Vec::with_capacity(kept.len());
+
+    for op in kept {
+        let path_str = op.path().to_string();
+
+        if let Some(id_str) = path_str.strip_prefix("/tasks/")
+            && let Ok(task_id) = Uuid::parse_str(id_str)
+            && matches!(op, PatchOperation::Add(_) | PatchOperation::Replace(_))
+        {
+            match Task::find_by_id(&db.pool, task_id).await {
+                Ok(Some(task)) => {
+                    let value = match serde_json::to_value(&task) {
+                        Ok(v) => v,
+                        Err(_) => {
+                            refreshed.push(op);
+                            continue;
+                        }
+                    };
+                    refreshed.push(PatchOperation::Replace(ReplaceOperation {
+                        path: op.path().clone(),
+                        value,
+                    }));
+                }
+                Ok(None) => {
+                    // Entity deleted in the same window; drop this stale Replace.
+                }
+                Err(e) => {
+                    tracing::warn!(task_id = %task_id, "PatchBatcher refresh failed: {e}");
+                    refreshed.push(op);
+                }
+            }
+            continue;
+        }
+
+        if let Some(id_str) = path_str.strip_prefix("/workspaces/")
+            && let Ok(ws_id) = Uuid::parse_str(id_str)
+            && matches!(op, PatchOperation::Add(_) | PatchOperation::Replace(_))
+        {
+            match Workspace::find_by_id_with_status(&db.pool, ws_id).await {
+                Ok(Some(ws)) => {
+                    let value = match serde_json::to_value(&ws) {
+                        Ok(v) => v,
+                        Err(_) => {
+                            refreshed.push(op);
+                            continue;
+                        }
+                    };
+                    refreshed.push(PatchOperation::Replace(ReplaceOperation {
+                        path: op.path().clone(),
+                        value,
+                    }));
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    tracing::warn!(workspace_id = %ws_id, "PatchBatcher refresh failed: {e}");
+                    refreshed.push(op);
+                }
+            }
+            continue;
+        }
+
+        refreshed.push(op);
+    }
+
+    refreshed
 }
 
 #[cfg(test)]
