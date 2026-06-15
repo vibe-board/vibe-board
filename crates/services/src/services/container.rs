@@ -247,8 +247,12 @@ pub trait ContainerService {
             "[finalize-trace] finalize_task ENTERED — updating to InReview",
         );
         match Task::update_status(&self.db().pool, ctx.task.id, TaskStatus::InReview).await {
-            Ok(()) => tracing::warn!(task_id = %ctx.task.id, "[finalize-trace] Task::update_status(InReview) OK"),
-            Err(e) => tracing::error!(task_id = %ctx.task.id, "[finalize-trace] Task::update_status FAILED: {e}"),
+            Ok(()) => {
+                tracing::warn!(task_id = %ctx.task.id, "[finalize-trace] Task::update_status(InReview) OK")
+            }
+            Err(e) => {
+                tracing::error!(task_id = %ctx.task.id, "[finalize-trace] Task::update_status FAILED: {e}")
+            }
         }
 
         // Skip notification if process was intentionally killed by user

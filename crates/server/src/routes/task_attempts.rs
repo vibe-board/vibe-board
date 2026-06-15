@@ -437,8 +437,10 @@ pub async fn get_workspace_diffs(
         // a large total size points at the response itself blowing up the FE.
         let total_bytes: usize = diffs
             .iter()
-            .map(|d| d.old_content.as_ref().map(|s| s.len()).unwrap_or(0)
-                + d.new_content.as_ref().map(|s| s.len()).unwrap_or(0))
+            .map(|d| {
+                d.old_content.as_ref().map(|s| s.len()).unwrap_or(0)
+                    + d.new_content.as_ref().map(|s| s.len()).unwrap_or(0)
+            })
             .sum();
         let omitted = diffs.iter().filter(|d| d.content_omitted).count();
         tracing::warn!(

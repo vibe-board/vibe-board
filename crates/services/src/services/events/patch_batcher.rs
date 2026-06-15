@@ -204,9 +204,10 @@ async fn refresh_and_dedupe(ops: Vec<PatchOperation>, db: &DBService) -> Vec<Pat
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use json_patch::ReplaceOperation;
     use serde_json::json;
+
+    use super::*;
 
     fn replace(path: &str, value: serde_json::Value) -> PatchOperation {
         PatchOperation::Replace(ReplaceOperation {
