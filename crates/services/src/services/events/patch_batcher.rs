@@ -1,6 +1,9 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use db::{DBService, models::{task::Task, workspace::Workspace}};
+use db::{
+    DBService,
+    models::{execution_process::ExecutionProcess, task::Task, workspace::Workspace},
+};
 use json_patch::{Patch, PatchOperation, ReplaceOperation};
 use tokio::sync::mpsc;
 use utils::{log_msg::LogMsg, msg_store::MsgStore};
@@ -86,8 +89,9 @@ fn dedupe_ops(ops: Vec<PatchOperation>) -> Vec<PatchOperation> {
     kept.into_iter().map(|(_, op)| op).collect()
 }
 
-/// Dedupe by path and then re-fetch /tasks/{id} and /workspaces/{id} ops
-/// from the database so the emitted patch carries the freshest state.
+/// Dedupe by path and then re-fetch /tasks/{id}, /workspaces/{id} and
+/// /execution_processes/{id} ops from the database so the emitted patch
+/// carries the freshest state.
 ///
 /// Why: hooks that fire during rapid sequences (EP completion → denormalized
 /// task UPDATE → finalize_task UPDATE) spawn multiple async tasks that each
@@ -130,6 +134,35 @@ async fn refresh_and_dedupe(ops: Vec<PatchOperation>, db: &DBService) -> Vec<Pat
                 }
                 Err(e) => {
                     tracing::warn!(task_id = %task_id, "PatchBatcher refresh failed: {e}");
+                    refreshed.push(op);
+                }
+            }
+            continue;
+        }
+
+        if let Some(id_str) = path_str.strip_prefix("/execution_processes/")
+            && let Ok(ep_id) = Uuid::parse_str(id_str)
+            && matches!(op, PatchOperation::Add(_) | PatchOperation::Replace(_))
+        {
+            match ExecutionProcess::find_by_id(&db.pool, ep_id).await {
+                Ok(Some(ep)) => {
+                    let value = match serde_json::to_value(&ep) {
+                        Ok(v) => v,
+                        Err(_) => {
+                            refreshed.push(op);
+                            continue;
+                        }
+                    };
+                    refreshed.push(PatchOperation::Replace(ReplaceOperation {
+                        path: op.path().clone(),
+                        value,
+                    }));
+                }
+                Ok(None) => {
+                    // Entity deleted in the same window; drop this stale Replace.
+                }
+                Err(e) => {
+                    tracing::warn!(execution_process_id = %ep_id, "PatchBatcher refresh failed: {e}");
                     refreshed.push(op);
                 }
             }

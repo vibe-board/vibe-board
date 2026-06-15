@@ -76,7 +76,10 @@ export class RemoteWs {
     if (typeof data === 'string') {
       str = data;
     } else if (data instanceof ArrayBuffer) {
-      str = btoa(String.fromCharCode(...new Uint8Array(data)));
+      // The bridge forwards WsData verbatim as a text frame (no base64 decode),
+      // so binary must be sent as its UTF-8 text, matching the string path —
+      // NOT base64, which the bridge would deliver as literal base64 chars.
+      str = new TextDecoder().decode(new Uint8Array(data));
     } else {
       console.warn('RemoteWs: Blob send not supported');
       return;

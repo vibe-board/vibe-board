@@ -507,21 +507,22 @@ async fn handle_forward(
         }
 
         e2ee_core::BridgeRequest::WsData { id, data } => {
-            let conns = ctx.ws_connections.lock().await;
-            if let Some(sub_tx) = conns.get(&id) {
-                use tokio::sync::mpsc::error::TrySendError;
-                match sub_tx.try_send(data) {
-                    Ok(()) => {}
-                    Err(TrySendError::Full(_)) => {
-                        warn!("e2ee bridge: WS sub-connection {id} channel full, dropping frame");
-                    }
-                    Err(TrySendError::Closed(_)) => {
-                        warn!(
-                            "e2ee bridge: WS sub-connection {id} receiver dropped, removing connection"
-                        );
-                        drop(conns);
-                        ctx.ws_connections.lock().await.remove(&id);
-                    }
+            // Clone the sender out and release the map lock before awaiting, so a
+            // slow/full sub-connection does not block other connections or risk a
+            // deadlock by holding the lock across the await.
+            let sub_tx = ctx.ws_connections.lock().await.get(&id).cloned();
+            if let Some(sub_tx) = sub_tx {
+                // Use the blocking `send().await` (backpressure) instead of
+                // `try_send` + drop-on-full: JSON Patch frames are incremental
+                // state, so silently dropping one permanently desyncs the client
+                // (e.g. a task never leaves InProgress, the stop button never
+                // clears). Backpressure may add a little latency under load but
+                // preserves correctness.
+                if sub_tx.send(data).await.is_err() {
+                    warn!(
+                        "e2ee bridge: WS sub-connection {id} receiver dropped, removing connection"
+                    );
+                    ctx.ws_connections.lock().await.remove(&id);
                 }
             } else {
                 warn!("WsData for unknown sub-connection id={id}");
