@@ -640,56 +640,80 @@ where
         idle_seen = false;
     }
 
-    if !idle_seen {
-        // The MiMoCode server streams events independently; wait for `session.idle` so we capture
-        // tail updates reliably (e.g. final tool completion events).
-        //
-        // Bound the wait once a `session.error` has been observed: the server may have already
-        // declared this turn finished and will never emit `session.idle`, in which case waiting
-        // here would hang forever. The deadline gives the server a short window to still emit
-        // idle (some flows do error-then-idle) before we surface the accumulated error.
-        let mut idle_deadline: Option<tokio::time::Instant> = session_error
-            .as_ref()
-            .map(|_| tokio::time::Instant::now() + MIMOCODE_IDLE_AFTER_ERROR_TIMEOUT);
-        loop {
-            let timeout_fut = async {
-                match idle_deadline {
-                    Some(deadline) => tokio::time::sleep_until(deadline).await,
-                    None => std::future::pending::<()>().await,
-                }
-            };
+    // The prompt HTTP response can resolve and the buffer drain can complete
+    // before the SSE listener has even read the `question.asked` frame off the
+    // socket — so neither `approval_started` nor the in-flight counter is set by
+    // the grace window above. In that case the listener emits `ApprovalStarted`
+    // and `Idle` only while we are waiting for idle below; we must notice the
+    // approval and re-wait for the user's answer instead of returning on `Idle`,
+    // then loop to capture the fresh `session.idle` the server emits after the
+    // answer.
+    loop {
+        let mut approval_started_late = false;
 
-            tokio::select! {
-                _ = cancel.cancelled() => return Ok(()),
-                _ = timeout_fut => {
-                    tracing::warn!(
-                        "MiMoCode session.idle not received within {:?} after session.error; \
-                         surfacing accumulated error",
-                        MIMOCODE_IDLE_AFTER_ERROR_TIMEOUT
-                    );
-                    break;
-                }
-                event = control_rx.recv() => match event {
-                    Some(ControlEvent::Idle) | None => break,
-                    Some(ControlEvent::ApprovalStarted) => {}
-                    Some(ControlEvent::AuthRequired { message }) => return Err(ExecutorError::AuthRequired(message)),
-                    Some(ControlEvent::SessionError { message }) => {
-                        append_session_error(&mut session_error, message);
-                        if idle_deadline.is_none() {
-                            idle_deadline = Some(
-                                tokio::time::Instant::now() + MIMOCODE_IDLE_AFTER_ERROR_TIMEOUT,
-                            );
+        if !idle_seen {
+            // The MiMoCode server streams events independently; wait for `session.idle` so we capture
+            // tail updates reliably (e.g. final tool completion events).
+            //
+            // Bound the wait once a `session.error` has been observed: the server may have already
+            // declared this turn finished and will never emit `session.idle`, in which case waiting
+            // here would hang forever. The deadline gives the server a short window to still emit
+            // idle (some flows do error-then-idle) before we surface the accumulated error.
+            let mut idle_deadline: Option<tokio::time::Instant> = session_error
+                .as_ref()
+                .map(|_| tokio::time::Instant::now() + MIMOCODE_IDLE_AFTER_ERROR_TIMEOUT);
+            loop {
+                let timeout_fut = async {
+                    match idle_deadline {
+                        Some(deadline) => tokio::time::sleep_until(deadline).await,
+                        None => std::future::pending::<()>().await,
+                    }
+                };
+
+                tokio::select! {
+                    _ = cancel.cancelled() => return Ok(()),
+                    _ = timeout_fut => {
+                        tracing::warn!(
+                            "MiMoCode session.idle not received within {:?} after session.error; \
+                             surfacing accumulated error",
+                            MIMOCODE_IDLE_AFTER_ERROR_TIMEOUT
+                        );
+                        break;
+                    }
+                    event = control_rx.recv() => match event {
+                        Some(ControlEvent::Idle) | None => break,
+                        Some(ControlEvent::ApprovalStarted) => approval_started_late = true,
+                        Some(ControlEvent::AuthRequired { message }) => return Err(ExecutorError::AuthRequired(message)),
+                        Some(ControlEvent::SessionError { message }) => {
+                            append_session_error(&mut session_error, message);
+                            if idle_deadline.is_none() {
+                                idle_deadline = Some(
+                                    tokio::time::Instant::now() + MIMOCODE_IDLE_AFTER_ERROR_TIMEOUT,
+                                );
+                            }
                         }
+                        Some(ControlEvent::Disconnected) if !cancel.is_cancelled() => {
+                            return Err(ExecutorError::Io(io::Error::other(
+                                "MiMoCode event stream disconnected while waiting for session to go idle",
+                            )));
+                        }
+                        Some(ControlEvent::Disconnected) => return Ok(()),
                     }
-                    Some(ControlEvent::Disconnected) if !cancel.is_cancelled() => {
-                        return Err(ExecutorError::Io(io::Error::other(
-                            "MiMoCode event stream disconnected while waiting for session to go idle",
-                        )));
-                    }
-                    Some(ControlEvent::Disconnected) => return Ok(()),
                 }
             }
         }
+
+        // If an approval registered while we were waiting for idle (the listener
+        // read `question.asked` only after the prompt response had already
+        // returned), the turn is not actually done — the user still has a prompt
+        // open. Block until it settles, then loop to await the post-answer idle.
+        if approval_started_late || pending_approvals.has_pending() {
+            pending_approvals.wait(cancel.clone()).await;
+            idle_seen = false;
+            continue;
+        }
+
+        break;
     }
 
     if let Some(message) = session_error {
@@ -2289,5 +2313,60 @@ mod tests {
         .expect("must return quickly when no approval is pending");
 
         result.expect("happy path must return Ok");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn run_request_with_control_waits_for_question_registered_during_idle_wait() {
+        // Regression: the prompt HTTP response can resolve and the buffer drain
+        // can complete *before* the SSE listener has even read the
+        // `question.asked` frame off the socket. In that window neither
+        // `ApprovalStarted` nor the in-flight counter is set, so the grace window
+        // is skipped and the loop falls into the wait-for-idle phase. The listener
+        // then emits `ApprovalStarted`, registers the approval, and emits `Idle`.
+        // Previously the loop ignored `ApprovalStarted`, broke on `Idle`, and
+        // returned Ok — the turn exited while the question UI was still showing
+        // ("没有询问，直接退出了"). The loop must instead wait for the answer and
+        // the post-answer idle.
+        let (control_tx, mut control_rx) = mpsc::unbounded_channel::<ControlEvent>();
+        let pending = PendingApprovals::new();
+        let cancel = CancellationToken::new();
+
+        // Nothing is buffered when the prompt resolves: the listener has not yet
+        // parsed `question.asked`. The listener catches up only during the
+        // wait-for-idle phase.
+        let pending_for_handler = pending.clone();
+        let tx = control_tx.clone();
+        tokio::spawn(async move {
+            // Listener finally reads `question.asked`: emits ApprovalStarted,
+            // registers the in-flight approval, then emits the pre-answer idle.
+            let guard = pending_for_handler.start();
+            let _ = tx.send(ControlEvent::ApprovalStarted);
+            let _ = tx.send(ControlEvent::Idle);
+            // User answers after a delay; server resumes and emits a fresh idle.
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            drop(guard);
+            let _ = tx.send(ControlEvent::Idle);
+        });
+
+        let request_fut = Box::pin(async { Ok::<(), ExecutorError>(()) });
+
+        let start = tokio::time::Instant::now();
+        let result = tokio::time::timeout(
+            Duration::from_secs(120),
+            run_request_with_control(request_fut, &mut control_rx, &pending, cancel),
+        )
+        .await
+        .expect("must not hang");
+
+        result.expect("must return Ok after the question is answered");
+        assert!(
+            start.elapsed() >= Duration::from_secs(5),
+            "request loop returned before the late-registered question was answered (elapsed {:?})",
+            start.elapsed()
+        );
+        assert!(
+            !pending.has_pending(),
+            "no approvals should remain in flight"
+        );
     }
 }
