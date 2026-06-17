@@ -11,7 +11,6 @@ use ts_rs::TS;
 use utils::diff::{Diff, DiffChangeKind, FileDiffDetails, compute_line_change_counts};
 
 mod cli;
-pub mod submodule;
 mod validation;
 
 use cli::{ChangeType, StatusDiffEntry, StatusDiffOptions};
@@ -343,18 +342,6 @@ impl GitService {
         git.commit(path, message)
             .map_err(|e| GitServiceError::InvalidRepository(format!("git commit failed: {e}")))?;
         Ok(true)
-    }
-
-    /// Commit only what is already staged in the index, without `git add -A`.
-    /// Unlike `commit`, this will not sweep unrelated dirty/untracked files into
-    /// the commit. Ensures a commit identity first so a bare `git commit` won't
-    /// fail when no `user.name`/`user.email` is configured.
-    pub fn commit_staged(&self, path: &Path, message: &str) -> Result<(), GitServiceError> {
-        self.ensure_cli_commit_identity(path)?;
-        GitCli::new().commit(path, message).map_err(|e| {
-            GitServiceError::InvalidRepository(format!("commit staged failed: {e}"))
-        })?;
-        Ok(())
     }
 
     /// Get diffs between branches or worktree changes
@@ -1272,56 +1259,6 @@ impl GitService {
         git.worktree_remove(repo_path, worktree_path, force)
             .map_err(|e| GitServiceError::InvalidRepository(e.to_string()))?;
         Ok(())
-    }
-
-    /// Initialize a submodule's working tree inside a worktree (one level).
-    pub fn submodule_init(
-        &self,
-        worktree_path: &Path,
-        submodule_path: &str,
-    ) -> Result<(), GitServiceError> {
-        GitCli::new()
-            .submodule_update_init(worktree_path, submodule_path)
-            .map_err(|e| {
-                GitServiceError::InvalidRepository(format!("submodule update failed: {e}"))
-            })
-    }
-
-    /// Create a new branch at HEAD inside a worktree and switch to it.
-    pub fn create_branch_in_worktree(
-        &self,
-        worktree_path: &Path,
-        branch: &str,
-    ) -> Result<(), GitServiceError> {
-        GitCli::new()
-            .checkout_new_branch(worktree_path, branch)
-            .map_err(|e| {
-                GitServiceError::InvalidRepository(format!("create branch in worktree failed: {e}"))
-            })
-    }
-
-    /// Create a base branch at HEAD inside a worktree WITHOUT switching to it.
-    pub fn create_base_branch_in_worktree(
-        &self,
-        worktree_path: &Path,
-        branch: &str,
-    ) -> Result<(), GitServiceError> {
-        GitCli::new()
-            .create_branch_at_head(worktree_path, branch)
-            .map_err(|e| {
-                GitServiceError::InvalidRepository(format!("create base branch failed: {e}"))
-            })
-    }
-
-    /// Stage the (advanced) gitlink for a submodule in the parent worktree.
-    pub fn stage_submodule_gitlink(
-        &self,
-        parent_worktree_path: &Path,
-        submodule_path: &str,
-    ) -> Result<(), GitServiceError> {
-        GitCli::new()
-            .add_path(parent_worktree_path, submodule_path)
-            .map_err(|e| GitServiceError::InvalidRepository(format!("git add gitlink failed: {e}")))
     }
 
     /// Move a worktree to a new location

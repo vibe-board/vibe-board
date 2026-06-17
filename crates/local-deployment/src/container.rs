@@ -20,6 +20,7 @@ use db::{
             ExecutionContext, ExecutionProcess, ExecutionProcessRunReason, ExecutionProcessStatus,
         },
         execution_process_repo_state::ExecutionProcessRepoState,
+        project_repo::ProjectRepo,
         repo::Repo,
         scratch::{DraftFollowUpData, Scratch, ScratchType},
         session::Session,
@@ -62,7 +63,7 @@ use services::services::{
     normalized_entry_store::NormalizedEntryStore,
     notification::NotificationService,
     queued_message::QueuedMessageService,
-    workspace_manager::{RepoWorkspaceInput, SUBMODULE_BASE_BRANCH, WorkspaceManager},
+    workspace_manager::{NestedMount, RepoWorkspaceInput, WorkspaceManager},
 };
 use tokio::{sync::RwLock, task::JoinHandle};
 use tokio_util::io::ReaderStream;
@@ -1556,13 +1557,41 @@ impl ContainerService for LocalContainerService {
             .map(|wr| (wr.repo_id, wr.target_branch.clone()))
             .collect();
 
+        // Load project-level repo relationships (source of truth for nesting).
+        let project_repos = ProjectRepo::find_by_project_id(&self.db.pool, task.project_id).await?;
+        let pr_by_id: HashMap<Uuid, &ProjectRepo> =
+            project_repos.iter().map(|pr| (pr.id, pr)).collect();
+        let repo_name_by_id: HashMap<Uuid, String> = repositories
+            .iter()
+            .map(|r| (r.id, r.name.clone()))
+            .collect();
+
         let workspace_inputs: Vec<RepoWorkspaceInput> = repositories
             .iter()
             .map(|repo| {
                 let target_branch = target_branches.get(&repo.id).cloned().unwrap_or_default();
-                RepoWorkspaceInput::new(repo.clone(), target_branch)
+                let pr = project_repos.iter().find(|pr| pr.repo_id == repo.id);
+                let mount = pr.and_then(|pr| {
+                    let parent_pr_id = pr.parent_project_repo_id?;
+                    let rel = pr.nested_path.clone()?;
+                    let parent_pr = pr_by_id.get(&parent_pr_id)?;
+                    let parent_repo_name = repo_name_by_id.get(&parent_pr.repo_id)?.clone();
+                    Some(NestedMount {
+                        parent_repo_name,
+                        rel_path: rel,
+                    })
+                });
+                match mount {
+                    Some(m) => RepoWorkspaceInput::nested(repo.clone(), target_branch, m),
+                    None => RepoWorkspaceInput::new(repo.clone(), target_branch),
+                }
             })
             .collect();
+
+        // Parents (no mount) must be created before children (one level deep,
+        // so a stable two-tier sort by has-mount suffices).
+        let mut workspace_inputs = workspace_inputs;
+        workspace_inputs.sort_by_key(|i| i.nested_under.is_some());
 
         let created_workspace = if workspace.mode == WorkspaceMode::Direct {
             // For direct mode multi-repo: create worktrees from existing branches
@@ -1573,39 +1602,28 @@ impl ContainerService for LocalContainerService {
                 .await?
         };
 
-        // Register direct submodules discovered in each repo's worktree as
-        // submodule workspace_repos (one level only). The submodule's working
-        // tree and task branch were already created during workspace creation.
-        for repo in &repositories {
-            let parent_worktree = created_workspace.workspace_dir.join(&repo.name);
-            let parent_wr = workspace_repos
-                .iter()
-                .find(|wr| wr.repo_id == repo.id)
-                .ok_or_else(|| {
-                    ContainerError::Other(anyhow!(
-                        "parent workspace_repo missing for repo {}",
-                        repo.id
-                    ))
-                })?;
-            for sub in git::submodule::read_submodules(&parent_worktree) {
-                let sub_path = parent_worktree.join(&sub.path);
-                let sub_repo = Repo::find_or_create(
-                    &self.db.pool,
-                    &sub_path,
-                    &format!("{} / {}", repo.display_name, sub.path),
-                )
-                .await?;
-                // The submodule has a base branch (vibe-submodule-base) at the
-                // gitlink commit and the task branch workspace.branch cut from
-                // it. Record the base branch as target_branch so diff/merge
-                // have a real base distinct from the task branch.
-                WorkspaceRepo::create_submodule(
+        // Persist per-workspace nesting relationships. The workspace_repos rows
+        // already exist (created in tasks.rs); record which parent worktree each
+        // nested child lives under and at what relative path.
+        let workspace_repo_rows =
+            WorkspaceRepo::find_by_workspace_id(&self.db.pool, workspace.id).await?;
+        let wr_id_by_repo: HashMap<Uuid, Uuid> = workspace_repo_rows
+            .iter()
+            .map(|wr| (wr.repo_id, wr.id))
+            .collect();
+        for input in &workspace_inputs {
+            if let Some(mount) = &input.nested_under {
+                let parent_repo_id = repositories
+                    .iter()
+                    .find(|r| r.name == mount.parent_repo_name)
+                    .map(|r| r.id);
+                let parent_wr_id = parent_repo_id.and_then(|rid| wr_id_by_repo.get(&rid).copied());
+                WorkspaceRepo::set_nesting(
                     &self.db.pool,
                     workspace.id,
-                    sub_repo.id,
-                    SUBMODULE_BASE_BRANCH,
-                    parent_wr.id,
-                    &sub.path,
+                    input.repo.id,
+                    parent_wr_id,
+                    Some(&mount.rel_path),
                 )
                 .await?;
             }

@@ -124,65 +124,6 @@ impl GitCli {
         Ok(())
     }
 
-    /// Run `git -C <worktree> submodule update --init -- <path>` (one level, no --recursive).
-    pub fn submodule_update_init(
-        &self,
-        worktree_path: &Path,
-        submodule_path: &str,
-    ) -> Result<(), GitCliError> {
-        self.ensure_available()?;
-        self.git(
-            worktree_path,
-            [
-                OsString::from("submodule"),
-                OsString::from("update"),
-                OsString::from("--init"),
-                OsString::from("--"),
-                OsString::from(submodule_path),
-            ],
-        )?;
-        Ok(())
-    }
-
-    /// Create and switch to a new branch in a worktree: `git -C <worktree> checkout -b <branch>`.
-    pub fn checkout_new_branch(
-        &self,
-        worktree_path: &Path,
-        branch: &str,
-    ) -> Result<(), GitCliError> {
-        self.ensure_available()?;
-        self.git(
-            worktree_path,
-            ["checkout".into(), "-b".into(), OsString::from(branch)],
-        )?;
-        Ok(())
-    }
-
-    /// Create a branch at current HEAD without switching: `git -C <wt> branch <name>`.
-    pub fn create_branch_at_head(
-        &self,
-        worktree_path: &Path,
-        branch: &str,
-    ) -> Result<(), GitCliError> {
-        self.ensure_available()?;
-        self.git(worktree_path, ["branch".into(), OsString::from(branch)])?;
-        Ok(())
-    }
-
-    /// Stage a single path in the worktree: `git -C <worktree> add -- <path>`.
-    pub fn add_path(&self, worktree_path: &Path, path: &str) -> Result<(), GitCliError> {
-        self.ensure_available()?;
-        self.git(
-            worktree_path,
-            [
-                OsString::from("add"),
-                OsString::from("--"),
-                OsString::from(path),
-            ],
-        )?;
-        Ok(())
-    }
-
     /// Run `git -C <repo> worktree move <old_path> <new_path>`
     pub fn worktree_move(
         &self,

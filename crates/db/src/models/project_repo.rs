@@ -24,6 +24,8 @@ pub struct ProjectRepo {
     pub id: Uuid,
     pub project_id: Uuid,
     pub repo_id: Uuid,
+    pub parent_project_repo_id: Option<Uuid>,
+    pub nested_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, TS)]
@@ -41,7 +43,9 @@ impl ProjectRepo {
             ProjectRepo,
             r#"SELECT id as "id!: Uuid",
                       project_id as "project_id!: Uuid",
-                      repo_id as "repo_id!: Uuid"
+                      repo_id as "repo_id!: Uuid",
+                      parent_project_repo_id as "parent_project_repo_id?: Uuid",
+                      nested_path
                FROM project_repos
                WHERE project_id = $1"#,
             project_id
@@ -58,7 +62,9 @@ impl ProjectRepo {
             ProjectRepo,
             r#"SELECT id as "id!: Uuid",
                       project_id as "project_id!: Uuid",
-                      repo_id as "repo_id!: Uuid"
+                      repo_id as "repo_id!: Uuid",
+                      parent_project_repo_id as "parent_project_repo_id?: Uuid",
+                      nested_path
                FROM project_repos
                WHERE repo_id = $1"#,
             repo_id
@@ -107,7 +113,9 @@ impl ProjectRepo {
             ProjectRepo,
             r#"SELECT id as "id!: Uuid",
                       project_id as "project_id!: Uuid",
-                      repo_id as "repo_id!: Uuid"
+                      repo_id as "repo_id!: Uuid",
+                      parent_project_repo_id as "parent_project_repo_id?: Uuid",
+                      nested_path
                FROM project_repos
                WHERE project_id = $1 AND repo_id = $2"#,
             project_id,
@@ -143,7 +151,66 @@ impl ProjectRepo {
         .execute(pool)
         .await?;
 
+        Self::recompute_nesting(pool, project_id).await?;
+
         Ok(repo)
+    }
+
+    /// Recompute parent/child nesting for every repo in the project based on
+    /// on-disk path containment. Each repo's parent is the NEAREST project repo
+    /// whose canonical path is a directory ancestor of this repo's canonical path;
+    /// siblings get NULL. One materialized level (nearest ancestor).
+    pub async fn recompute_nesting(pool: &SqlitePool, project_id: Uuid) -> Result<(), sqlx::Error> {
+        let rows = sqlx::query!(
+            r#"SELECT pr.id as "pr_id!: Uuid", r.path
+               FROM project_repos pr
+               JOIN repos r ON r.id = pr.repo_id
+               WHERE pr.project_id = $1"#,
+            project_id
+        )
+        .fetch_all(pool)
+        .await?;
+
+        // Canonicalize; fall back to the raw path if canonicalize fails (path may
+        // not exist on this machine) so we never panic.
+        let entries: Vec<(Uuid, std::path::PathBuf)> = rows
+            .into_iter()
+            .map(|row| {
+                let raw = std::path::PathBuf::from(&row.path);
+                let canon = std::fs::canonicalize(&raw).unwrap_or(raw);
+                (row.pr_id, canon)
+            })
+            .collect();
+
+        for (pr_id, path) in &entries {
+            let mut best: Option<(Uuid, String, usize)> = None; // (parent_pr_id, rel, parent_depth)
+            for (other_id, other_path) in &entries {
+                if other_id == pr_id {
+                    continue;
+                }
+                if let Some(rel) = utils::containment::relative_if_nested(other_path, path) {
+                    let depth = other_path.components().count();
+                    if best.as_ref().map(|(_, _, d)| depth > *d).unwrap_or(true) {
+                        best = Some((*other_id, rel, depth));
+                    }
+                }
+            }
+            match best {
+                Some((parent_id, rel, _)) => {
+                    sqlx::query!(
+                        r#"UPDATE project_repos SET parent_project_repo_id = $1, nested_path = $2 WHERE id = $3"#,
+                        parent_id, rel, pr_id
+                    ).execute(pool).await?;
+                }
+                None => {
+                    sqlx::query!(
+                        r#"UPDATE project_repos SET parent_project_repo_id = NULL, nested_path = NULL WHERE id = $1"#,
+                        pr_id
+                    ).execute(pool).await?;
+                }
+            }
+        }
+        Ok(())
     }
 
     pub async fn remove_repo_from_project(
@@ -163,6 +230,8 @@ impl ProjectRepo {
             return Err(ProjectRepoError::NotFound);
         }
 
+        Self::recompute_nesting(pool, project_id).await?;
+
         Ok(())
     }
 
@@ -178,7 +247,9 @@ impl ProjectRepo {
                VALUES ($1, $2, $3)
                RETURNING id as "id!: Uuid",
                          project_id as "project_id!: Uuid",
-                         repo_id as "repo_id!: Uuid""#,
+                         repo_id as "repo_id!: Uuid",
+                         parent_project_repo_id as "parent_project_repo_id?: Uuid",
+                         nested_path"#,
             id,
             project_id,
             repo_id

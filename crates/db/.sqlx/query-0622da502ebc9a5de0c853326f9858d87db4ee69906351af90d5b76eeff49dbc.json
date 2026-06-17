@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id as \"id!: Uuid\",\n                      workspace_id as \"workspace_id!: Uuid\",\n                      repo_id as \"repo_id!: Uuid\",\n                      target_branch,\n                      parent_workspace_repo_id as \"parent_workspace_repo_id?: Uuid\",\n                      submodule_path,\n                      created_at as \"created_at!: DateTime<Utc>\",\n                      updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM workspace_repos\n               WHERE workspace_id = $1 AND repo_id = $2",
+  "query": "SELECT id as \"id!: Uuid\",\n                      workspace_id as \"workspace_id!: Uuid\",\n                      repo_id as \"repo_id!: Uuid\",\n                      target_branch,\n                      parent_workspace_repo_id as \"parent_workspace_repo_id?: Uuid\",\n                      nested_path,\n                      created_at as \"created_at!: DateTime<Utc>\",\n                      updated_at as \"updated_at!: DateTime<Utc>\"\n               FROM workspace_repos\n               WHERE workspace_id = $1",
   "describe": {
     "columns": [
       {
@@ -29,7 +29,7 @@
         "type_info": "Blob"
       },
       {
-        "name": "submodule_path",
+        "name": "nested_path",
         "ordinal": 5,
         "type_info": "Text"
       },
@@ -45,7 +45,7 @@
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 1
     },
     "nullable": [
       true,
@@ -58,5 +58,5 @@
       false
     ]
   },
-  "hash": "33b0be235aa67b66a69c39d11991c7bf1db53a6197c6c4af82ca2dc952c94c1a"
+  "hash": "0622da502ebc9a5de0c853326f9858d87db4ee69906351af90d5b76eeff49dbc"
 }

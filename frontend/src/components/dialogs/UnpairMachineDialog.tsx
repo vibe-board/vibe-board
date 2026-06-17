@@ -42,7 +42,11 @@ const UnpairMachineDialogImpl = NiceModal.create<UnpairMachineDialogProps>(
     };
 
     return (
-      <Dialog open={modal.visible} onOpenChange={handleCancel} className="sm:max-w-[440px]">
+      <Dialog
+        open={modal.visible}
+        onOpenChange={handleCancel}
+        className="sm:max-w-[440px]"
+      >
         <DialogContent>
           <DialogHeader>
             <div className="flex items-center gap-3">

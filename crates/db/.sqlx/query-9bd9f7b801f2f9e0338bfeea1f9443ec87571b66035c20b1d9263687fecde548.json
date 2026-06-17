@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE workspace_repos\n               SET parent_workspace_repo_id = $1, nested_path = $2\n               WHERE workspace_id = $3 AND repo_id = $4",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "9bd9f7b801f2f9e0338bfeea1f9443ec87571b66035c20b1d9263687fecde548"
+}

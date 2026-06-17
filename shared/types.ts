@@ -27,15 +27,15 @@ host_provider_override: string | null, created_at: Date, updated_at: Date, };
 
 export type UpdateRepo = { display_name?: string | null, setup_script?: string | null, cleanup_script?: string | null, archive_script?: string | null, copy_files?: string | null, parallel_setup_script?: boolean | null, dev_server_script?: string | null, default_target_branch?: string | null, default_working_dir?: string | null, host_provider_override?: string | null, };
 
-export type ProjectRepo = { id: string, project_id: string, repo_id: string, };
+export type ProjectRepo = { id: string, project_id: string, repo_id: string, parent_project_repo_id: string | null, nested_path: string | null, };
 
 export type CreateProjectRepo = { display_name: string, git_repo_path: string, };
 
-export type WorkspaceRepo = { id: string, workspace_id: string, repo_id: string, target_branch: string, parent_workspace_repo_id: string | null, submodule_path: string | null, created_at: Date, updated_at: Date, };
+export type WorkspaceRepo = { id: string, workspace_id: string, repo_id: string, target_branch: string, parent_workspace_repo_id: string | null, nested_path: string | null, created_at: Date, updated_at: Date, };
 
 export type CreateWorkspaceRepo = { repo_id: string, target_branch: string, };
 
-export type RepoWithTargetBranch = { target_branch: string, is_submodule: boolean, id: string, path: string, name: string, display_name: string, setup_script: string | null, cleanup_script: string | null, archive_script: string | null, copy_files: string | null, parallel_setup_script: boolean, dev_server_script: string | null, default_target_branch: string | null, default_working_dir: string | null, 
+export type RepoWithTargetBranch = { target_branch: string, is_nested: boolean, id: string, path: string, name: string, display_name: string, setup_script: string | null, cleanup_script: string | null, archive_script: string | null, copy_files: string | null, parallel_setup_script: boolean, dev_server_script: string | null, default_target_branch: string | null, default_working_dir: string | null, 
 /**
  * Snake-case ProviderKind ('git_hub' | 'azure_dev_ops' | 'git_lab') set by the user;
  * NULL = auto-detect via URL heuristic + glab probe. Validated at the server layer.

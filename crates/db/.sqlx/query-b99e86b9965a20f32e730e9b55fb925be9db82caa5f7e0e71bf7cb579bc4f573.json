@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE project_repos SET parent_project_repo_id = NULL, nested_path = NULL WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "b99e86b9965a20f32e730e9b55fb925be9db82caa5f7e0e71bf7cb579bc4f573"
+}

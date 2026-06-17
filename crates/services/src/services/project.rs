@@ -108,6 +108,8 @@ impl ProjectService {
             ProjectRepo::create(pool, project.id, repo_entity.id).await?;
         }
 
+        ProjectRepo::recompute_nesting(pool, project.id).await?;
+
         Ok(project)
     }
 

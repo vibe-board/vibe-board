@@ -15,7 +15,7 @@ pub struct WorkspaceRepo {
     pub repo_id: Uuid,
     pub target_branch: String,
     pub parent_workspace_repo_id: Option<Uuid>,
-    pub submodule_path: Option<String>,
+    pub nested_path: Option<String>,
     #[ts(type = "Date")]
     pub created_at: DateTime<Utc>,
     #[ts(type = "Date")]
@@ -34,7 +34,7 @@ pub struct RepoWithTargetBranch {
     #[serde(flatten)]
     pub repo: Repo,
     pub target_branch: String,
-    pub is_submodule: bool,
+    pub is_nested: bool,
 }
 
 /// Repo info with copy_files configuration.
@@ -73,7 +73,7 @@ impl WorkspaceRepo {
                              repo_id as "repo_id!: Uuid",
                              target_branch,
                              parent_workspace_repo_id as "parent_workspace_repo_id?: Uuid",
-                             submodule_path,
+                             nested_path,
                              created_at as "created_at!: DateTime<Utc>",
                              updated_at as "updated_at!: DateTime<Utc>""#,
                 id,
@@ -101,7 +101,7 @@ impl WorkspaceRepo {
                       repo_id as "repo_id!: Uuid",
                       target_branch,
                       parent_workspace_repo_id as "parent_workspace_repo_id?: Uuid",
-                      submodule_path,
+                      nested_path,
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM workspace_repos
@@ -164,7 +164,7 @@ impl WorkspaceRepo {
                       r.created_at as "created_at!: DateTime<Utc>",
                       r.updated_at as "updated_at!: DateTime<Utc>",
                       wr.target_branch,
-                      wr.submodule_path IS NOT NULL as "is_submodule!: bool"
+                      wr.nested_path IS NOT NULL as "is_nested!: bool"
                FROM repos r
                JOIN workspace_repos wr ON r.id = wr.repo_id
                WHERE wr.workspace_id = $1
@@ -195,7 +195,7 @@ impl WorkspaceRepo {
                     updated_at: row.updated_at,
                 },
                 target_branch: row.target_branch,
-                is_submodule: row.is_submodule,
+                is_nested: row.is_nested,
             })
             .collect())
     }
@@ -212,7 +212,7 @@ impl WorkspaceRepo {
                       repo_id as "repo_id!: Uuid",
                       target_branch,
                       parent_workspace_repo_id as "parent_workspace_repo_id?: Uuid",
-                      submodule_path,
+                      nested_path,
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM workspace_repos
@@ -224,27 +224,27 @@ impl WorkspaceRepo {
         .await
     }
 
-    pub async fn create_submodule(
+    pub async fn create_nested(
         pool: &SqlitePool,
         workspace_id: Uuid,
         repo_id: Uuid,
         target_branch: &str,
         parent_workspace_repo_id: Uuid,
-        submodule_path: &str,
+        nested_path: &str,
     ) -> Result<Self, sqlx::Error> {
         let id = Uuid::new_v4();
         sqlx::query_as!(
             WorkspaceRepo,
             r#"INSERT INTO workspace_repos
                    (id, workspace_id, repo_id, target_branch,
-                    parent_workspace_repo_id, submodule_path)
+                    parent_workspace_repo_id, nested_path)
                VALUES ($1, $2, $3, $4, $5, $6)
                RETURNING id as "id!: Uuid",
                          workspace_id as "workspace_id!: Uuid",
                          repo_id as "repo_id!: Uuid",
                          target_branch,
                          parent_workspace_repo_id as "parent_workspace_repo_id?: Uuid",
-                         submodule_path,
+                         nested_path,
                          created_at as "created_at!: DateTime<Utc>",
                          updated_at as "updated_at!: DateTime<Utc>""#,
             id,
@@ -252,13 +252,13 @@ impl WorkspaceRepo {
             repo_id,
             target_branch,
             parent_workspace_repo_id,
-            submodule_path,
+            nested_path,
         )
         .fetch_one(pool)
         .await
     }
 
-    pub async fn find_submodules_for_workspace(
+    pub async fn find_nested_for_workspace(
         pool: &SqlitePool,
         workspace_id: Uuid,
     ) -> Result<Vec<Self>, sqlx::Error> {
@@ -269,7 +269,7 @@ impl WorkspaceRepo {
                       repo_id as "repo_id!: Uuid",
                       target_branch,
                       parent_workspace_repo_id as "parent_workspace_repo_id?: Uuid",
-                      submodule_path,
+                      nested_path,
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM workspace_repos
@@ -278,6 +278,28 @@ impl WorkspaceRepo {
         )
         .fetch_all(pool)
         .await
+    }
+
+    /// Set (or clear) the per-workspace nesting for one repo's workspace_repo row.
+    pub async fn set_nesting(
+        pool: &SqlitePool,
+        workspace_id: Uuid,
+        repo_id: Uuid,
+        parent_workspace_repo_id: Option<Uuid>,
+        nested_path: Option<&str>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"UPDATE workspace_repos
+               SET parent_workspace_repo_id = $1, nested_path = $2
+               WHERE workspace_id = $3 AND repo_id = $4"#,
+            parent_workspace_repo_id,
+            nested_path,
+            workspace_id,
+            repo_id
+        )
+        .execute(pool)
+        .await?;
+        Ok(())
     }
 
     pub async fn update_target_branch(

@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT pr.id as \"pr_id!: Uuid\", r.path\n               FROM project_repos pr\n               JOIN repos r ON r.id = pr.repo_id\n               WHERE pr.project_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "name": "pr_id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "path",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false
+    ]
+  },
+  "hash": "0213a0e72cbce79c32e68981cb8b4327a6d05d8e8096d162baf0ed3b6956ae03"
+}
