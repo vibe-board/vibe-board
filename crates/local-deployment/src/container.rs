@@ -62,7 +62,7 @@ use services::services::{
     normalized_entry_store::NormalizedEntryStore,
     notification::NotificationService,
     queued_message::QueuedMessageService,
-    workspace_manager::{RepoWorkspaceInput, WorkspaceManager},
+    workspace_manager::{RepoWorkspaceInput, SUBMODULE_BASE_BRANCH, WorkspaceManager},
 };
 use tokio::{sync::RwLock, task::JoinHandle};
 use tokio_util::io::ReaderStream;
@@ -1572,6 +1572,44 @@ impl ContainerService for LocalContainerService {
             WorkspaceManager::create_workspace(&workspace_dir, &workspace_inputs, &workspace.branch)
                 .await?
         };
+
+        // Register direct submodules discovered in each repo's worktree as
+        // submodule workspace_repos (one level only). The submodule's working
+        // tree and task branch were already created during workspace creation.
+        for repo in &repositories {
+            let parent_worktree = created_workspace.workspace_dir.join(&repo.name);
+            let parent_wr = workspace_repos
+                .iter()
+                .find(|wr| wr.repo_id == repo.id)
+                .ok_or_else(|| {
+                    ContainerError::Other(anyhow!(
+                        "parent workspace_repo missing for repo {}",
+                        repo.id
+                    ))
+                })?;
+            for sub in git::submodule::read_submodules(&parent_worktree) {
+                let sub_path = parent_worktree.join(&sub.path);
+                let sub_repo = Repo::find_or_create(
+                    &self.db.pool,
+                    &sub_path,
+                    &format!("{} / {}", repo.display_name, sub.path),
+                )
+                .await?;
+                // The submodule has a base branch (vibe-submodule-base) at the
+                // gitlink commit and the task branch workspace.branch cut from
+                // it. Record the base branch as target_branch so diff/merge
+                // have a real base distinct from the task branch.
+                WorkspaceRepo::create_submodule(
+                    &self.db.pool,
+                    workspace.id,
+                    sub_repo.id,
+                    SUBMODULE_BASE_BRANCH,
+                    parent_wr.id,
+                    &sub.path,
+                )
+                .await?;
+            }
+        }
 
         // Copy project files and images to workspace
         self.copy_files_and_images(&created_workspace.workspace_dir, workspace)

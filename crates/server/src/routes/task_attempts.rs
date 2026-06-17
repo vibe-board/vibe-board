@@ -379,7 +379,11 @@ pub async fn get_workspace_diffs(
         .ensure_container_exists(&workspace)
         .await?;
     let workspace_path = Path::new(&container_ref);
-    let worktree_path = repo_worktree_path(workspace_path, &workspace, &repo);
+    let worktree_path = if workspace_repo.submodule_path.is_some() {
+        repo.path.clone()
+    } else {
+        repo_worktree_path(workspace_path, &workspace, &repo)
+    };
 
     let base_commit = {
         let git = GitService::new();
@@ -812,6 +816,67 @@ pub async fn merge_task_attempt(
         );
         (legacy_commit_message(&task), None)
     };
+
+    // Submodule-aware merge (one level): merge each direct submodule first so its
+    // branch lands on its base, then stage the advanced gitlink in the parent
+    // worktree and commit it onto the workspace branch, so the parent's merge
+    // records the new submodule SHA.
+    let submodules = WorkspaceRepo::find_submodules_for_workspace(pool, workspace.id).await?;
+    let mut staged_any_gitlink = false;
+    for sub in &submodules {
+        if sub.parent_workspace_repo_id != Some(workspace_repo.id) {
+            continue; // only this parent's direct submodules
+        }
+        let sub_repo = Repo::find_by_id(pool, sub.repo_id)
+            .await?
+            .ok_or(RepoError::NotFound)?;
+        // Skip submodules whose task branch is not ahead of its base. merge_changes
+        // resets the task branch onto the squash commit, so a re-run would have nothing
+        // to merge and `git commit` would fail. Skipping the merge AND the gitlink
+        // staging is correct: if the submodule didn't advance, its gitlink in the parent
+        // didn't change either.
+        let sub_ahead = deployment
+            .git()
+            .get_branch_status(&sub_repo.path, &workspace.branch, &sub.target_branch)
+            .map(|(ahead, _)| ahead)
+            .unwrap_or(0);
+        if sub_ahead == 0 {
+            continue;
+        }
+        // sub_repo.path is the nested submodule worktree (a git worktree of the submodule).
+        let sub_merge_sha = deployment.git().merge_changes(
+            &sub_repo.path,     // base worktree (submodule worktree, where base branch lives)
+            &sub_repo.path,     // task worktree (same submodule worktree)
+            &workspace.branch,  // task branch in the submodule
+            &sub.target_branch, // base branch (vibe-submodule-base)
+            &commit_message,
+        )?;
+        Merge::create_direct(
+            pool,
+            workspace.id,
+            sub.repo_id,
+            &sub.target_branch,
+            &sub_merge_sha,
+            task.id,
+            None,
+        )
+        .await?;
+        // Stage the advanced gitlink in the PARENT worktree.
+        if let Some(sp) = sub.submodule_path.as_deref() {
+            deployment
+                .git()
+                .stage_submodule_gitlink(&worktree_path, sp)?;
+            staged_any_gitlink = true;
+        }
+    }
+    if staged_any_gitlink {
+        // Commit only the gitlink paths already staged above via stage_submodule_gitlink
+        // (git add -- <path>). Using a path-scoped commit avoids `git add -A`, which would
+        // sweep any unrelated dirty/untracked files in the parent worktree into this commit.
+        deployment
+            .git()
+            .commit_staged(&worktree_path, &commit_message)?;
+    }
 
     let merge_commit_id = deployment.git().merge_changes(
         &repo.path,

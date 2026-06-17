@@ -1,12 +1,18 @@
 use std::path::{Path, PathBuf};
 
 use db::models::{repo::Repo, workspace::Workspace as DbWorkspace};
+use git::GitService;
 use sqlx::{Pool, Sqlite};
 use thiserror::Error;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use super::worktree_manager::{WorktreeCleanup, WorktreeError, WorktreeManager};
+
+/// Deterministic base-branch name created inside a submodule worktree at the
+/// gitlink commit. Distinct from the submodule's task branch (workspace.branch)
+/// so diff/merge have a real base. Recorded as the submodule's target_branch.
+pub const SUBMODULE_BASE_BRANCH: &str = "vibe-submodule-base";
 
 #[derive(Debug, Clone)]
 pub struct RepoWorkspaceInput {
@@ -98,8 +104,52 @@ impl WorkspaceManager {
                         repo_id: input.repo.id,
                         repo_name: input.repo.name.clone(),
                         source_repo_path: input.repo.path.clone(),
-                        worktree_path,
+                        worktree_path: worktree_path.clone(),
                     });
+
+                    // Populate direct submodules of this freshly-created
+                    // worktree (one level only).
+                    for sub in git::submodule::read_submodules(&worktree_path) {
+                        let git = GitService::new();
+                        let sub_worktree = worktree_path.clone();
+                        let sub_path = sub.path.clone();
+                        let branch = branch_name.to_string();
+                        let init_result = tokio::task::spawn_blocking(move || {
+                            // Init/checkout the submodule working tree (reuses
+                            // parent .git/modules).
+                            git.submodule_init(&sub_worktree, &sub_path)?;
+                            // Create a base branch at the gitlink commit
+                            // WITHOUT switching, so diff/merge have a real base
+                            // distinct from the task branch.
+                            git.create_base_branch_in_worktree(
+                                &sub_worktree.join(&sub_path),
+                                SUBMODULE_BASE_BRANCH,
+                            )?;
+                            // Create the task branch inside the submodule, cut
+                            // from its current (gitlink) commit, so the
+                            // submodule is a first-class workspace repo.
+                            git.create_branch_in_worktree(&sub_worktree.join(&sub_path), &branch)?;
+                            Ok::<(), git::GitServiceError>(())
+                        })
+                        .await;
+
+                        let failed = match init_result {
+                            Ok(Ok(())) => None,
+                            Ok(Err(e)) => {
+                                Some(format!("submodule '{}' init failed: {e}", sub.path))
+                            }
+                            Err(e) => Some(format!(
+                                "submodule '{}' init task join error: {e}",
+                                sub.path
+                            )),
+                        };
+                        if let Some(msg) = failed {
+                            error!("{msg}. Rolling back...");
+                            Self::cleanup_created_worktrees(&created_worktrees).await;
+                            let _ = tokio::fs::remove_dir(workspace_dir).await;
+                            return Err(WorkspaceError::PartialCreation(msg));
+                        }
+                    }
                 }
                 Err(e) => {
                     error!(

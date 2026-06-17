@@ -14,6 +14,8 @@ pub struct WorkspaceRepo {
     pub workspace_id: Uuid,
     pub repo_id: Uuid,
     pub target_branch: String,
+    pub parent_workspace_repo_id: Option<Uuid>,
+    pub submodule_path: Option<String>,
     #[ts(type = "Date")]
     pub created_at: DateTime<Utc>,
     #[ts(type = "Date")]
@@ -32,6 +34,7 @@ pub struct RepoWithTargetBranch {
     #[serde(flatten)]
     pub repo: Repo,
     pub target_branch: String,
+    pub is_submodule: bool,
 }
 
 /// Repo info with copy_files configuration.
@@ -69,6 +72,8 @@ impl WorkspaceRepo {
                              workspace_id as "workspace_id!: Uuid",
                              repo_id as "repo_id!: Uuid",
                              target_branch,
+                             parent_workspace_repo_id as "parent_workspace_repo_id?: Uuid",
+                             submodule_path,
                              created_at as "created_at!: DateTime<Utc>",
                              updated_at as "updated_at!: DateTime<Utc>""#,
                 id,
@@ -95,6 +100,8 @@ impl WorkspaceRepo {
                       workspace_id as "workspace_id!: Uuid",
                       repo_id as "repo_id!: Uuid",
                       target_branch,
+                      parent_workspace_repo_id as "parent_workspace_repo_id?: Uuid",
+                      submodule_path,
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM workspace_repos
@@ -156,7 +163,8 @@ impl WorkspaceRepo {
                       r.host_provider_override,
                       r.created_at as "created_at!: DateTime<Utc>",
                       r.updated_at as "updated_at!: DateTime<Utc>",
-                      wr.target_branch
+                      wr.target_branch,
+                      wr.submodule_path IS NOT NULL as "is_submodule!: bool"
                FROM repos r
                JOIN workspace_repos wr ON r.id = wr.repo_id
                WHERE wr.workspace_id = $1
@@ -187,6 +195,7 @@ impl WorkspaceRepo {
                     updated_at: row.updated_at,
                 },
                 target_branch: row.target_branch,
+                is_submodule: row.is_submodule,
             })
             .collect())
     }
@@ -202,6 +211,8 @@ impl WorkspaceRepo {
                       workspace_id as "workspace_id!: Uuid",
                       repo_id as "repo_id!: Uuid",
                       target_branch,
+                      parent_workspace_repo_id as "parent_workspace_repo_id?: Uuid",
+                      submodule_path,
                       created_at as "created_at!: DateTime<Utc>",
                       updated_at as "updated_at!: DateTime<Utc>"
                FROM workspace_repos
@@ -210,6 +221,62 @@ impl WorkspaceRepo {
             repo_id
         )
         .fetch_optional(pool)
+        .await
+    }
+
+    pub async fn create_submodule(
+        pool: &SqlitePool,
+        workspace_id: Uuid,
+        repo_id: Uuid,
+        target_branch: &str,
+        parent_workspace_repo_id: Uuid,
+        submodule_path: &str,
+    ) -> Result<Self, sqlx::Error> {
+        let id = Uuid::new_v4();
+        sqlx::query_as!(
+            WorkspaceRepo,
+            r#"INSERT INTO workspace_repos
+                   (id, workspace_id, repo_id, target_branch,
+                    parent_workspace_repo_id, submodule_path)
+               VALUES ($1, $2, $3, $4, $5, $6)
+               RETURNING id as "id!: Uuid",
+                         workspace_id as "workspace_id!: Uuid",
+                         repo_id as "repo_id!: Uuid",
+                         target_branch,
+                         parent_workspace_repo_id as "parent_workspace_repo_id?: Uuid",
+                         submodule_path,
+                         created_at as "created_at!: DateTime<Utc>",
+                         updated_at as "updated_at!: DateTime<Utc>""#,
+            id,
+            workspace_id,
+            repo_id,
+            target_branch,
+            parent_workspace_repo_id,
+            submodule_path,
+        )
+        .fetch_one(pool)
+        .await
+    }
+
+    pub async fn find_submodules_for_workspace(
+        pool: &SqlitePool,
+        workspace_id: Uuid,
+    ) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as!(
+            WorkspaceRepo,
+            r#"SELECT id as "id!: Uuid",
+                      workspace_id as "workspace_id!: Uuid",
+                      repo_id as "repo_id!: Uuid",
+                      target_branch,
+                      parent_workspace_repo_id as "parent_workspace_repo_id?: Uuid",
+                      submodule_path,
+                      created_at as "created_at!: DateTime<Utc>",
+                      updated_at as "updated_at!: DateTime<Utc>"
+               FROM workspace_repos
+               WHERE workspace_id = $1 AND parent_workspace_repo_id IS NOT NULL"#,
+            workspace_id
+        )
+        .fetch_all(pool)
         .await
     }
 

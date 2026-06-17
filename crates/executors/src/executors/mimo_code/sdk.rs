@@ -2220,7 +2220,6 @@ mod tests {
         let guard = pending.start();
         assert!(pending.has_pending());
 
-        let p = pending.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(3)).await;
             drop(guard);

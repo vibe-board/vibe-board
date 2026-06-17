@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO workspace_repos\n                   (id, workspace_id, repo_id, target_branch,\n                    parent_workspace_repo_id, submodule_path)\n               VALUES ($1, $2, $3, $4, $5, $6)\n               RETURNING id as \"id!: Uuid\",\n                         workspace_id as \"workspace_id!: Uuid\",\n                         repo_id as \"repo_id!: Uuid\",\n                         target_branch,\n                         parent_workspace_repo_id as \"parent_workspace_repo_id?: Uuid\",\n                         submodule_path,\n                         created_at as \"created_at!: DateTime<Utc>\",\n                         updated_at as \"updated_at!: DateTime<Utc>\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "workspace_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "repo_id!: Uuid",
+        "ordinal": 2,
+        "type_info": "Blob"
+      },
+      {
+        "name": "target_branch",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "parent_workspace_repo_id?: Uuid",
+        "ordinal": 4,
+        "type_info": "Blob"
+      },
+      {
+        "name": "submodule_path",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 7,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "5ff6fbbdf7de7e07c598f7644c5545e816277224f3c6ca0f6c8279a110a01b61"
+}
