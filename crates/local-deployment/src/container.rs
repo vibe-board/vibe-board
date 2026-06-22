@@ -1732,9 +1732,19 @@ impl ContainerService for LocalContainerService {
             return Ok(repo_path_str);
         }
 
-        // For worktree mode or multi-repo direct mode
-        let workspace_dir = if let Some(container_ref) = &workspace.container_ref {
-            PathBuf::from(container_ref)
+        // For worktree mode or multi-repo direct mode.
+        // Worktree existence is the source of truth, not container_ref alone: the
+        // periodic cleanup task can delete the worktree directory on disk while a
+        // stale container_ref still points at it. Treat a set-but-missing ref like
+        // None so we recreate the worktree and re-write the DB.
+        let existing_dir = workspace
+            .container_ref
+            .as_ref()
+            .map(PathBuf::from)
+            .filter(|dir| dir.exists());
+
+        let workspace_dir = if let Some(dir) = existing_dir {
+            dir
         } else {
             let task = workspace
                 .parent_task(&self.db.pool)
@@ -1755,13 +1765,12 @@ impl ContainerService for LocalContainerService {
         )
         .await?;
 
-        if workspace.container_ref.is_none() {
-            Workspace::update_container_ref(
-                &self.db.pool,
-                workspace.id,
-                &workspace_dir.to_string_lossy(),
-            )
-            .await?;
+        // Persist the container_ref whenever it is missing or no longer matches the
+        // directory we just ensured (e.g. after a cleanup cleared/staled the ref).
+        let workspace_dir_str = workspace_dir.to_string_lossy().to_string();
+        if workspace.container_ref.as_deref() != Some(workspace_dir_str.as_str()) {
+            Workspace::update_container_ref(&self.db.pool, workspace.id, &workspace_dir_str)
+                .await?;
         }
 
         // Copy project files and images (fast no-op if already exist)

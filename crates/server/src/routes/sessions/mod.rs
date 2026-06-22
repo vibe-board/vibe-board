@@ -176,6 +176,17 @@ pub async fn follow_up(
         .ensure_container_exists(&workspace)
         .await?;
 
+    // ensure_container_exists may have (re)created the worktree and updated the
+    // workspace's container_ref in the DB — e.g. after the periodic cleanup task
+    // deleted the worktree and cleared the ref. Re-fetch so start_execution uses
+    // the fresh container_ref instead of the stale in-memory copy (which would
+    // otherwise fail with "Container ref not found" → HTTP 500).
+    let workspace = Workspace::find_by_id(pool, session.workspace_id)
+        .await?
+        .ok_or(ApiError::Workspace(WorkspaceError::ValidationError(
+            "Workspace not found".to_string(),
+        )))?;
+
     let executor_profile_id = payload.executor_profile_id;
     let allow_executor_change = payload.allow_executor_change.unwrap_or(false);
 

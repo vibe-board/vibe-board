@@ -606,3 +606,79 @@ async fn create_worktree_when_repo_path_is_a_worktree() {
     .await
     .unwrap();
 }
+
+/// Regression for the "session follow-up fails after workspace cleanup deletes the
+/// worktree" bug: the periodic cleanup task removes the worktree directory on disk
+/// (and clears `container_ref`), but a follow-up still references the old path.
+/// `ensure_worktree_exists` must transparently recreate the worktree when the
+/// directory is gone, so follow-up execution can proceed.
+#[tokio::test]
+async fn ensure_worktree_recreates_after_directory_deleted() {
+    use tempfile::TempDir;
+    let td = TempDir::new().unwrap();
+
+    let repo_path = td.path().join("repo");
+    let git_service = GitService::new();
+    git_service
+        .initialize_repo_with_main_branch(&repo_path)
+        .unwrap();
+
+    // Initial session creates the branch + worktree (mirrors real workspace setup).
+    let worktree_path = td.path().join("wt");
+    WorktreeManager::create_worktree(&repo_path, "wt-branch", &worktree_path, "main", true)
+        .await
+        .unwrap();
+    assert!(worktree_path.join(".git").is_file());
+
+    // Simulate the cleanup task deleting the worktree directory from disk.
+    fs::remove_dir_all(&worktree_path).unwrap();
+    assert!(!worktree_path.exists());
+
+    // Follow-up path: ensure_worktree_exists must recreate it rather than failing.
+    WorktreeManager::ensure_worktree_exists(&repo_path, "wt-branch", &worktree_path)
+        .await
+        .unwrap();
+    assert!(
+        worktree_path.join(".git").is_file(),
+        "worktree should be recreated on disk after cleanup deleted it"
+    );
+}
+
+/// Same regression, but using the real cleanup entry point the periodic task calls
+/// (`cleanup_worktree`), which both removes the directory AND prunes git's worktree
+/// metadata. A follow-up must still recreate the worktree from the surviving branch.
+#[tokio::test]
+async fn ensure_worktree_recreates_after_full_cleanup() {
+    use tempfile::TempDir;
+    let td = TempDir::new().unwrap();
+
+    let repo_path = td.path().join("repo");
+    let git_service = GitService::new();
+    git_service
+        .initialize_repo_with_main_branch(&repo_path)
+        .unwrap();
+
+    let worktree_path = td.path().join("wt");
+    WorktreeManager::create_worktree(&repo_path, "wt-branch", &worktree_path, "main", true)
+        .await
+        .unwrap();
+    assert!(worktree_path.join(".git").is_file());
+
+    // Run the exact cleanup the periodic task uses.
+    WorktreeManager::cleanup_worktree(&WorktreeCleanup::new(
+        worktree_path.clone(),
+        Some(repo_path.clone()),
+    ))
+    .await
+    .unwrap();
+    assert!(!worktree_path.exists());
+
+    // Follow-up recreation must succeed.
+    WorktreeManager::ensure_worktree_exists(&repo_path, "wt-branch", &worktree_path)
+        .await
+        .unwrap();
+    assert!(
+        worktree_path.join(".git").is_file(),
+        "worktree should be recreated after the cleanup task removed it"
+    );
+}
