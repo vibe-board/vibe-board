@@ -280,6 +280,96 @@ impl WorkspaceRepo {
         .await
     }
 
+    /// Resolve the subdirectory (relative to the workspace root) where a repo's
+    /// worktree lives, accounting for nesting.
+    ///
+    /// - Top-level repo  -> `<repo.name>`
+    /// - Nested repo     -> `<parent_repo.name>/<nested_path>`
+    ///
+    /// Only one level of nesting is supported (matches workspace creation).
+    pub async fn worktree_subdir(
+        pool: &SqlitePool,
+        workspace_id: Uuid,
+        repo: &Repo,
+    ) -> Result<PathBuf, sqlx::Error> {
+        Self::worktree_subdir_by_repo_id(pool, workspace_id, repo.id, &repo.name).await
+    }
+
+    /// Same as [`worktree_subdir`], but identifies the repo by id with an
+    /// explicit fallback name (for callers that don't hold a full [`Repo`]).
+    pub async fn worktree_subdir_by_repo_id(
+        pool: &SqlitePool,
+        workspace_id: Uuid,
+        repo_id: Uuid,
+        repo_name: &str,
+    ) -> Result<PathBuf, sqlx::Error> {
+        let Some(wr) = Self::find_by_workspace_and_repo_id(pool, workspace_id, repo_id).await?
+        else {
+            return Ok(PathBuf::from(repo_name));
+        };
+
+        let (Some(parent_wr_id), Some(nested_path)) =
+            (wr.parent_workspace_repo_id, wr.nested_path.as_ref())
+        else {
+            return Ok(PathBuf::from(repo_name));
+        };
+
+        // Resolve the parent repo's name to build `<parent>/<nested_path>`.
+        let parent_name = sqlx::query_scalar!(
+            r#"SELECT r.name
+               FROM workspace_repos wr
+               JOIN repos r ON r.id = wr.repo_id
+               WHERE wr.id = $1"#,
+            parent_wr_id
+        )
+        .fetch_optional(pool)
+        .await?;
+
+        match parent_name {
+            Some(parent_name) => Ok(PathBuf::from(parent_name).join(nested_path)),
+            // Parent missing (shouldn't happen): fall back to flat layout.
+            None => Ok(PathBuf::from(repo_name)),
+        }
+    }
+
+    /// Resolve worktree subdirs (relative to the workspace root) for every repo
+    /// in a workspace in a single query. Maps `repo_id -> subdir`.
+    ///
+    /// - Top-level repo  -> `<repo.name>`
+    /// - Nested repo     -> `<parent_repo.name>/<nested_path>`
+    pub async fn worktree_subdirs_for_workspace(
+        pool: &SqlitePool,
+        workspace_id: Uuid,
+    ) -> Result<std::collections::HashMap<Uuid, PathBuf>, sqlx::Error> {
+        let rows = sqlx::query!(
+            r#"SELECT wr.repo_id as "repo_id!: Uuid",
+                      r.name as "repo_name!: String",
+                      wr.nested_path,
+                      pr.name as "parent_repo_name?: String"
+               FROM workspace_repos wr
+               JOIN repos r ON r.id = wr.repo_id
+               LEFT JOIN workspace_repos pwr ON pwr.id = wr.parent_workspace_repo_id
+               LEFT JOIN repos pr ON pr.id = pwr.repo_id
+               WHERE wr.workspace_id = $1"#,
+            workspace_id
+        )
+        .fetch_all(pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| {
+                let subdir = match (&row.nested_path, &row.parent_repo_name) {
+                    (Some(nested_path), Some(parent_repo_name)) => {
+                        PathBuf::from(parent_repo_name).join(nested_path)
+                    }
+                    _ => PathBuf::from(&row.repo_name),
+                };
+                (row.repo_id, subdir)
+            })
+            .collect())
+    }
+
     /// Set (or clear) the per-workspace nesting for one repo's workspace_repo row.
     pub async fn set_nesting(
         pool: &SqlitePool,

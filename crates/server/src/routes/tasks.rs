@@ -370,16 +370,22 @@ pub async fn delete_task(
 
     let repositories = WorkspaceRepo::find_unique_repos_for_task(pool, task.id).await?;
 
-    // Collect workspace directories that need cleanup with their modes
-    let workspace_cleanup_info: Vec<(PathBuf, WorkspaceMode)> = attempts
-        .iter()
-        .filter_map(|attempt| {
-            attempt
-                .container_ref
-                .as_ref()
-                .map(|cr| (PathBuf::from(cr), attempt.mode))
-        })
-        .collect();
+    // Collect workspace directories that need cleanup with their modes and the
+    // nested worktree layout (resolved now, before the CASCADE delete wipes the
+    // workspace_repos rows that encode nesting).
+    let mut workspace_cleanup_info: Vec<(
+        PathBuf,
+        WorkspaceMode,
+        std::collections::HashMap<Uuid, PathBuf>,
+    )> = Vec::new();
+    for attempt in &attempts {
+        if let Some(cr) = attempt.container_ref.as_ref() {
+            let subdirs = WorkspaceRepo::worktree_subdirs_for_workspace(pool, attempt.id)
+                .await
+                .unwrap_or_default();
+            workspace_cleanup_info.push((PathBuf::from(cr), attempt.mode, subdirs));
+        }
+    }
 
     // Collect execution process IDs for log file cleanup (must be before CASCADE delete)
     let mut execution_ids: Vec<Uuid> = Vec::new();
@@ -446,7 +452,7 @@ pub async fn delete_task(
             repositories.len()
         );
 
-        for (workspace_dir, mode) in &workspace_cleanup_info {
+        for (workspace_dir, mode, subdirs) in &workspace_cleanup_info {
             // Skip cleanup for direct-mode single-repo workspaces
             if *mode == WorkspaceMode::Direct && repositories.len() == 1 {
                 tracing::info!(
@@ -456,7 +462,8 @@ pub async fn delete_task(
                 continue;
             }
 
-            if let Err(e) = WorkspaceManager::cleanup_workspace(workspace_dir, &repositories).await
+            if let Err(e) =
+                WorkspaceManager::cleanup_workspace(workspace_dir, &repositories, subdirs).await
             {
                 tracing::error!(
                     "Background workspace cleanup failed for task {} at {}: {}",

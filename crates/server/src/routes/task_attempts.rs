@@ -123,11 +123,18 @@ pub struct DeleteWorkspaceQuery {
 /// Get the filesystem path for a repo within a workspace.
 /// For Direct single-repo mode, the workspace root IS the repo path.
 /// For Worktree mode (or Direct multi-repo), repos are subdirectories.
-fn repo_worktree_path(workspace_root: &Path, workspace: &Workspace, repo: &Repo) -> PathBuf {
+/// Nested repos (submodules) live at `<parent_repo>/<nested_path>`.
+pub(crate) async fn repo_worktree_path(
+    pool: &sqlx::SqlitePool,
+    workspace_root: &Path,
+    workspace: &Workspace,
+    repo: &Repo,
+) -> Result<PathBuf, sqlx::Error> {
     if workspace.mode == WorkspaceMode::Direct {
-        workspace_root.to_path_buf()
+        Ok(workspace_root.to_path_buf())
     } else {
-        workspace_root.join(&repo.name)
+        let subdir = WorkspaceRepo::worktree_subdir(pool, workspace.id, repo).await?;
+        Ok(workspace_root.join(subdir))
     }
 }
 
@@ -379,11 +386,7 @@ pub async fn get_workspace_diffs(
         .ensure_container_exists(&workspace)
         .await?;
     let workspace_path = Path::new(&container_ref);
-    let worktree_path = if workspace_repo.nested_path.is_some() {
-        repo.path.clone()
-    } else {
-        repo_worktree_path(workspace_path, &workspace, &repo)
-    };
+    let worktree_path = repo_worktree_path(pool, workspace_path, &workspace, &repo).await?;
 
     let base_commit = {
         let git = GitService::new();
@@ -722,7 +725,7 @@ pub async fn merge_task_attempt(
         .ensure_container_exists(&workspace)
         .await?;
     let workspace_path = Path::new(&container_ref);
-    let worktree_path = repo_worktree_path(workspace_path, &workspace, &repo);
+    let worktree_path = repo_worktree_path(pool, workspace_path, &workspace, &repo).await?;
 
     let task = workspace
         .parent_task(pool)
@@ -876,7 +879,7 @@ pub async fn push_task_attempt_branch(
         .ensure_container_exists(&workspace)
         .await?;
     let workspace_path = Path::new(&container_ref);
-    let worktree_path = repo_worktree_path(workspace_path, &workspace, &repo);
+    let worktree_path = repo_worktree_path(pool, workspace_path, &workspace, &repo).await?;
 
     match deployment
         .git()
@@ -911,7 +914,7 @@ pub async fn force_push_task_attempt_branch(
         .ensure_container_exists(&workspace)
         .await?;
     let workspace_path = Path::new(&container_ref);
-    let worktree_path = repo_worktree_path(workspace_path, &workspace, &repo);
+    let worktree_path = repo_worktree_path(pool, workspace_path, &workspace, &repo).await?;
 
     deployment
         .git()
@@ -1086,7 +1089,7 @@ pub async fn get_task_attempt_branch_status(
 
         let repo_merges = merges_by_repo.get(&repo.id).cloned().unwrap_or_default();
 
-        let worktree_path = repo_worktree_path(&workspace_dir, &workspace, repo);
+        let worktree_path = repo_worktree_path(pool, &workspace_dir, &workspace, repo).await?;
 
         let head_oid = deployment
             .git()
@@ -1255,7 +1258,7 @@ pub async fn get_commit_history(
         .ensure_container_exists(&workspace)
         .await?;
     let workspace_path = Path::new(&container_ref);
-    let worktree_path = repo_worktree_path(workspace_path, &workspace, &repo);
+    let worktree_path = repo_worktree_path(pool, workspace_path, &workspace, &repo).await?;
 
     let git_service = GitService::new();
 
@@ -1312,7 +1315,7 @@ pub async fn get_commit_diff(
         .ensure_container_exists(&workspace)
         .await?;
     let workspace_path = Path::new(&container_ref);
-    let worktree_path = repo_worktree_path(workspace_path, &workspace, &repo);
+    let worktree_path = repo_worktree_path(pool, workspace_path, &workspace, &repo).await?;
 
     let git_service = GitService::new();
     let diffs = git_service.get_commit_diff(&worktree_path, &params.sha)?;
@@ -1342,7 +1345,7 @@ pub async fn revert_commit(
         .ensure_container_exists(&workspace)
         .await?;
     let workspace_dir = Path::new(&container_ref);
-    let worktree_path = repo_worktree_path(workspace_dir, &workspace, &repo);
+    let worktree_path = repo_worktree_path(pool, workspace_dir, &workspace, &repo).await?;
 
     deployment
         .git()
@@ -1632,7 +1635,7 @@ pub async fn rebase_task_attempt(
         .ensure_container_exists(&workspace)
         .await?;
     let workspace_path = Path::new(&container_ref);
-    let worktree_path = repo_worktree_path(workspace_path, &workspace, &repo);
+    let worktree_path = repo_worktree_path(pool, workspace_path, &workspace, &repo).await?;
 
     let result = deployment.git().rebase_branch(
         &repo.path,
@@ -1696,7 +1699,7 @@ pub async fn abort_conflicts_task_attempt(
         .ensure_container_exists(&workspace)
         .await?;
     let workspace_path = Path::new(&container_ref);
-    let worktree_path = repo_worktree_path(workspace_path, &workspace, &repo);
+    let worktree_path = repo_worktree_path(pool, workspace_path, &workspace, &repo).await?;
 
     deployment.git().abort_conflicts(&worktree_path)?;
 
@@ -1720,7 +1723,7 @@ pub async fn continue_rebase_task_attempt(
         .ensure_container_exists(&workspace)
         .await?;
     let workspace_path = Path::new(&container_ref);
-    let worktree_path = repo_worktree_path(workspace_path, &workspace, &repo);
+    let worktree_path = repo_worktree_path(pool, workspace_path, &workspace, &repo).await?;
 
     deployment.git().continue_rebase(&worktree_path)?;
 
@@ -2273,6 +2276,10 @@ pub async fn delete_workspace(
     // Gather data needed for background cleanup
     let workspace_dir = workspace.container_ref.clone().map(PathBuf::from);
     let repositories = WorkspaceRepo::find_repos_for_workspace(pool, workspace.id).await?;
+    // Resolve nested worktree layout before deleting the workspace rows (the
+    // delete below CASCADEs workspace_repos, after which nesting is unknowable).
+    let worktree_subdirs =
+        WorkspaceRepo::worktree_subdirs_for_workspace(pool, workspace.id).await?;
 
     // Nullify parent_workspace_id for any child tasks before deletion
     let children_affected = Task::nullify_children_by_workspace_id(pool, workspace.id).await?;
@@ -2315,7 +2322,12 @@ pub async fn delete_workspace(
                 workspace_dir.display()
             );
 
-            if let Err(e) = WorkspaceManager::cleanup_workspace(&workspace_dir, &repositories).await
+            if let Err(e) = WorkspaceManager::cleanup_workspace(
+                &workspace_dir,
+                &repositories,
+                &worktree_subdirs,
+            )
+            .await
             {
                 tracing::error!(
                     "Background workspace cleanup failed for {} at {}: {}",

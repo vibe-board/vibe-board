@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT wr.repo_id as \"repo_id!: Uuid\",\n                      r.name as \"repo_name!: String\",\n                      wr.nested_path,\n                      pr.name as \"parent_repo_name?: String\"\n               FROM workspace_repos wr\n               JOIN repos r ON r.id = wr.repo_id\n               LEFT JOIN workspace_repos pwr ON pwr.id = wr.parent_workspace_repo_id\n               LEFT JOIN repos pr ON pr.id = pwr.repo_id\n               WHERE wr.workspace_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "name": "repo_id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "repo_name!: String",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "nested_path",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "parent_repo_name?: String",
+        "ordinal": 3,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "c447c0165169f79eb02a07a05c22f77a3709073586997d529bdf6130e33538c6"
+}

@@ -81,7 +81,9 @@ use crate::{command, copy};
 /// Get the filesystem path for a repo within a workspace.
 /// For Direct single-repo mode, the workspace root IS the repo path.
 /// For Worktree mode (or Direct multi-repo), repos are subdirectories.
-fn repo_worktree_path(
+/// Nested repos (submodules) live at `<parent_repo>/<nested_path>`.
+async fn repo_worktree_path(
+    pool: &sqlx::SqlitePool,
     workspace_root: &Path,
     workspace: &Workspace,
     repos: &[Repo],
@@ -90,7 +92,11 @@ fn repo_worktree_path(
     if workspace.mode == WorkspaceMode::Direct && repos.len() == 1 {
         workspace_root.to_path_buf()
     } else {
-        workspace_root.join(&repo.name)
+        match WorkspaceRepo::worktree_subdir(pool, workspace.id, repo).await {
+            Ok(subdir) => workspace_root.join(subdir),
+            // On lookup failure, fall back to the flat layout.
+            Err(_) => workspace_root.join(&repo.name),
+        }
     }
 }
 
@@ -292,7 +298,10 @@ impl LocalContainerService {
                 tracing::warn!("Failed to remove workspace directory: {}", e);
             }
         } else {
-            WorkspaceManager::cleanup_workspace(&workspace_dir, &repositories)
+            let subdirs = WorkspaceRepo::worktree_subdirs_for_workspace(&db.pool, workspace.id)
+                .await
+                .unwrap_or_default();
+            WorkspaceManager::cleanup_workspace(&workspace_dir, &repositories, &subdirs)
                 .await
                 .unwrap_or_else(|e| {
                     tracing::warn!(
@@ -359,8 +368,14 @@ impl LocalContainerService {
             let workspace_root = self.workspace_to_current_dir(&ctx.workspace);
             let mut any_recorded = false;
             for repo in &ctx.repos {
-                let repo_path =
-                    repo_worktree_path(&workspace_root, &ctx.workspace, &ctx.repos, repo);
+                let repo_path = repo_worktree_path(
+                    &self.db.pool,
+                    &workspace_root,
+                    &ctx.workspace,
+                    &ctx.repos,
+                    repo,
+                )
+                .await;
                 if let Ok(head) = self.git().get_head_info(&repo_path)
                     && ExecutionProcessRepoState::update_after_head_commit(
                         &self.db.pool,
@@ -428,7 +443,7 @@ impl LocalContainerService {
     }
 
     /// Check which repos have uncommitted changes. Fails if any repo is inaccessible.
-    fn check_repos_for_changes(
+    async fn check_repos_for_changes(
         &self,
         workspace_root: &Path,
         workspace: &Workspace,
@@ -438,7 +453,8 @@ impl LocalContainerService {
         let mut repos_with_changes = Vec::new();
 
         for repo in repos {
-            let worktree_path = repo_worktree_path(workspace_root, workspace, repos, repo);
+            let worktree_path =
+                repo_worktree_path(&self.db.pool, workspace_root, workspace, repos, repo).await;
 
             match git.get_worktree_status(&worktree_path) {
                 Ok(ws) if !ws.entries.is_empty() => {
@@ -473,7 +489,14 @@ impl LocalContainerService {
         .await?;
 
         for repo in &ctx.repos {
-            let repo_path = repo_worktree_path(&workspace_root, &ctx.workspace, &ctx.repos, repo);
+            let repo_path = repo_worktree_path(
+                &self.db.pool,
+                &workspace_root,
+                &ctx.workspace,
+                &ctx.repos,
+                repo,
+            )
+            .await;
             let current_head = self.git().get_head_info(&repo_path).ok().map(|h| h.oid);
 
             let before_head = repo_states
@@ -1141,7 +1164,15 @@ impl LocalContainerService {
             if let Some(copy_files) = &repo.copy_files
                 && !copy_files.trim().is_empty()
             {
-                let worktree_path = workspace_dir.join(&repo.name);
+                let subdir = WorkspaceRepo::worktree_subdir_by_repo_id(
+                    &self.db.pool,
+                    workspace.id,
+                    repo.id,
+                    &repo.name,
+                )
+                .await
+                .unwrap_or_else(|_| PathBuf::from(&repo.name));
+                let worktree_path = workspace_dir.join(subdir);
                 self.copy_project_files(&repo.path, &worktree_path, copy_files)
                     .await
                     .unwrap_or_else(|e| {
@@ -1700,8 +1731,15 @@ impl ContainerService for LocalContainerService {
             WorkspaceManager::get_workspace_base_dir().join(&workspace_dir_name)
         };
 
-        WorkspaceManager::ensure_workspace_exists(&workspace_dir, &repositories, &workspace.branch)
-            .await?;
+        let subdirs =
+            WorkspaceRepo::worktree_subdirs_for_workspace(&self.db.pool, workspace.id).await?;
+        WorkspaceManager::ensure_workspace_exists(
+            &workspace_dir,
+            &repositories,
+            &workspace.branch,
+            &subdirs,
+        )
+        .await?;
 
         if workspace.container_ref.is_none() {
             Workspace::update_container_ref(
@@ -1735,7 +1773,14 @@ impl ContainerService for LocalContainerService {
             WorkspaceRepo::find_repos_for_workspace(&self.db.pool, workspace.id).await?;
 
         for repo in &repositories {
-            let worktree_path = repo_worktree_path(&workspace_dir, workspace, &repositories, repo);
+            let worktree_path = repo_worktree_path(
+                &self.db.pool,
+                &workspace_dir,
+                workspace,
+                &repositories,
+                repo,
+            )
+            .await;
             if worktree_path.exists() && !self.git().is_worktree_clean(&worktree_path)? {
                 return Ok(false);
             }
@@ -2035,8 +2080,9 @@ impl ContainerService for LocalContainerService {
             .ok_or_else(|| ContainerError::Other(anyhow!("Container reference not found")))?;
         let workspace_root = PathBuf::from(container_ref);
 
-        let repos_with_changes =
-            self.check_repos_for_changes(&workspace_root, &ctx.workspace, &ctx.repos)?;
+        let repos_with_changes = self
+            .check_repos_for_changes(&workspace_root, &ctx.workspace, &ctx.repos)
+            .await?;
         if repos_with_changes.is_empty() {
             tracing::debug!("No changes to commit in any repository");
             return Ok(false);

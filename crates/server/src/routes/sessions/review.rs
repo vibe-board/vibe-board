@@ -77,7 +77,13 @@ pub async fn start_review(
 
         let mut contexts = Vec::new();
         for repo in repos {
-            let worktree_path = workspace_path.join(&repo.repo.name);
+            let worktree_path = crate::routes::task_attempts::repo_worktree_path(
+                pool,
+                &workspace_path,
+                &workspace,
+                &repo.repo,
+            )
+            .await?;
             if let Ok(base_commit) = deployment.git().get_fork_point(
                 &worktree_path,
                 &repo.target_branch,

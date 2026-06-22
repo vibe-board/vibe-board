@@ -312,7 +312,11 @@ pub trait ContainerService {
             {
                 let workspace_root = PathBuf::from(container_ref);
                 for repo in &ctx.repos {
-                    let repo_path = workspace_root.join(&repo.name);
+                    let subdir =
+                        WorkspaceRepo::worktree_subdir(&self.db().pool, ctx.workspace.id, repo)
+                            .await
+                            .unwrap_or_else(|_| PathBuf::from(&repo.name));
+                    let repo_path = workspace_root.join(subdir);
                     if let Ok(head) = self.git().get_head_info(&repo_path)
                         && let Err(err) = ExecutionProcessRepoState::update_after_head_commit(
                             &self.db().pool,
@@ -711,7 +715,10 @@ pub trait ContainerService {
                 }
             };
 
-            let worktree_path = workspace_dir.join(&repo.name);
+            let subdir = WorkspaceRepo::worktree_subdir(pool, workspace.id, repo)
+                .await
+                .unwrap_or_else(|_| std::path::PathBuf::from(&repo.name));
+            let worktree_path = workspace_dir.join(subdir);
             if let Some(oid) = target_oid {
                 self.git().reconcile_worktree_to_commit(
                     &worktree_path,
@@ -1311,7 +1318,10 @@ pub trait ContainerService {
 
         let mut repo_states = Vec::with_capacity(repositories.len());
         for repo in &repositories {
-            let repo_path = workspace_root.join(&repo.name);
+            let subdir = WorkspaceRepo::worktree_subdir(&self.db().pool, workspace.id, repo)
+                .await
+                .unwrap_or_else(|_| std::path::PathBuf::from(&repo.name));
+            let repo_path = workspace_root.join(subdir);
             let before_head_commit = self.git().get_head_info(&repo_path).ok().map(|h| h.oid);
             repo_states.push(CreateExecutionProcessRepoState {
                 repo_id: repo.id,

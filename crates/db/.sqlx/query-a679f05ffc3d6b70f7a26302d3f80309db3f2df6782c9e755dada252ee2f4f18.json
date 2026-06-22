@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT r.name\n               FROM workspace_repos wr\n               JOIN repos r ON r.id = wr.repo_id\n               WHERE wr.id = $1",
+  "describe": {
+    "columns": [
+      {
+        "name": "name",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "a679f05ffc3d6b70f7a26302d3f80309db3f2df6782c9e755dada252ee2f4f18"
+}

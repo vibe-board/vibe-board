@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::Path};
 
 use axum::{Json, extract::State, response::Json as ResponseJson};
 use db::models::{
@@ -180,7 +180,17 @@ pub async fn compute_workspace_diff_stats(
     let mut stats = DiffStats::default();
 
     for repo_with_branch in workspace_repos {
-        let worktree_path = PathBuf::from(container_ref).join(&repo_with_branch.repo.name);
+        let worktree_path = match super::repo_worktree_path(
+            pool,
+            Path::new(container_ref),
+            workspace,
+            &repo_with_branch.repo,
+        )
+        .await
+        {
+            Ok(path) => path,
+            Err(_) => continue,
+        };
 
         let base_commit_result = tokio::task::spawn_blocking({
             let git = git.clone();

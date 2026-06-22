@@ -245,11 +245,16 @@ impl WorkspaceManager {
         })
     }
 
-    /// Ensure all worktrees in a workspace exist (for cold restart scenarios)
+    /// Ensure all worktrees in a workspace exist (for cold restart scenarios).
+    ///
+    /// `subdirs` maps `repo_id -> path relative to the workspace root`, so nested
+    /// repos (submodules) are recreated under their parent. Repos absent from the
+    /// map fall back to the flat `<repo.name>` layout.
     pub async fn ensure_workspace_exists(
         workspace_dir: &Path,
         repos: &[Repo],
         branch_name: &str,
+        subdirs: &std::collections::HashMap<Uuid, PathBuf>,
     ) -> Result<(), WorkspaceError> {
         if repos.is_empty() {
             return Err(WorkspaceError::NoRepositories);
@@ -265,8 +270,22 @@ impl WorkspaceManager {
             tokio::fs::create_dir_all(workspace_dir).await?;
         }
 
-        for repo in repos {
-            let worktree_path = workspace_dir.join(&repo.name);
+        // Parents must exist before nested children; sort so shallower subdirs
+        // (fewer path components) are ensured first.
+        let mut ordered: Vec<&Repo> = repos.iter().collect();
+        ordered.sort_by_key(|repo| {
+            subdirs
+                .get(&repo.id)
+                .map(|p| p.components().count())
+                .unwrap_or(1)
+        });
+
+        for repo in ordered {
+            let subdir = subdirs
+                .get(&repo.id)
+                .cloned()
+                .unwrap_or_else(|| PathBuf::from(&repo.name));
+            let worktree_path = workspace_dir.join(subdir);
 
             debug!(
                 "Ensuring worktree exists for repo '{}' at {}",
@@ -281,17 +300,26 @@ impl WorkspaceManager {
         Ok(())
     }
 
-    /// Clean up all worktrees in a workspace
+    /// Clean up all worktrees in a workspace.
+    ///
+    /// `subdirs` maps `repo_id -> path relative to the workspace root` (see
+    /// [`ensure_workspace_exists`]). Repos absent from the map fall back to the
+    /// flat `<repo.name>` layout.
     pub async fn cleanup_workspace(
         workspace_dir: &Path,
         repos: &[Repo],
+        subdirs: &std::collections::HashMap<Uuid, PathBuf>,
     ) -> Result<(), WorkspaceError> {
         info!("Cleaning up workspace at {}", workspace_dir.display());
 
         let cleanup_data: Vec<WorktreeCleanup> = repos
             .iter()
             .map(|repo| {
-                let worktree_path = workspace_dir.join(&repo.name);
+                let subdir = subdirs
+                    .get(&repo.id)
+                    .cloned()
+                    .unwrap_or_else(|| PathBuf::from(&repo.name));
+                let worktree_path = workspace_dir.join(subdir);
                 WorktreeCleanup::new(worktree_path, Some(repo.path.clone()))
             })
             .collect();

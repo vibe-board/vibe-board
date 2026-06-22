@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use axum::{
     Extension, Json,
@@ -209,7 +209,7 @@ pub async fn create_pr(
         .ensure_container_exists(&workspace)
         .await?;
     let workspace_path = PathBuf::from(&container_ref);
-    let worktree_path = workspace_path.join(&repo.name);
+    let worktree_path = super::repo_worktree_path(pool, &workspace_path, &workspace, &repo).await?;
 
     let git = deployment.git();
     let push_remote = git.resolve_remote_for_branch(&repo_path, &workspace.branch)?;
@@ -695,7 +695,8 @@ pub async fn create_workspace_from_pr(
 
     // Use gh pr checkout to fetch and switch to the PR branch
     // This handles SSH/HTTPS auth correctly regardless of fork URL format
-    let worktree_path = PathBuf::from(&container_ref).join(&repo.name);
+    let worktree_path =
+        super::repo_worktree_path(pool, Path::new(&container_ref), &workspace, &repo).await?;
     match GhCli::new().get_repo_info(&remote.url, &worktree_path) {
         Ok(repo_info) => {
             if let Err(e) = GhCli::new().pr_checkout(
