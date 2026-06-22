@@ -31,6 +31,7 @@ import type { Repo, UpdateRepo } from 'shared/types';
 
 interface RepoScriptsFormState {
   display_name: string;
+  path: string;
   setup_script: string;
   parallel_setup_script: boolean;
   cleanup_script: string;
@@ -43,6 +44,7 @@ interface RepoScriptsFormState {
 function repoToFormState(repo: Repo): RepoScriptsFormState {
   return {
     display_name: repo.display_name,
+    path: repo.path,
     setup_script: repo.setup_script ?? '',
     parallel_setup_script: repo.parallel_setup_script,
     cleanup_script: repo.cleanup_script ?? '',
@@ -192,6 +194,13 @@ export function ReposSettings() {
             : draft.host_provider_override,
       };
 
+      // Only send path when it actually changed: it triggers git validation
+      // server-side and is updated in place (task/workspace links preserved).
+      const trimmedPath = draft.path.trim();
+      if (trimmedPath && trimmedPath !== selectedRepo.path) {
+        updateData.path = trimmedPath;
+      }
+
       const updatedRepo = await repoApi.update(selectedRepo.id, updateData);
       setSelectedRepo(updatedRepo);
       setDraft(repoToFormState(updatedRepo));
@@ -328,10 +337,20 @@ export function ReposSettings() {
               </div>
 
               <div className="space-y-2">
-                <Label>{t('settings.repos.general.path.label')}</Label>
-                <div className="text-sm text-muted-foreground font-mono bg-muted px-3 py-2 rounded-md">
-                  {selectedRepo.path}
-                </div>
+                <Label htmlFor="repo-path">
+                  {t('settings.repos.general.path.label')}
+                </Label>
+                <Input
+                  id="repo-path"
+                  type="text"
+                  value={draft.path}
+                  onChange={(e) => updateDraft({ path: e.target.value })}
+                  placeholder={t('settings.repos.general.path.placeholder')}
+                  className="font-mono"
+                />
+                <p className="text-sm text-muted-foreground">
+                  {t('settings.repos.general.path.helper')}
+                </p>
               </div>
 
               <div className="space-y-2">

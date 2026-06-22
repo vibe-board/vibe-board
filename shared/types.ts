@@ -25,7 +25,13 @@ export type Repo = { id: string, path: string, name: string, display_name: strin
  */
 host_provider_override: string | null, created_at: Date, updated_at: Date, };
 
-export type UpdateRepo = { display_name?: string | null, setup_script?: string | null, cleanup_script?: string | null, archive_script?: string | null, copy_files?: string | null, parallel_setup_script?: boolean | null, dev_server_script?: string | null, default_target_branch?: string | null, default_working_dir?: string | null, host_provider_override?: string | null, };
+export type UpdateRepo = { 
+/**
+ * New filesystem path for the repository. When present, the path is
+ * updated in place — all task/workspace links are preserved because they
+ * reference the repo `id`, not the path. Validated at the server layer.
+ */
+path?: string, display_name?: string | null, setup_script?: string | null, cleanup_script?: string | null, archive_script?: string | null, copy_files?: string | null, parallel_setup_script?: boolean | null, dev_server_script?: string | null, default_target_branch?: string | null, default_working_dir?: string | null, host_provider_override?: string | null, };
 
 export type ProjectRepo = { id: string, project_id: string, repo_id: string, parent_project_repo_id: string | null, nested_path: string | null, };
 

@@ -143,7 +143,19 @@ pub async fn update_repo(
     Path(repo_id): Path<Uuid>,
     ResponseJson(payload): ResponseJson<UpdateRepo>,
 ) -> Result<ResponseJson<ApiResponse<Repo>>, ApiError> {
-    let repo = Repo::update(&deployment.db().pool, repo_id, &payload).await?;
+    let pool = &deployment.db().pool;
+
+    // Path is the unique identity column and requires git validation, so it is
+    // updated separately via the repo service. Links to tasks/workspaces are
+    // preserved because they reference the repo id, not the path.
+    if let Some(new_path) = payload.path.as_deref() {
+        deployment
+            .repo()
+            .update_path(pool, repo_id, new_path)
+            .await?;
+    }
+
+    let repo = Repo::update(pool, repo_id, &payload).await?;
     Ok(ResponseJson(ApiResponse::success(repo)))
 }
 

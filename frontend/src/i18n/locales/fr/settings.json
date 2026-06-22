@@ -538,7 +538,9 @@
           "helper": "Un nom convivial pour ce dépôt."
         },
         "path": {
-          "label": "Chemin du dépôt"
+          "label": "Chemin du dépôt",
+          "placeholder": "/chemin/vers/le/depot",
+          "helper": "Chemin absolu vers le dépôt git sur le disque. Le modifier met à jour le chemin sur place ; les tâches existantes restent liées. Si des espaces de travail ont des worktrees actifs, déplacez-les ou recréez-les pour correspondre au nouvel emplacement."
         },
         "defaultWorkingDir": {
           "label": "Répertoire de travail par défaut",

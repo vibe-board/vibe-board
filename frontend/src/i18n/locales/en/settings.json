@@ -538,7 +538,9 @@
           "helper": "A friendly name for this repository."
         },
         "path": {
-          "label": "Repository Path"
+          "label": "Repository Path",
+          "placeholder": "/path/to/repository",
+          "helper": "Absolute path to the git repository on disk. Changing it updates the path in place; existing tasks stay linked. If workspaces with active worktrees exist, move or recreate them to match the new location."
         },
         "defaultWorkingDir": {
           "label": "Default Working Directory",

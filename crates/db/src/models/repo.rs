@@ -14,6 +14,8 @@ pub enum RepoError {
     Database(#[from] sqlx::Error),
     #[error("Repository not found")]
     NotFound,
+    #[error("Another repository already uses this path: {0}")]
+    PathAlreadyInUse(String),
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize, TS)]
@@ -42,6 +44,13 @@ pub struct Repo {
 #[derive(Debug, Clone, Deserialize, TS)]
 #[ts(export)]
 pub struct UpdateRepo {
+    /// New filesystem path for the repository. When present, the path is
+    /// updated in place — all task/workspace links are preserved because they
+    /// reference the repo `id`, not the path. Validated at the server layer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional, type = "string")]
+    pub path: Option<String>,
+
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -415,6 +424,62 @@ impl Repo {
             default_target_branch,
             default_working_dir,
             host_provider_override,
+            id
+        )
+        .fetch_one(pool)
+        .await
+        .map_err(RepoError::from)
+    }
+
+    /// Update the repository's filesystem path in place.
+    ///
+    /// The path is the `UNIQUE` identity column, but all task/workspace links
+    /// reference the repo `id`, so changing the path preserves those links.
+    /// Returns `PathAlreadyInUse` if a different repo already uses `new_path`.
+    pub async fn update_path(
+        pool: &SqlitePool,
+        id: Uuid,
+        new_path: &Path,
+    ) -> Result<Self, RepoError> {
+        let _existing = Self::find_by_id(pool, id)
+            .await?
+            .ok_or(RepoError::NotFound)?;
+
+        let path_str = new_path.to_string_lossy().to_string();
+
+        let collision = sqlx::query_scalar!(
+            r#"SELECT id as "id!: Uuid" FROM repos WHERE path = $1 AND id != $2"#,
+            path_str,
+            id
+        )
+        .fetch_optional(pool)
+        .await?;
+        if collision.is_some() {
+            return Err(RepoError::PathAlreadyInUse(path_str));
+        }
+
+        sqlx::query_as!(
+            Repo,
+            r#"UPDATE repos
+               SET path = $1,
+                   updated_at = datetime('now', 'subsec')
+               WHERE id = $2
+               RETURNING id as "id!: Uuid",
+                         path,
+                         name,
+                         display_name,
+                         setup_script,
+                         cleanup_script,
+                         archive_script,
+                         copy_files,
+                         parallel_setup_script as "parallel_setup_script!: bool",
+                         dev_server_script,
+                         default_target_branch,
+                         default_working_dir,
+                         host_provider_override,
+                         created_at as "created_at!: DateTime<Utc>",
+                         updated_at as "updated_at!: DateTime<Utc>""#,
+            path_str,
             id
         )
         .fetch_one(pool)

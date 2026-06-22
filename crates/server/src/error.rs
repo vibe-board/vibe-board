@@ -155,6 +155,9 @@ impl IntoResponse for ApiError {
             ApiError::Repo(RepoError::NotFound) => {
                 ErrorInfo::not_found("RepoError", "Repository not found.")
             }
+            ApiError::Repo(RepoError::PathAlreadyInUse(_)) => {
+                ErrorInfo::bad_request("RepoError", "Another repository already uses this path.")
+            }
 
             ApiError::Workspace(WorkspaceError::Database(_)) => {
                 ErrorInfo::internal("WorkspaceError")
@@ -430,6 +433,10 @@ impl From<RepoServiceError> for ApiError {
             RepoServiceError::InvalidFolderName(name) => {
                 ApiError::BadRequest(format!("Invalid folder name: {}", name))
             }
+            RepoServiceError::PathAlreadyInUse(path) => ApiError::BadRequest(format!(
+                "Another repository already uses this path: {}",
+                path
+            )),
         }
     }
 }

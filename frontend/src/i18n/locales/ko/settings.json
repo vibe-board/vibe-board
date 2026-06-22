@@ -538,7 +538,9 @@
           "helper": "이 저장소의 친숙한 이름입니다."
         },
         "path": {
-          "label": "저장소 경로"
+          "label": "저장소 경로",
+          "placeholder": "/path/to/repository",
+          "helper": "디스크상의 git 저장소 절대 경로입니다. 변경하면 경로가 제자리에서 업데이트되며 기존 작업의 연결은 유지됩니다. 활성 worktree가 있는 워크스페이스가 있다면 새 위치에 맞게 이동하거나 다시 만드세요."
         },
         "defaultWorkingDir": {
           "label": "기본 작업 디렉터리",

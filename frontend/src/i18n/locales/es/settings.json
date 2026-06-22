@@ -538,7 +538,9 @@
           "helper": "Un nombre amigable para este repositorio."
         },
         "path": {
-          "label": "Ruta del Repositorio"
+          "label": "Ruta del Repositorio",
+          "placeholder": "/ruta/al/repositorio",
+          "helper": "Ruta absoluta al repositorio git en disco. Al cambiarla se actualiza la ruta en su lugar; las tareas existentes siguen vinculadas. Si hay workspaces con worktrees activos, muévelos o vuelve a crearlos para que coincidan con la nueva ubicación."
         },
         "defaultWorkingDir": {
           "label": "Directorio de Trabajo Predeterminado",

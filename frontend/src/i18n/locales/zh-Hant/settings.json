@@ -538,7 +538,9 @@
           "helper": "此儲存庫的易讀名稱。"
         },
         "path": {
-          "label": "儲存庫路徑"
+          "label": "儲存庫路徑",
+          "placeholder": "/path/to/repository",
+          "helper": "git 儲存庫在磁碟上的絕對路徑。修改後將就地更新路徑，既有任務仍保持關聯。如存在帶有活動 worktree 的工作區，請將其移動或重建以符合新位置。"
         },
         "defaultWorkingDir": {
           "label": "預設工作目錄",

@@ -27,6 +27,8 @@ pub enum RepoError {
     Git(#[from] GitServiceError),
     #[error("Invalid folder name: {0}")]
     InvalidFolderName(String),
+    #[error("Another repository already uses this path: {0}")]
+    PathAlreadyInUse(String),
 }
 
 pub type Result<T> = std::result::Result<T, RepoError>;
@@ -76,6 +78,28 @@ impl RepoService {
         let display_name = display_name.unwrap_or(&name);
 
         let repo = RepoModel::find_or_create(pool, &normalized_path, display_name).await?;
+        Ok(repo)
+    }
+
+    /// Change an existing repository's path in place. Normalizes and validates
+    /// the new path as a git repo, then updates the `repos.path` column. All
+    /// task/workspace links are preserved because they reference the repo `id`.
+    pub async fn update_path(
+        &self,
+        pool: &SqlitePool,
+        repo_id: Uuid,
+        new_path: &str,
+    ) -> Result<RepoModel> {
+        let normalized_path = self.normalize_path(new_path)?;
+        self.validate_git_repo_path(&normalized_path)?;
+
+        let repo = RepoModel::update_path(pool, repo_id, &normalized_path)
+            .await
+            .map_err(|e| match e {
+                db::models::repo::RepoError::NotFound => RepoError::NotFound,
+                db::models::repo::RepoError::PathAlreadyInUse(p) => RepoError::PathAlreadyInUse(p),
+                db::models::repo::RepoError::Database(db_err) => RepoError::Database(db_err),
+            })?;
         Ok(repo)
     }
 

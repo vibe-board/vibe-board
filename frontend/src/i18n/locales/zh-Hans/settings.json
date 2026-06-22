@@ -538,7 +538,9 @@
           "helper": "此仓库的友好名称。"
         },
         "path": {
-          "label": "仓库路径"
+          "label": "仓库路径",
+          "placeholder": "/path/to/repository",
+          "helper": "git 仓库在磁盘上的绝对路径。修改后将就地更新路径，已有任务仍保持关联。如存在带活动 worktree 的工作区，请将其移动或重建以匹配新位置。"
         },
         "defaultWorkingDir": {
           "label": "默认工作目录",
