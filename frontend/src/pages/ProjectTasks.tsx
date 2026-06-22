@@ -395,8 +395,10 @@ export function ProjectTasks() {
     const containerRef = attempt?.container_ref;
     if (!containerRef) return;
     // In worktree mode, container_ref is the workspace dir; append the repo name
-    // In direct mode, container_ref is already the project directory
-    const repo = repos[0];
+    // In direct mode, container_ref is already the project directory.
+    // Prefer the outermost (non-nested) repo so submodules don't shadow the
+    // top-level repo; fall back to the first repo when none are nested.
+    const repo = repos.find((r) => !r.is_nested) ?? repos[0];
     const path =
       attempt.mode === 'worktree' && repo
         ? `${containerRef}/${repo.name}`
