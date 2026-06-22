@@ -1203,9 +1203,13 @@ impl LocalContainerService {
     /// Create workspace-level CLAUDE.md and AGENTS.md files that import from each repo.
     /// Uses the @import syntax to reference each repo's config files.
     /// Skips creating files if they already exist or if no repos have the source file.
+    ///
+    /// `subdirs` maps `repo_id -> path relative to the workspace root` so nested
+    /// submodules import from their actual `<parent>/<nested>` location.
     async fn create_workspace_config_files(
         workspace_dir: &Path,
         repos: &[Repo],
+        subdirs: &HashMap<Uuid, PathBuf>,
     ) -> Result<(), ContainerError> {
         const CONFIG_FILES: [&str; 2] = ["CLAUDE.md", "AGENTS.md"];
 
@@ -1222,9 +1226,13 @@ impl LocalContainerService {
 
             let mut import_lines = Vec::new();
             for repo in repos {
-                let repo_config_path = workspace_dir.join(&repo.name).join(config_file);
+                let subdir = subdirs
+                    .get(&repo.id)
+                    .cloned()
+                    .unwrap_or_else(|| PathBuf::from(&repo.name));
+                let repo_config_path = workspace_dir.join(&subdir).join(config_file);
                 if repo_config_path.exists() {
-                    import_lines.push(format!("@{}/{}", repo.name, config_file));
+                    import_lines.push(format!("@{}/{}", subdir.display(), config_file));
                 }
             }
 
@@ -1571,7 +1579,7 @@ impl ContainerService for LocalContainerService {
             // Copy project files and images directly to repo
             self.copy_files_and_images(&repo.path, workspace).await?;
 
-            Self::create_workspace_config_files(&repo.path, &repositories).await?;
+            Self::create_workspace_config_files(&repo.path, &repositories, &HashMap::new()).await?;
 
             Workspace::update_container_ref(&self.db.pool, workspace.id, &repo_path_str).await?;
 
@@ -1664,8 +1672,14 @@ impl ContainerService for LocalContainerService {
         self.copy_files_and_images(&created_workspace.workspace_dir, workspace)
             .await?;
 
-        Self::create_workspace_config_files(&created_workspace.workspace_dir, &repositories)
-            .await?;
+        let config_subdirs =
+            WorkspaceRepo::worktree_subdirs_for_workspace(&self.db.pool, workspace.id).await?;
+        Self::create_workspace_config_files(
+            &created_workspace.workspace_dir,
+            &repositories,
+            &config_subdirs,
+        )
+        .await?;
 
         Workspace::update_container_ref(
             &self.db.pool,
@@ -1708,7 +1722,7 @@ impl ContainerService for LocalContainerService {
             // Copy project files and images directly to repo
             self.copy_files_and_images(&repo.path, workspace).await?;
 
-            Self::create_workspace_config_files(&repo.path, &repositories).await?;
+            Self::create_workspace_config_files(&repo.path, &repositories, &HashMap::new()).await?;
 
             if workspace.container_ref.is_none() {
                 Workspace::update_container_ref(&self.db.pool, workspace.id, &repo_path_str)
@@ -1754,7 +1768,7 @@ impl ContainerService for LocalContainerService {
         self.copy_files_and_images(&workspace_dir, workspace)
             .await?;
 
-        Self::create_workspace_config_files(&workspace_dir, &repositories).await?;
+        Self::create_workspace_config_files(&workspace_dir, &repositories, &subdirs).await?;
 
         Ok(workspace_dir.to_string_lossy().to_string())
     }

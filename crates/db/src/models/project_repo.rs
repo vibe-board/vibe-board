@@ -97,7 +97,7 @@ impl ProjectRepo {
                FROM repos r
                JOIN project_repos pr ON r.id = pr.repo_id
                WHERE pr.project_id = $1
-               ORDER BY r.display_name ASC"#,
+               ORDER BY (pr.parent_project_repo_id IS NOT NULL), r.display_name ASC"#,
             project_id
         )
         .fetch_all(pool)

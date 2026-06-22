@@ -27,7 +27,8 @@ export function TerminalBottomDrawer() {
   const terminalCwd = useMemo(() => {
     const containerRef = attempt?.container_ref;
     if (!containerRef) return null;
-    const repo = attemptRepos[0];
+    // Default to the outermost (non-nested) repo so submodules don't shadow it.
+    const repo = attemptRepos.find((r) => !r.is_nested) ?? attemptRepos[0];
     return attempt.mode === 'worktree' && repo
       ? `${containerRef}/${repo.name}`
       : containerRef;

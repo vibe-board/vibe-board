@@ -41,10 +41,12 @@ export function useAttemptRepo(
     [queryClient, attemptId]
   );
 
-  // Auto-select first repo when none selected
+  // Auto-select the default repo when none selected. The default repo is the
+  // first non-nested (top-level) repo; nested submodules must not shadow it.
   useEffect(() => {
     if (repos.length > 0 && selectedRepoId === null) {
-      setSelectedRepoId(repos[0].id);
+      const defaultRepo = repos.find((r) => !r.is_nested) ?? repos[0];
+      setSelectedRepoId(defaultRepo.id);
     }
   }, [repos, selectedRepoId, setSelectedRepoId]);
 

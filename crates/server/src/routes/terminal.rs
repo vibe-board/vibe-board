@@ -103,14 +103,27 @@ pub async fn terminal_ws(
     }
 
     // In direct mode, container_ref is already the repo path — don't append repo name.
-    // In worktree mode, container_ref is the workspace dir and repos are subdirectories.
+    // In worktree mode, container_ref is the workspace dir and repos are
+    // subdirectories; open the default repo (the first non-nested / top-level
+    // repo), resolving its nested-aware worktree path under the workspace root.
     let mut working_dir = base_dir.clone();
     if attempt.mode == WorkspaceMode::Worktree {
-        match WorkspaceRepo::find_repos_for_workspace(&deployment.db().pool, query.workspace_id)
-            .await
+        match WorkspaceRepo::find_repos_with_target_branch_for_workspace(
+            &deployment.db().pool,
+            query.workspace_id,
+        )
+        .await
         {
-            Ok(repos) if repos.len() == 1 => {
-                let repo_dir = base_dir.join(&repos[0].name);
+            Ok(repos) if !repos.is_empty() => {
+                let default_repo = repos.iter().find(|r| !r.is_nested).unwrap_or(&repos[0]);
+                let subdir = WorkspaceRepo::worktree_subdir(
+                    &deployment.db().pool,
+                    query.workspace_id,
+                    &default_repo.repo,
+                )
+                .await
+                .unwrap_or_else(|_| PathBuf::from(&default_repo.repo.name));
+                let repo_dir = base_dir.join(subdir);
                 if repo_dir.exists() {
                     working_dir = repo_dir;
                 }

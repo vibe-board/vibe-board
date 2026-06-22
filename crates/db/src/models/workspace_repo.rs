@@ -136,7 +136,7 @@ impl WorkspaceRepo {
                FROM repos r
                JOIN workspace_repos wr ON r.id = wr.repo_id
                WHERE wr.workspace_id = $1
-               ORDER BY r.display_name ASC"#,
+               ORDER BY (wr.parent_workspace_repo_id IS NOT NULL), r.display_name ASC"#,
             workspace_id
         )
         .fetch_all(pool)
@@ -168,7 +168,7 @@ impl WorkspaceRepo {
                FROM repos r
                JOIN workspace_repos wr ON r.id = wr.repo_id
                WHERE wr.workspace_id = $1
-               ORDER BY r.display_name ASC"#,
+               ORDER BY (wr.parent_workspace_repo_id IS NOT NULL), r.display_name ASC"#,
             workspace_id
         )
         .fetch_all(pool)

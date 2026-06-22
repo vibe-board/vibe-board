@@ -1485,9 +1485,18 @@ pub async fn rename_branch(
         .ensure_container_exists(&workspace)
         .await?;
     let workspace_dir = PathBuf::from(&container_ref);
+    // Nesting-aware worktree subdir per repo (nested submodules live under their parent).
+    let subdirs = WorkspaceRepo::worktree_subdirs_for_workspace(pool, workspace.id).await?;
+    let worktree_path_for = |repo: &Repo| -> PathBuf {
+        let subdir = subdirs
+            .get(&repo.id)
+            .cloned()
+            .unwrap_or_else(|| PathBuf::from(&repo.name));
+        workspace_dir.join(subdir)
+    };
 
     for repo in &repos {
-        let worktree_path = workspace_dir.join(&repo.name);
+        let worktree_path = worktree_path_for(repo);
 
         if deployment
             .git()
@@ -1514,7 +1523,7 @@ pub async fn rename_branch(
     let mut renamed_repos: Vec<&Repo> = Vec::new();
 
     for repo in &repos {
-        let worktree_path = workspace_dir.join(&repo.name);
+        let worktree_path = worktree_path_for(repo);
 
         match deployment.git().rename_local_branch(
             &worktree_path,
@@ -1527,7 +1536,7 @@ pub async fn rename_branch(
             Err(e) => {
                 // Rollback already renamed repos
                 for renamed_repo in &renamed_repos {
-                    let rollback_path = workspace_dir.join(&renamed_repo.name);
+                    let rollback_path = worktree_path_for(renamed_repo);
                     if let Err(rollback_err) = deployment.git().rename_local_branch(
                         &rollback_path,
                         new_branch_name,

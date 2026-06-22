@@ -389,7 +389,18 @@ export function ProjectTasks() {
   const isTaskView = !!taskId && !effectiveAttemptId;
   const { data: attempt } = useTaskAttemptWithSession(effectiveAttemptId);
   const [copied, setCopied] = useState(false);
-  const { repos, isLoading: reposLoading } = useAttemptRepo(attempt?.id);
+  const {
+    repos,
+    selectedRepoId,
+    isLoading: reposLoading,
+  } = useAttemptRepo(attempt?.id);
+  // The repo whose diff/commits are shown: follow the user's selection, and
+  // default to the first non-nested (top-level) repo before any selection.
+  const activeRepoId =
+    selectedRepoId ??
+    repos.find((r) => !r.is_nested)?.id ??
+    repos[0]?.id ??
+    null;
 
   const handleCopyWorktree = useCallback(async () => {
     const containerRef = attempt?.container_ref;
@@ -1051,13 +1062,13 @@ export function ProjectTasks() {
             branchStatusError={branchStatusError}
             selectedCommitSha={selectedCommitSha}
             onClearCommit={handleClearCommit}
-            repoId={repos[0]?.id ?? null}
+            repoId={activeRepoId}
           />
         )}
         {mode === 'commits' && (
           <CommitHistoryPanel
             selectedAttempt={attempt}
-            repoId={repos[0]?.id ?? null}
+            repoId={activeRepoId}
             onViewDiff={handleViewCommitDiff}
           />
         )}
