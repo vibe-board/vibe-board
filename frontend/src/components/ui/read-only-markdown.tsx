@@ -1,14 +1,81 @@
 import { memo, useCallback, useMemo, useState } from 'react';
-import { Streamdown } from 'streamdown';
+import { Streamdown, type LinkSafetyModalProps } from 'streamdown';
 import { code } from '@streamdown/code';
 import { cjk } from '@streamdown/cjk';
 import { mermaid } from '@streamdown/mermaid';
 import { Check, Clipboard } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useTheme } from '@/components/ThemeProvider';
 import { getActualTheme } from '@/utils/theme';
 import { writeClipboardViaBridge } from '@/vscode/bridge';
+
+/**
+ * 链接安全确认弹窗。
+ *
+ * streamdown 自带的 link-safety 弹窗渲染在 DOM 树内(挂在 legacy-design 容器),
+ * 其定位相对的是很高的可滚动会话容器,导致弹在整个 task process 的几何中心而非
+ * 可见视口中央。改用项目自己的 Dialog(portal 到 legacy-design scope、fixed
+ * inset-0 视口居中),让弹窗回到可见界面中间。
+ */
+function LinkSafetyDialog({
+  url,
+  isOpen,
+  onClose,
+  onConfirm,
+}: LinkSafetyModalProps) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyUrl = useCallback(async () => {
+    try {
+      await writeClipboardViaBridge(url);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1000);
+    } catch {
+      // bridge 自行兜底
+    }
+  }, [url]);
+
+  return (
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      className="sm:max-w-md"
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Open external link?</DialogTitle>
+          <DialogDescription className="text-left pt-2 break-all">
+            {url}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button variant="outline" onClick={handleCopyUrl}>
+            {copied ? 'Copied!' : 'Copy link'}
+          </Button>
+          <Button type="submit" onClick={onConfirm}>
+            Open link
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+const LINK_SAFETY = {
+  enabled: true,
+  renderModal: (props: LinkSafetyModalProps) => <LinkSafetyDialog {...props} />,
+} as const;
 
 // streamdown 插件,在模块作用域创建一次,避免每次渲染重建:
 // - code:  Shiki 代码高亮(默认主题 ["github-light","github-dark"])
@@ -123,6 +190,7 @@ function ReadOnlyMarkdown({
       <Streamdown
         plugins={STREAMDOWN_PLUGINS}
         mermaid={mermaidOptions}
+        linkSafety={LINK_SAFETY}
         className={cn(
           // Match the old read-only WYSIWYGEditor, whose `wysiwyg text-base`
           // wrapper rendered body text at the legacy `base` size (14px).
