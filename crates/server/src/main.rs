@@ -19,7 +19,11 @@ use utils::{
 };
 
 #[derive(Parser)]
-#[command(name = "vibe-board", about = "Vibe Board — local-first Kanban board")]
+#[command(
+    name = "vibe-board",
+    about = "Vibe Board — local-first Kanban board",
+    version = utils::version::APP_VERSION_WITH_SHA
+)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
