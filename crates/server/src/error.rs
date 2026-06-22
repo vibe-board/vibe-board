@@ -370,6 +370,18 @@ impl IntoResponse for ApiError {
             ),
         };
 
+        // The client-facing message for 5xx is intentionally generic, which hides
+        // the real cause. Log the full error chain server-side so failures like a
+        // stale/inaccessible container_ref are diagnosable from stderr, not just INFO.
+        if info.status.is_server_error() {
+            tracing::error!(
+                error_type = info.error_type,
+                status = info.status.as_u16(),
+                "Request failed: {}",
+                self
+            );
+        }
+
         let message = info
             .message
             .unwrap_or_else(|| format!("{}: {}", info.error_type, self));
