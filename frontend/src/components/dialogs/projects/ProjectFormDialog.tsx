@@ -20,6 +20,13 @@ export type ProjectFormDialogResult =
   | { status: 'saved'; project: Project }
   | { status: 'canceled' };
 
+// The app mounts one <NiceModal.Provider> per connection tab, all sharing a
+// single modal store. When this modal is shown, every provider renders its own
+// copy of the component concurrently, so the create effect below would run once
+// per mounted provider and create duplicate same-name projects. This
+// module-level flag ensures exactly one mounted instance drives the create flow.
+let createFlowClaimed = false;
+
 const ProjectFormDialogImpl = NiceModal.create<ProjectFormDialogProps>(() => {
   const modal = useModal();
 
@@ -33,6 +40,7 @@ const ProjectFormDialogImpl = NiceModal.create<ProjectFormDialogProps>(() => {
   const createProjectMutate = createProject.mutate;
 
   const hasStartedCreateRef = useRef(false);
+  const didClaimRef = useRef(false);
 
   const handlePickRepo = useCallback(async () => {
     const repo = await RepoPickerDialog.show({
@@ -55,16 +63,30 @@ const ProjectFormDialogImpl = NiceModal.create<ProjectFormDialogProps>(() => {
     }
   }, [createProjectMutate, modal]);
 
-  useEffect(() => {
-    if (!modal.visible) {
-      hasStartedCreateRef.current = false;
-      return;
-    }
+  // Keep the latest handler in a ref so the launch effect can run exactly once
+  // on mount without re-running when handlePickRepo's identity changes (it does
+  // every render because useModal() returns a new object each time).
+  const handlePickRepoRef = useRef(handlePickRepo);
+  handlePickRepoRef.current = handlePickRepo;
 
+  useEffect(() => {
     if (hasStartedCreateRef.current) return;
+    // Only the first mounted instance (across all shared-store providers) runs
+    // the create flow; the rest bail out so the project is created once.
+    if (createFlowClaimed) return;
+    createFlowClaimed = true;
+    didClaimRef.current = true;
     hasStartedCreateRef.current = true;
-    handlePickRepo();
-  }, [modal.visible, handlePickRepo]);
+    handlePickRepoRef.current();
+
+    // Release the claim when the claiming instance unmounts so a future open of
+    // the dialog can claim it again.
+    return () => {
+      if (didClaimRef.current) {
+        createFlowClaimed = false;
+      }
+    };
+  }, []);
 
   const handleOpenChange = (open: boolean) => {
     if (!open) {
