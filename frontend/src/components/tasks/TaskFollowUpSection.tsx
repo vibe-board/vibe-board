@@ -384,6 +384,14 @@ export function TaskFollowUpSection({
         executionProcessId: string;
         question: string;
       } | null = null;
+      // A pending approval can only be live while the attempt is running. If the
+      // attempt was stopped, the executor was killed without emitting a
+      // resolution, so any `pending_approval` entry status is stale — responding
+      // to it would hit a cancelled approval (NotFound/AlreadyCompleted) and brick
+      // the editor in "Submit Answer" mode. Treat it as not pending.
+      if (!isAttemptRunning) {
+        return { hasPendingApproval, hasPendingQuestion, pendingQuestionInfo };
+      }
       for (const entry of entries) {
         if (entry.type !== 'NORMALIZED_ENTRY') continue;
         const entryType = entry.content.entry_type;
@@ -408,7 +416,7 @@ export function TaskFollowUpSection({
         }
       }
       return { hasPendingApproval, hasPendingQuestion, pendingQuestionInfo };
-    }, [entries]);
+    }, [entries, isAttemptRunning]);
 
   const { answer: submitQuestionAnswer } = useApprovalMutation();
   const { setMergeError } = useGitOperationsError();
