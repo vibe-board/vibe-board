@@ -27,7 +27,10 @@ pub struct AppState {
 
 #[tokio::main]
 async fn main() {
-    if std::env::args().skip(1).any(|a| a == "--version" || a == "-V") {
+    if std::env::args()
+        .skip(1)
+        .any(|a| a == "--version" || a == "-V")
+    {
         println!(
             "e2ee-gateway {}",
             concat!(env!("CARGO_PKG_VERSION"), "+", env!("GIT_COMMIT_HASH"))

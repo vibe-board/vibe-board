@@ -8,6 +8,7 @@ import { ProjectTab } from './ProjectTab';
 import { MachineProjectsTab } from './MachineProjectsTab';
 import { TabErrorBoundary } from './TabErrorBoundary';
 import { useTabDocumentTitle } from './tabDocumentTitle';
+import { ScopedNiceModalProvider } from '@/contexts/NiceModalStoreContext';
 
 export function GatewayShell() {
   const { initialized, init, tabs, activeTabId, closeTab, setActiveTab } =
@@ -60,35 +61,37 @@ export function GatewayShell() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-background">
-      <TabBar />
-      <div className="flex-1 overflow-hidden">
-        <div
-          className={`h-full overflow-auto ${
-            activeTabId === 'home' ? '' : 'hidden'
-          }`}
-        >
-          <TabErrorBoundary tabKey="home">
-            <GatewayHomeTab connectionId={GATEWAY_SELF_ID} />
-          </TabErrorBoundary>
-        </div>
-        {tabs.map((tab) => (
+    <ScopedNiceModalProvider>
+      <div className="flex flex-col h-screen bg-background">
+        <TabBar />
+        <div className="flex-1 overflow-hidden">
           <div
-            key={tab.id}
-            className={`h-full overflow-hidden ${
-              activeTabId === tab.id ? '' : 'hidden'
+            className={`h-full overflow-auto ${
+              activeTabId === 'home' ? '' : 'hidden'
             }`}
           >
-            <TabErrorBoundary tabKey={tab.id} label={tab.label}>
-              {tab.type === 'machine-projects' ? (
-                <MachineProjectsTab tab={tab} />
-              ) : (
-                <ProjectTab tab={tab} />
-              )}
+            <TabErrorBoundary tabKey="home">
+              <GatewayHomeTab connectionId={GATEWAY_SELF_ID} />
             </TabErrorBoundary>
           </div>
-        ))}
+          {tabs.map((tab) => (
+            <div
+              key={tab.id}
+              className={`h-full overflow-hidden ${
+                activeTabId === tab.id ? '' : 'hidden'
+              }`}
+            >
+              <TabErrorBoundary tabKey={tab.id} label={tab.label}>
+                {tab.type === 'machine-projects' ? (
+                  <MachineProjectsTab tab={tab} />
+                ) : (
+                  <ProjectTab tab={tab} />
+                )}
+              </TabErrorBoundary>
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
+    </ScopedNiceModalProvider>
   );
 }
