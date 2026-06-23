@@ -1,6 +1,7 @@
 import NiceModal from '@ebay/nice-modal-react';
 import type React from 'react';
 import type { NiceModalHocProps } from '@ebay/nice-modal-react';
+import { useOptionalConnection } from '@/contexts/ConnectionContext';
 
 // Use this instead of {} to avoid ban-types
 export type NoProps = Record<string, never>;
@@ -36,6 +37,23 @@ export function defineModal<P, R>(
     NiceModal.remove(component as React.FC<ComponentProps<P>>);
   };
   return c;
+}
+
+// The app mounts multiple <NiceModal.Provider> instances that share one modal
+// store (one per connection tab plus a connectionless gateway-shell provider).
+// When a modal is shown, every provider renders its own copy of the component.
+// A modal whose body calls useConnection() (directly or via useApi) crashes in
+// any provider that sits outside a <ConnectionProvider>. Wrap such a modal's
+// render with this so the connectionless copies render nothing; the copy inside
+// a <ConnectionProvider> renders the real dialog.
+export function connectionGated<P extends object>(
+  render: (props: P) => React.ReactElement | null
+): (props: P) => React.ReactElement | null {
+  return function ConnectionGatedModal(props: P) {
+    const conn = useOptionalConnection();
+    if (!conn) return null;
+    return render(props);
+  };
 }
 
 // Common modal result types for standardization

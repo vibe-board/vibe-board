@@ -52,13 +52,19 @@ vi.mock('@/hooks/useProjectMutations', () => ({
 }));
 
 import { ProjectFormDialog } from '../ProjectFormDialog';
+import { ConnectionProvider } from '@/contexts/ConnectionContext';
+import type { UnifiedConnection } from '@/lib/connections/types';
 
 const InnerImpl = ProjectFormDialog as unknown as React.ComponentType<
   Record<string, never>
 >;
 
+const fakeConnection = {} as UnifiedConnection;
+
 // Render N copies of the dialog in parallel — mimics N tab providers sharing the
-// same modal store, each rendering the same modal component instance.
+// same modal store, each rendering the same modal component instance. Each copy
+// lives inside a ConnectionProvider (like a real connection tab); the gateway
+// shell also renders a connectionless copy, which connectionGated() drops.
 function MultiProvider({ count }: { count: number }) {
   const [, setTick] = useState(0);
   (MultiProvider as unknown as { rerender: () => void }).rerender = () =>
@@ -66,8 +72,12 @@ function MultiProvider({ count }: { count: number }) {
   return (
     <>
       {Array.from({ length: count }, (_, i) => (
-        <InnerImpl key={i} />
+        <ConnectionProvider key={i} connection={fakeConnection}>
+          <InnerImpl />
+        </ConnectionProvider>
       ))}
+      {/* Connectionless gateway-shell copy must render nothing and never create. */}
+      <InnerImpl />
     </>
   );
 }
