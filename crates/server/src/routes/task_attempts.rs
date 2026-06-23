@@ -858,8 +858,8 @@ pub async fn merge_task_attempt(
             {
                 Some((msg, entries_json)) => Some((msg, Some(entries_json))),
                 None => {
-                    tracing::debug!(
-                        "Inline commit message generation unavailable, dispatching merge follow-up to current executor"
+                    tracing::warn!(
+                        "Inline commit message generation unavailable, dispatching merge follow-up to current executor (see warnings above for the failure reason and log file path)"
                     );
                     None
                 }

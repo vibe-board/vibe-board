@@ -1402,20 +1402,43 @@ impl LocalContainerService {
         use std::time::Duration;
 
         // 1. Resolve executor
-        let executor = ExecutorConfigs::get_cached().get_coding_agent(executor_profile_id)?;
+        let Some(executor) = ExecutorConfigs::get_cached().get_coding_agent(executor_profile_id)
+        else {
+            tracing::warn!(
+                ?executor_profile_id,
+                "Commit message generation failed: could not resolve coding agent for executor profile"
+            );
+            return None;
+        };
 
         // 2. Build minimal ExecutionEnv (no VB_* env vars needed for commit messages)
         let repo_context = RepoContext::new(working_dir.to_path_buf(), vec![]);
         let env = ExecutionEnv::new(repo_context, false, String::new());
 
         // 3. Spawn subprocess with 30s start timeout
-        let mut spawned = tokio::time::timeout(
+        let mut spawned = match tokio::time::timeout(
             Duration::from_secs(30),
             executor.spawn(working_dir, prompt, &env),
         )
         .await
-        .ok()?
-        .ok()?;
+        {
+            Err(_) => {
+                tracing::warn!(
+                    ?executor_profile_id,
+                    "Commit message generation failed: spawning the coding agent timed out after 30s"
+                );
+                return None;
+            }
+            Ok(Err(e)) => {
+                tracing::warn!(
+                    ?executor_profile_id,
+                    error = %e,
+                    "Commit message generation failed: could not spawn the coding agent"
+                );
+                return None;
+            }
+            Ok(Ok(spawned)) => spawned,
+        };
 
         // 4. Create ephemeral MsgStore, wire stdout/stderr
         let msg_store = Arc::new(MsgStore::new());
@@ -1451,6 +1474,12 @@ impl LocalContainerService {
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         if timed_out {
+            let dump = Self::dump_commit_message_logs(&msg_store);
+            tracing::warn!(
+                ?executor_profile_id,
+                log_file = ?dump,
+                "Commit message generation failed: coding agent did not finish within 90s; process log written to file"
+            );
             return None;
         }
 
@@ -1473,10 +1502,54 @@ impl LocalContainerService {
             }
         }
 
-        let assistant_msg = last_assistant_message?;
+        let Some(assistant_msg) = last_assistant_message else {
+            let dump = Self::dump_commit_message_logs(&msg_store);
+            tracing::warn!(
+                ?executor_profile_id,
+                log_file = ?dump,
+                "Commit message generation failed: coding agent produced no assistant message; process log written to file"
+            );
+            return None;
+        };
         let entries_json = serde_json::to_string(&entries).unwrap_or_default();
 
         Some((assistant_msg, entries_json))
+    }
+
+    /// Dumps the raw stdout/stderr and normalized entries captured during a failed
+    /// commit-message agent run to a uniquely-named file under the system temp dir.
+    /// Returns the path on success so callers can log it. Best-effort: any IO error
+    /// is logged and `None` is returned.
+    fn dump_commit_message_logs(msg_store: &MsgStore) -> Option<PathBuf> {
+        use std::fmt::Write as _;
+
+        let mut buf = String::new();
+        for msg in msg_store.get_history() {
+            match msg {
+                LogMsg::Stdout(s) => {
+                    let _ = write!(buf, "{s}");
+                }
+                LogMsg::Stderr(s) => {
+                    let _ = write!(buf, "{s}");
+                }
+                LogMsg::JsonPatch(patch) => {
+                    if let Ok(s) = serde_json::to_string(&patch) {
+                        let _ = writeln!(buf, "[json-patch] {s}");
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let file_name = format!("vibe-commit-message-{}.log", Uuid::new_v4().simple());
+        let path = std::env::temp_dir().join(file_name);
+        match std::fs::write(&path, buf) {
+            Ok(()) => Some(path),
+            Err(e) => {
+                tracing::warn!(error = %e, path = ?path, "Failed to write commit message log dump");
+                None
+            }
+        }
     }
 }
 
