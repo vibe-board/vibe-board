@@ -110,6 +110,11 @@ pub struct Config {
     pub commit_message_prompt: Option<String>,
     #[serde(default)]
     pub commit_message_single_commit: bool,
+    /// Prompt sent as a follow-up to the current executor when inline commit-message
+    /// generation is unavailable (disabled, timed out, or empty). The agent generates
+    /// the commit message and merges the branch itself. Falls back to the default when None.
+    #[serde(default)]
+    pub merge_follow_up_prompt: Option<String>,
     /// Unknown fields from newer config versions, preserved through round-trips.
     /// Populated manually during two-phase parse; not part of serde or ts-rs.
     #[serde(skip)]
@@ -147,6 +152,7 @@ impl Config {
             commit_message_enabled: default_commit_message_enabled(),
             commit_message_prompt: None,
             commit_message_single_commit: false,
+            merge_follow_up_prompt: None,
             extra_fields: serde_json::Map::new(),
         }
     }
@@ -187,6 +193,7 @@ impl Default for Config {
             commit_message_enabled: default_commit_message_enabled(),
             commit_message_prompt: None,
             commit_message_single_commit: false,
+            merge_follow_up_prompt: None,
             extra_fields: serde_json::Map::new(),
         }
     }

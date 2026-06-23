@@ -49,6 +49,28 @@ feat(auth): add login flow
 pub const DEFAULT_LINTER_FIX_FOLLOW_UP_PROMPT: &str =
     "Check the code modified by the linter, fix linter complaints, and re-commit the code.";
 
+/// Prompt sent as a follow-up to the current executor when inline AI commit-message
+/// generation is unavailable (disabled, timed out, or returned nothing). The agent
+/// generates a commit message itself and merges the current branch into the target.
+pub const DEFAULT_MERGE_FOLLOW_UP_PROMPT: &str = r#"The current branch is "{current_branch}", the target branch is "{target_branch}".
+Generate a conventional commit message for the changes that would be merged from the current branch into the target, then squash-merge the current branch into the target branch using that message.
+
+Conventional Commits rules (use as-is, do not search):
+- Subject line format: type(scope): description — one line. Type (required): feat, fix, docs, style, refactor, perf, test, chore, build, ci. Scope (optional): short noun in parentheses. Description: imperative mood, lowercase after colon, no period, under ~72 chars.
+- For SIMPLE or small changes (e.g. one file, trivial fix): use ONLY the subject line. No body.
+- For COMPLEX or larger changes (multiple files, non-trivial logic): use the subject line, then a blank line, then an optional body (bullet points or short paragraphs). No product or tool names.
+
+IMPORTANT — you are working inside an isolated git worktree checked out on "{current_branch}". The target branch "{target_branch}" is very likely checked out in a DIFFERENT worktree, so `git checkout "{target_branch}"` (or `git switch`/`git merge` while on it) will fail with "already checked out". Do NOT switch branches. First make sure all your work is committed on "{current_branch}", then perform an in-memory squash merge and update the target branch's ref directly without checking it out:
+1. Inspect the changes to write the commit message: git diff "{target_branch}"...HEAD
+2. Commit any remaining uncommitted work on "{current_branch}" so HEAD reflects everything to merge.
+3. Compute the merged tree with a real three-way merge (does NOT touch any working tree): TREE=$(git merge-tree --write-tree "{target_branch}" "{current_branch}")
+   - If this command exits non-zero, the merge has conflicts. STOP, do not update any ref, and report the conflicting files instead of merging.
+4. Create the squash commit from the merged tree, with "{target_branch}" as its single parent and your message: NEW=$(git commit-tree "$TREE" -p "{target_branch}" -m "<your commit message>")
+5. Move the target branch ref to the new commit: git update-ref refs/heads/"{target_branch}" "$NEW"
+6. Fast-forward the current branch to the same commit so follow-up work continues cleanly: git update-ref refs/heads/"{current_branch}" "$NEW"
+
+Do not push. Report the final commit message you used."#;
+
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error(transparent)]
@@ -179,6 +201,7 @@ const KNOWN_CONFIG_FIELDS: &[&str] = &[
     "commit_message_enabled",
     "commit_message_prompt",
     "commit_message_single_commit",
+    "merge_follow_up_prompt",
 ];
 
 fn compute_extra_fields(value: &serde_json::Value) -> serde_json::Map<String, serde_json::Value> {

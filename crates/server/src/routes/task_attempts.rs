@@ -37,6 +37,7 @@ use deployment::Deployment;
 use executors::{
     actions::{
         ExecutorAction, ExecutorActionType,
+        coding_agent_follow_up::CodingAgentFollowUpRequest,
         script::{ScriptContext, ScriptRequest, ScriptRequestLanguage},
     },
     executors::{CodingAgent, ExecutorError},
@@ -46,7 +47,7 @@ use git::{ConflictOp, GitCliError, GitService, GitServiceError};
 use git2::BranchType;
 use serde::{Deserialize, Serialize};
 use services::services::{
-    config::DEFAULT_COMMIT_MESSAGE_PROMPT,
+    config::{DEFAULT_COMMIT_MESSAGE_PROMPT, DEFAULT_MERGE_FOLLOW_UP_PROMPT},
     container::ContainerService,
     git_host::{ProviderKind, detection::detect_provider_from_url},
     session_export::{ExportError, build_attempt_export, build_zip_bytes, export_filename},
@@ -517,16 +518,64 @@ async fn handle_workspaces_ws(
     Ok(())
 }
 
-/// Legacy commit message: task title + optional description (no product names).
-fn legacy_commit_message(task: &Task) -> String {
-    let mut msg = task.title.clone();
-    if let Some(desc) = &task.description
-        && !desc.trim().is_empty()
-    {
-        msg.push_str("\n\n");
-        msg.push_str(desc);
+/// Send a follow-up to the current session's executor asking it to generate a commit
+/// message and squash-merge the branch itself. Used when inline commit-message
+/// generation is unavailable (disabled, timed out, or empty). Returns the spawned
+/// execution process.
+async fn merge_via_follow_up(
+    deployment: &DeploymentImpl,
+    workspace: &Workspace,
+    session: &Session,
+    executor_profile_id: &ExecutorProfileId,
+    current_branch: &str,
+    target_branch: &str,
+) -> Result<ExecutionProcess, ApiError> {
+    let pool = &deployment.db().pool;
+
+    let prompt = {
+        let config = deployment.config().read().await;
+        config
+            .merge_follow_up_prompt
+            .as_deref()
+            .unwrap_or(DEFAULT_MERGE_FOLLOW_UP_PROMPT)
+            .to_string()
     }
-    msg
+    .replace("{current_branch}", current_branch)
+    .replace("{target_branch}", target_branch);
+
+    // To merge there must be a task with code, so a prior coding-agent turn always exists.
+    let session_info = CodingAgentTurn::find_latest_session_info(pool, session.id)
+        .await?
+        .ok_or(ApiError::Session(SessionError::NotFound))?;
+
+    let repos = WorkspaceRepo::find_repos_for_workspace(pool, workspace.id).await?;
+    let cleanup_action = deployment.container().cleanup_actions_for_repos(&repos);
+
+    let working_dir = workspace
+        .agent_working_dir
+        .as_ref()
+        .filter(|dir| !dir.is_empty())
+        .cloned();
+
+    let action_type = ExecutorActionType::CodingAgentFollowUpRequest(CodingAgentFollowUpRequest {
+        prompt,
+        session_id: session_info.session_id,
+        reset_to_message_id: None,
+        executor_profile_id: executor_profile_id.clone(),
+        working_dir,
+    });
+    let action = ExecutorAction::new(action_type, cleanup_action.map(Box::new));
+
+    deployment
+        .container()
+        .start_execution(
+            workspace,
+            session,
+            &action,
+            &ExecutionProcessRunReason::CodingAgent,
+        )
+        .await
+        .map_err(ApiError::from)
 }
 
 /// Run the workspace's coding agent inline to generate a conventional commit message.
@@ -757,7 +806,10 @@ pub async fn merge_task_attempt(
         .as_ref()
         .unwrap_or(&request.executor_profile_id);
 
-    let (commit_message, commit_message_conversation) = if request.commit_message_enabled {
+    // Determine the commit message for a direct backend merge. `None` means we have
+    // instead dispatched a follow-up to the current executor (which will generate the
+    // commit message and merge itself) and should return immediately.
+    let direct_merge: Option<(String, Option<String>)> = if request.commit_message_enabled {
         // Check if the branch has a single commit — if so, skip AI generation
         // and use the existing commit message directly.
         let single_commit_message = if !request.commit_message_single_commit {
@@ -784,7 +836,7 @@ pub async fn merge_task_attempt(
                 "Single commit on branch, using existing commit message: {}",
                 msg
             );
-            (msg, None)
+            Some((msg, None))
         } else {
             let commit_message_prompt = {
                 let config = deployment.config().read().await;
@@ -804,20 +856,36 @@ pub async fn merge_task_attempt(
             )
             .await
             {
-                Some((msg, entries_json)) => (msg, Some(entries_json)),
+                Some((msg, entries_json)) => Some((msg, Some(entries_json))),
                 None => {
                     tracing::debug!(
-                        "Agent did not return commit message, using legacy (task title + description)"
+                        "Inline commit message generation unavailable, dispatching merge follow-up to current executor"
                     );
-                    (legacy_commit_message(&task), None)
+                    None
                 }
             }
         }
     } else {
         tracing::debug!(
-            "Commit message generation disabled, using legacy (task title + description)"
+            "Commit message generation disabled, dispatching merge follow-up to current executor"
         );
-        (legacy_commit_message(&task), None)
+        None
+    };
+
+    let Some((commit_message, commit_message_conversation)) = direct_merge else {
+        // Inline generation failed/disabled: let the current executor generate the
+        // commit message and perform the merge itself via a follow-up. The merge,
+        // task-Done, and archive then happen through the normal post-process flow.
+        merge_via_follow_up(
+            &deployment,
+            &workspace,
+            &session,
+            &request.executor_profile_id,
+            &workspace.branch,
+            &workspace_repo.target_branch,
+        )
+        .await?;
+        return Ok(ResponseJson(ApiResponse::success(())));
     };
 
     let merge_commit_id = deployment.git().merge_changes(
