@@ -32,6 +32,7 @@ import { useTaskAttemptWithSession } from '@/hooks/useTaskAttempt';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useBranchStatus, useAttemptExecution } from '@/hooks';
 import { useAttemptRepo } from '@/hooks/useAttemptRepo';
+import { streamRegistry } from '@/lib/connections/streamRegistry';
 import { paths } from '@/lib/paths';
 import {
   ExecutionProcessesProvider,
@@ -455,6 +456,16 @@ export function ProjectTasks() {
       setSearchParams(params, { replace: true });
     }
   }, [attempt, searchParams, setSearchParams]);
+
+  // Keep the stream registry's active key in sync with the viewed attempt's
+  // session so 'active'-scope streams owned by that session stay open and all
+  // others become background. Clear on unmount.
+  useEffect(() => {
+    streamRegistry.setActiveKey(attempt?.session?.id);
+    return () => {
+      streamRegistry.setActiveKey(undefined);
+    };
+  }, [attempt?.session?.id]);
 
   const setMode = useCallback(
     (newMode: LayoutMode) => {

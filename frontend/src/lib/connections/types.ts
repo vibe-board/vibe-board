@@ -20,6 +20,21 @@ export interface WebSocketLike {
   readonly readyState: number;
 }
 
+/**
+ * Stream prioritization scope used by the StreamRegistry to decide which
+ * WebSocket streams stay open under bandwidth / e2ee-gateway pressure.
+ * - 'global'  : always active (e.g. projects list, approvals/notifications)
+ * - 'active'  : active only when its ownerKey matches the registry's activeKey
+ *               (e.g. the currently-viewed task attempt's session streams)
+ */
+export type StreamScope = 'global' | 'active';
+
+export interface StreamMeta {
+  scope: StreamScope;
+  /** Identifier of the owning resource (e.g. attempt session id) for 'active' streams. */
+  ownerKey?: string;
+}
+
 export interface UnifiedConnection {
   readonly id: string;
   readonly type: 'direct' | 'gateway';

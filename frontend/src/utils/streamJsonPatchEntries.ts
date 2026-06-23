@@ -3,6 +3,8 @@ import type { Operation } from 'rfc6902';
 import { applyUpsertPatch } from '@/utils/jsonPatch';
 import type { UnifiedConnection } from '@/lib/connections/types';
 import type { WebSocketLike } from '@/lib/connections/types';
+import type { StreamMeta } from '@/lib/connections/types';
+import { streamRegistry } from '@/lib/connections/streamRegistry';
 
 type PatchContainer<E = unknown> = { entries: E[] };
 
@@ -20,6 +22,8 @@ export interface StreamOptions<E = unknown> {
     /** Build the URL for reconnection given the highest entry index seen so far */
     getReconnectUrl: (maxEntryIndex: number) => string;
   };
+  /** Prioritization metadata; when set, the stream closes while background. */
+  streamMeta?: StreamMeta;
 }
 
 interface StreamController<E = unknown> {
@@ -57,6 +61,10 @@ export function streamJsonPatchEntries<E = unknown>(
   let retryAttempts = 0;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let maxEntryIndex = -1;
+
+  let registryUnsub: (() => void) | null = null;
+  let lastConnectUrl: string = url;
+  const isActive = () => streamRegistry.isActive(opts.streamMeta);
 
   let snapshot: PatchContainer<E> = structuredClone(
     opts.initial ?? ({ entries: [] } as PatchContainer<E>)
@@ -120,7 +128,7 @@ export function streamJsonPatchEntries<E = unknown>(
   }
 
   function scheduleReconnect() {
-    if (closed || finished || !opts.reconnect) return;
+    if (closed || finished || !opts.reconnect || !isActive()) return;
     if (retryAttempts >= opts.reconnect.maxRetries) return;
 
     reconnecting = true;
@@ -136,24 +144,32 @@ export function streamJsonPatchEntries<E = unknown>(
   }
 
   function openConnection(connectUrl: string) {
+    lastConnectUrl = connectUrl;
     const parsed = new URL(connectUrl, window.location.origin);
     ws = conn.openWs(parsed.pathname, parsed.search?.substring(1) || undefined);
+    const sock = ws;
 
     ws.onopen = () => {
+      if (ws !== sock) return;
       connected = true;
       reconnecting = false;
       retryAttempts = 0;
       opts.onConnect?.();
     };
 
-    ws.onmessage = handleMessage;
+    ws.onmessage = (event) => {
+      if (ws !== sock) return;
+      handleMessage(event);
+    };
 
     ws.onerror = (err) => {
+      if (ws !== sock) return;
       connected = false;
       opts.onError?.(err);
     };
 
     ws.onclose = () => {
+      if (ws !== sock) return;
       connected = false;
       ws = null;
 
@@ -163,8 +179,37 @@ export function streamJsonPatchEntries<E = unknown>(
     };
   }
 
-  // Initial connection
-  openConnection(url);
+  function applyActiveState() {
+    if (closed || finished) return;
+    if (isActive()) {
+      if (!ws) {
+        const reopenUrl = opts.reconnect
+          ? opts.reconnect.getReconnectUrl(maxEntryIndex)
+          : lastConnectUrl;
+        openConnection(reopenUrl);
+      }
+    } else {
+      // Background: drop the socket but DO NOT mark closed/finished so we can reopen.
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      reconnecting = false;
+      if (ws) {
+        ws.close();
+        ws = null;
+      }
+      connected = false;
+    }
+  }
+
+  // Subscribe to registry changes only when this stream is prioritizable.
+  if (opts.streamMeta) {
+    registryUnsub = streamRegistry.subscribe(applyActiveState);
+  }
+
+  // Initial connection (respects current active state)
+  applyActiveState();
 
   return {
     getEntries(): E[] {
@@ -186,6 +231,10 @@ export function streamJsonPatchEntries<E = unknown>(
     },
     close(): void {
       closed = true;
+      if (registryUnsub) {
+        registryUnsub();
+        registryUnsub = null;
+      }
       reconnecting = false;
       if (retryTimer) {
         clearTimeout(retryTimer);

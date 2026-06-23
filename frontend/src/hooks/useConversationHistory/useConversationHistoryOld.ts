@@ -679,6 +679,10 @@ export const useConversationHistoryOld = ({
         const url = `/api/execution-processes/${executionProcess.id}/raw-logs/ws`;
         return new Promise((resolve, reject) => {
           const controller = streamJsonPatchEntries<PatchType>(url, conn, {
+            streamMeta: {
+              scope: 'active',
+              ownerKey: executionProcess.session_id,
+            },
             onEntries(entries) {
               const patchesWithKey = entries.map((entry, index) =>
                 patchWithKey(entry, executionProcess.id, index)
@@ -709,6 +713,10 @@ export const useConversationHistoryOld = ({
 
       return new Promise<void>((resolve) => {
         const controller = streamJsonPatchEntries<PatchType>(url, conn, {
+          streamMeta: {
+            scope: 'active',
+            ownerKey: executionProcess.session_id,
+          },
           reconnect: {
             maxRetries: 10,
             getReconnectUrl: (maxIndex) =>

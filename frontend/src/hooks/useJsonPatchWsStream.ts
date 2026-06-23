@@ -3,7 +3,8 @@ import { produce } from 'immer';
 import type { Operation } from 'rfc6902';
 import { applyUpsertPatch } from '@/utils/jsonPatch';
 import { useConnection } from '@/contexts/ConnectionContext';
-import type { WebSocketLike } from '@/lib/connections/types';
+import type { WebSocketLike, StreamMeta } from '@/lib/connections/types';
+import { useStreamActive } from './useStreamActive';
 
 type WsJsonPatchMsg = { JsonPatch: Operation[] };
 type WsReadyMsg = { Ready: true };
@@ -29,15 +30,21 @@ interface UseJsonPatchStreamResult<T> {
 }
 
 /**
- * Generic hook for consuming WebSocket streams that send JSON messages with patches
+ * Generic hook for consuming WebSocket streams that send JSON messages with patches.
+ *
+ * `streamMeta` is optional registry metadata: when provided, the stream is gated on
+ * active-task state (background streams close to free bandwidth). Fails open when omitted.
  */
 export const useJsonPatchWsStream = <T extends object>(
   endpoint: string | undefined,
   enabled: boolean,
   initialData: () => T,
-  options?: UseJsonPatchStreamOptions<T>
+  options?: UseJsonPatchStreamOptions<T>,
+  streamMeta?: StreamMeta
 ): UseJsonPatchStreamResult<T> => {
   const conn = useConnection();
+  const streamActive = useStreamActive(streamMeta);
+  const effectiveEnabled = enabled && streamActive;
   const [data, setData] = useState<T | undefined>(undefined);
   const [isConnected, setIsConnected] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -74,7 +81,7 @@ export const useJsonPatchWsStream = <T extends object>(
     // Reset cleanup flag for this effect run — allows onclose to schedule reconnects
     cleanupCalledRef.current = false;
 
-    if (!enabled || !endpoint) {
+    if (!effectiveEnabled || !endpoint) {
       // Close connection and reset state
       if (wsRef.current) {
         wsRef.current.close();
@@ -218,7 +225,7 @@ export const useJsonPatchWsStream = <T extends object>(
       setData(undefined);
       setIsInitialized(false);
     };
-  }, [endpoint, enabled, retryNonce, conn]);
+  }, [endpoint, effectiveEnabled, retryNonce, conn]);
 
   return { data, isConnected, isInitialized, error };
 };

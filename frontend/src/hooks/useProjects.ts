@@ -20,7 +20,15 @@ export function useProjects(): UseProjectsResult {
   const initialData = useCallback((): ProjectsState => ({ projects: {} }), []);
 
   const { data, isConnected, isInitialized, error } =
-    useJsonPatchWsStream<ProjectsState>(endpoint, true, initialData);
+    useJsonPatchWsStream<ProjectsState>(
+      endpoint,
+      true,
+      initialData,
+      undefined,
+      {
+        scope: 'global',
+      }
+    );
 
   const projectsById = useMemo(() => data?.projects ?? {}, [data]);
 

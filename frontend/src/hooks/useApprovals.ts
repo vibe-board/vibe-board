@@ -21,7 +21,9 @@ export function useApprovals(): UseApprovalsResult {
     useJsonPatchWsStream<ApprovalState>(
       '/api/approvals/stream/ws',
       true,
-      initialApprovalData
+      initialApprovalData,
+      undefined,
+      { scope: 'global' }
     );
 
   const pendingById = useMemo(() => data?.pending ?? {}, [data?.pending]);

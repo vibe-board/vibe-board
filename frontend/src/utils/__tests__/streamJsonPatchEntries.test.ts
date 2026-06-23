@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { streamJsonPatchEntries } from '../streamJsonPatchEntries';
 import type { UnifiedConnection } from '@/lib/connections/types';
+import { streamRegistry } from '@/lib/connections/streamRegistry';
 
 /**
  * Minimal WebSocket mock that lets us control open/message/close events.
@@ -68,11 +69,13 @@ beforeEach(() => {
   MockWebSocket.instances = [];
   vi.useFakeTimers();
   mockConn = createMockConnection();
+  streamRegistry.setActiveKey(undefined);
 });
 
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  streamRegistry.setActiveKey(undefined);
 });
 
 describe('streamJsonPatchEntries', () => {
@@ -393,6 +396,75 @@ describe('streamJsonPatchEntries', () => {
       expect(controller.isReconnecting()).toBe(false);
 
       controller.close();
+    });
+  });
+
+  describe('active-state gating', () => {
+    it('closes the socket when its stream becomes background and reopens when active', () => {
+      streamRegistry.setActiveKey('s1');
+      const controller = streamJsonPatchEntries('/initial', mockConn, {
+        streamMeta: { scope: 'active', ownerKey: 's1' },
+      });
+      expect(MockWebSocket.instances.length).toBe(1);
+      const ws0 = MockWebSocket.instances[0];
+      ws0.simulateOpen();
+
+      streamRegistry.setActiveKey('s2');
+      expect(ws0.closeCalled).toBe(true);
+
+      streamRegistry.setActiveKey('s1');
+      expect(MockWebSocket.instances.length).toBe(2);
+
+      controller.close();
+      streamRegistry.setActiveKey(undefined);
+    });
+
+    it('does not open while background, opens when it becomes active', () => {
+      streamRegistry.setActiveKey('other');
+      const controller = streamJsonPatchEntries('/initial', mockConn, {
+        streamMeta: { scope: 'active', ownerKey: 's1' },
+      });
+      expect(MockWebSocket.instances.length).toBe(0);
+
+      streamRegistry.setActiveKey('s1');
+      expect(MockWebSocket.instances.length).toBe(1);
+
+      controller.close();
+      streamRegistry.setActiveKey(undefined);
+    });
+
+    it('ignores a stale onclose fired after a reopen (no live-socket corruption, no duplicate)', () => {
+      streamRegistry.setActiveKey('s1');
+      const controller = streamJsonPatchEntries('/initial', mockConn, {
+        streamMeta: { scope: 'active', ownerKey: 's1' },
+        reconnect: {
+          maxRetries: 3,
+          getReconnectUrl: (i) => `/live?after=${i}`,
+        },
+      });
+      const ws0 = MockWebSocket.instances[0];
+      ws0.simulateOpen();
+
+      // background -> ws0.close() called, ws nulled internally
+      streamRegistry.setActiveKey('s2');
+      expect(ws0.closeCalled).toBe(true);
+
+      // active again -> a new live socket ws1 opens
+      streamRegistry.setActiveKey('s1');
+      expect(MockWebSocket.instances.length).toBe(2);
+      const ws1 = MockWebSocket.instances[1];
+      ws1.simulateOpen();
+
+      // ws0's deferred onclose finally fires -> must be IGNORED (stale)
+      ws0.simulateClose(1006, false);
+
+      // No third socket should be created (stale onclose must not reconnect),
+      // and the controller must still regard ws1 as its live connection.
+      expect(MockWebSocket.instances.length).toBe(2);
+      expect(controller.isConnected()).toBe(true);
+
+      controller.close();
+      streamRegistry.setActiveKey(undefined);
     });
   });
 });

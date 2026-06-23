@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import type { PatchType } from 'shared/types';
 import { useConnection } from '@/contexts/ConnectionContext';
-import type { WebSocketLike } from '@/lib/connections/types';
+import type { WebSocketLike, StreamMeta } from '@/lib/connections/types';
+import { useStreamActive } from './useStreamActive';
 
 type LogEntry = Extract<PatchType, { type: 'STDOUT' } | { type: 'STDERR' }>;
 
@@ -10,8 +11,12 @@ interface UseLogStreamResult {
   error: string | null;
 }
 
-export const useLogStream = (processId: string): UseLogStreamResult => {
+export const useLogStream = (
+  processId: string,
+  streamMeta?: StreamMeta
+): UseLogStreamResult => {
   const conn = useConnection();
+  const streamActive = useStreamActive(streamMeta);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const wsRef = useRef<WebSocketLike | null>(null);
@@ -22,7 +27,7 @@ export const useLogStream = (processId: string): UseLogStreamResult => {
   const currentProcessIdRef = useRef<string>(processId);
 
   useEffect(() => {
-    if (!processId) {
+    if (!processId || !streamActive) {
       return;
     }
 
@@ -131,7 +136,7 @@ export const useLogStream = (processId: string): UseLogStreamResult => {
         retryTimerRef.current = null;
       }
     };
-  }, [processId, conn]);
+  }, [processId, conn, streamActive]);
 
   return { logs, error };
 };

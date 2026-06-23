@@ -50,7 +50,9 @@ export const useExecutionProcesses = (
     useJsonPatchWsStream<ExecutionProcessState>(
       endpoint,
       !!sessionId,
-      initialData
+      initialData,
+      undefined,
+      { scope: 'active', ownerKey: sessionId }
     );
 
   const executionProcessesById = data?.execution_processes ?? {};
