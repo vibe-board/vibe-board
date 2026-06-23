@@ -1,4 +1,5 @@
 import { memo, useCallback, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Streamdown, type LinkSafetyModalProps } from 'streamdown';
 import { code } from '@streamdown/code';
 import { cjk } from '@streamdown/cjk';
@@ -14,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { usePortalContainer } from '@/contexts/PortalContainerContext';
 import { useTheme } from '@/components/ThemeProvider';
 import { getActualTheme } from '@/utils/theme';
 import { writeClipboardViaBridge } from '@/vscode/bridge';
@@ -21,10 +23,14 @@ import { writeClipboardViaBridge } from '@/vscode/bridge';
 /**
  * 链接安全确认弹窗。
  *
- * streamdown 自带的 link-safety 弹窗渲染在 DOM 树内(挂在 legacy-design 容器),
- * 其定位相对的是很高的可滚动会话容器,导致弹在整个 task process 的几何中心而非
- * 可见视口中央。改用项目自己的 Dialog(portal 到 legacy-design scope、fixed
- * inset-0 视口居中),让弹窗回到可见界面中间。
+ * streamdown 自带的 link-safety 弹窗 + 我们传入的 renderModal,都是被 streamdown
+ * 内联渲染在链接所在的 markdown 流里(<a> 的兄弟节点)。会话容器祖先带有
+ * transform/contain,会让 `position: fixed` 改为相对该祖先定位,于是蒙层铺满整个
+ * 很高的容器、内容框被推到容器顶部滚出可见区——表现为"只有灰色蒙层、没有弹窗"。
+ *
+ * 用 createPortal 把弹窗挂到 legacy-design scope 容器(脱离 markdown 流、不受
+ * transform 祖先影响),Dialog 自身 `fixed inset-0` 即相对视口居中。同时该容器带
+ * `.legacy-design` 类,保证 bg-primary 等设计变量生效,内容框可见。
  */
 function LinkSafetyDialog({
   url,
@@ -32,6 +38,7 @@ function LinkSafetyDialog({
   onClose,
   onConfirm,
 }: LinkSafetyModalProps) {
+  const portalContainer = usePortalContainer();
   const [copied, setCopied] = useState(false);
 
   const handleCopyUrl = useCallback(async () => {
@@ -44,7 +51,9 @@ function LinkSafetyDialog({
     }
   }, [url]);
 
-  return (
+  if (!isOpen) return null;
+
+  return createPortal(
     <Dialog
       open={isOpen}
       onOpenChange={(open) => {
@@ -68,7 +77,8 @@ function LinkSafetyDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
-    </Dialog>
+    </Dialog>,
+    portalContainer ?? document.body
   );
 }
 
