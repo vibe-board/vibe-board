@@ -10,9 +10,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
+import { useModal } from '@ebay/nice-modal-react';
 import { AlertTriangle } from 'lucide-react';
-import { defineModal } from '@/lib/modals';
+import { defineModal, createModal } from '@/lib/modals';
 
 export interface UnpairMachineDialogProps {
   hostname: string;
@@ -23,7 +23,7 @@ export interface UnpairMachineResult {
   clearCache: boolean;
 }
 
-const UnpairMachineDialogImpl = NiceModal.create<UnpairMachineDialogProps>(
+const UnpairMachineDialogImpl = createModal<UnpairMachineDialogProps>(
   ({ hostname }) => {
     const modal = useModal();
     const [clearCache, setClearCache] = useState(false);
@@ -90,7 +90,8 @@ const UnpairMachineDialogImpl = NiceModal.create<UnpairMachineDialogProps>(
         </DialogContent>
       </Dialog>
     );
-  }
+  },
+  { requireConnection: false }
 );
 
 export const UnpairMachineDialog = defineModal<

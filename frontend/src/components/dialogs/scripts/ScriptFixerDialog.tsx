@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
+import { useModal } from '@ebay/nice-modal-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import {
@@ -22,7 +22,7 @@ import {
 import { AutoExpandingTextarea } from '@/components/ui/auto-expanding-textarea';
 import { VirtualizedProcessLogs } from '@/components/common/VirtualizedProcessLogs';
 import { RunningDots } from '@/components/common/RunningDots';
-import { defineModal } from '@/lib/modals';
+import { createModal, defineModal } from '@/lib/modals';
 import { useApi } from '@/hooks/useApi';
 import { useLogStream } from '@/hooks/useLogStream';
 import { useExecutionProcesses } from '@/hooks/useExecutionProcesses';
@@ -44,7 +44,7 @@ export type ScriptFixerDialogResult = {
 
 type LogEntry = Extract<PatchType, { type: 'STDOUT' } | { type: 'STDERR' }>;
 
-const ScriptFixerDialogImpl = NiceModal.create<ScriptFixerDialogProps>(
+const ScriptFixerDialogImpl = createModal<ScriptFixerDialogProps>(
   ({ scriptType, repos, workspaceId, sessionId, initialRepoId }) => {
     const { attemptsApi, repoApi } = useApi();
     const modal = useModal();

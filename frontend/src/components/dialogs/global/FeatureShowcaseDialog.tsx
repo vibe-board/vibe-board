@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight, ChevronLeft } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
-import { defineModal } from '@/lib/modals';
+import { useModal } from '@ebay/nice-modal-react';
+import { defineModal, createModal } from '@/lib/modals';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { ShowcaseStageMedia } from '@/components/showcase/ShowcaseStageMedia';
 import type { ShowcaseConfig } from '@/types/showcase';
@@ -31,7 +31,7 @@ interface FeatureShowcaseDialogProps {
  * FeatureShowcaseDialog.show({ config: showcases.taskPanel });
  * ```
  */
-const FeatureShowcaseDialogImpl = NiceModal.create<FeatureShowcaseDialogProps>(
+const FeatureShowcaseDialogImpl = createModal<FeatureShowcaseDialogProps>(
   ({ config }: FeatureShowcaseDialogProps) => {
     const modal = useModal();
     const [currentStage, setCurrentStage] = useState(0);

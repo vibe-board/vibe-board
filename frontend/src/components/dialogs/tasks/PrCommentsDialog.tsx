@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
-import { defineModal } from '@/lib/modals';
+import { useModal } from '@ebay/nice-modal-react';
+import { defineModal, createModal } from '@/lib/modals';
 import {
   Dialog,
   DialogContent,
@@ -32,7 +32,7 @@ function getCommentId(comment: UnifiedPrComment): string {
     : comment.id.toString();
 }
 
-const PrCommentsDialogImpl = NiceModal.create<PrCommentsDialogProps>(
+const PrCommentsDialogImpl = createModal<PrCommentsDialogProps>(
   ({ attemptId, repoId }) => {
     const { t } = useTranslation(['tasks', 'common']);
     const modal = useModal();

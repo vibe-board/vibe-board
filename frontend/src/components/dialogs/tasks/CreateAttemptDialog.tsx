@@ -22,8 +22,8 @@ import {
 import { useTaskAttemptsWithSessions } from '@/hooks/useTaskAttempts';
 import { useUserSystem } from '@/components/ConfigProvider';
 import { paths } from '@/lib/paths';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
-import { defineModal } from '@/lib/modals';
+import { useModal } from '@ebay/nice-modal-react';
+import { createModal, defineModal } from '@/lib/modals';
 import type { ExecutorProfileId, BaseCodingAgent } from 'shared/types';
 import { useKeySubmitTask, Scope } from '@/keyboard';
 
@@ -32,7 +32,7 @@ export interface CreateAttemptDialogProps {
   projectId: string;
 }
 
-const CreateAttemptDialogImpl = NiceModal.create<CreateAttemptDialogProps>(
+const CreateAttemptDialogImpl = createModal<CreateAttemptDialogProps>(
   ({ taskId, projectId }) => {
     const modal = useModal();
     const navigate = useNavigateWithSearch();

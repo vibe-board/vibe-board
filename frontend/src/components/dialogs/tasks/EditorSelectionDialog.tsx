@@ -17,15 +17,15 @@ import {
 } from '@/components/ui/select';
 import { EditorType } from 'shared/types';
 import { useOpenInEditor } from '@/hooks/useOpenInEditor';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
-import { defineModal } from '@/lib/modals';
+import { useModal } from '@ebay/nice-modal-react';
+import { createModal, defineModal } from '@/lib/modals';
 
 export interface EditorSelectionDialogProps {
   selectedAttemptId?: string;
   filePath?: string;
 }
 
-const EditorSelectionDialogImpl = NiceModal.create<EditorSelectionDialogProps>(
+const EditorSelectionDialogImpl = createModal<EditorSelectionDialogProps>(
   ({ selectedAttemptId, filePath }) => {
     const modal = useModal();
     const handleOpenInEditor = useOpenInEditor(selectedAttemptId, () =>

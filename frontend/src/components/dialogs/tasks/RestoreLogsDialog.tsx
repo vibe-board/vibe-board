@@ -9,8 +9,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { AlertTriangle, GitCommit, Loader2 } from 'lucide-react';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
-import { defineModal } from '@/lib/modals';
+import { useModal } from '@ebay/nice-modal-react';
+import { defineModal, createModal } from '@/lib/modals';
 import { useKeySubmitTask } from '@/keyboard/hooks';
 import { Scope } from '@/keyboard/registry';
 import { useApi } from '@/hooks/useApi';
@@ -40,7 +40,7 @@ export type RestoreLogsDialogResult = {
   forceWhenDirty?: boolean;
 };
 
-const RestoreLogsDialogImpl = NiceModal.create<RestoreLogsDialogProps>(
+const RestoreLogsDialogImpl = createModal<RestoreLogsDialogProps>(
   ({
     executionProcessId,
     branchStatus,

@@ -22,8 +22,8 @@ import {
 } from 'lucide-react';
 import { useApi } from '@/hooks/useApi';
 import { DirectoryEntry, Repo } from 'shared/types';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
-import { defineModal } from '@/lib/modals';
+import { useModal } from '@ebay/nice-modal-react';
+import { createModal, defineModal } from '@/lib/modals';
 import { FolderPickerDialog } from './FolderPickerDialog';
 
 export interface RepoPickerDialogProps {
@@ -34,7 +34,7 @@ export interface RepoPickerDialogProps {
 
 type Stage = 'options' | 'existing' | 'new';
 
-const RepoPickerDialogImpl = NiceModal.create<RepoPickerDialogProps>(
+const RepoPickerDialogImpl = createModal<RepoPickerDialogProps>(
   ({
     title = 'Select Repository',
     description = 'Choose or create a git repository',

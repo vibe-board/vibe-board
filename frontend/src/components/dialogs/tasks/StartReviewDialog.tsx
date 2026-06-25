@@ -19,8 +19,8 @@ import { useUserSystem } from '@/components/ConfigProvider';
 import { useWorkspaceSessions } from '@/hooks/useWorkspaceSessions';
 import { useApi } from '@/hooks/useApi';
 import { useQueryClient } from '@tanstack/react-query';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
-import { defineModal } from '@/lib/modals';
+import { useModal } from '@ebay/nice-modal-react';
+import { defineModal, createModal } from '@/lib/modals';
 import type { BaseCodingAgent, ExecutorProfileId } from 'shared/types';
 
 export interface StartReviewDialogProps {
@@ -31,7 +31,7 @@ export interface StartReviewDialogProps {
   onSuccess?: (newSessionId?: string) => void;
 }
 
-const StartReviewDialogImpl = NiceModal.create<StartReviewDialogProps>(
+const StartReviewDialogImpl = createModal<StartReviewDialogProps>(
   ({ sessionId, workspaceId, reviewMarkdown, defaultProfile, onSuccess }) => {
     const { sessionsApi } = useApi();
     const modal = useModal();

@@ -20,7 +20,7 @@ import { useTranslation } from 'react-i18next';
 import { Task, Workspace } from 'shared/types';
 import type { ProviderKind } from 'shared/types';
 import { Loader2 } from 'lucide-react';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
+import { useModal } from '@ebay/nice-modal-react';
 import { useAuth, useRepoBranches } from '@/hooks';
 import {
   GhCliHelpInstructions,
@@ -42,7 +42,7 @@ import type {
 } from '@/components/dialogs/auth/GlabCliSetupDialog';
 import type { GhCliSetupError } from 'shared/types';
 import { useUserSystem } from '@/components/ConfigProvider';
-import { defineModal } from '@/lib/modals';
+import { defineModal, createModal } from '@/lib/modals';
 
 interface CreatePRDialogProps {
   attempt: Workspace;
@@ -57,7 +57,7 @@ export type CreatePRDialogResult = {
   error?: string;
 };
 
-const CreatePRDialogImpl = NiceModal.create<CreatePRDialogProps>(
+const CreatePRDialogImpl = createModal<CreatePRDialogProps>(
   ({ attempt, task, repoId, targetBranch, provider }) => {
     const { attemptsApi } = useApi();
     const modal = useModal();

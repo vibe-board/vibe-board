@@ -1,5 +1,5 @@
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
-import { defineModal } from '@/lib/modals';
+import { useModal } from '@ebay/nice-modal-react';
+import { defineModal, createModal } from '@/lib/modals';
 import { useTranslation } from 'react-i18next';
 import {
   Dialog,
@@ -15,7 +15,7 @@ export interface ViewProcessesDialogProps {
   initialProcessId?: string | null;
 }
 
-const ViewProcessesDialogImpl = NiceModal.create<ViewProcessesDialogProps>(
+const ViewProcessesDialogImpl = createModal<ViewProcessesDialogProps>(
   ({ sessionId, initialProcessId }) => {
     const { t } = useTranslation('tasks');
     const modal = useModal();

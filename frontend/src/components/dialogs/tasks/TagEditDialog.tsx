@@ -15,8 +15,8 @@ import {
 import { Loader2 } from 'lucide-react';
 import { useApi } from '@/hooks/useApi';
 import type { Tag, CreateTag, UpdateTag } from 'shared/types';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
-import { defineModal, getErrorMessage } from '@/lib/modals';
+import { useModal } from '@ebay/nice-modal-react';
+import { defineModal, getErrorMessage, createModal } from '@/lib/modals';
 
 export interface TagEditDialogProps {
   tag?: Tag | null; // null for create mode
@@ -24,7 +24,7 @@ export interface TagEditDialogProps {
 
 export type TagEditResult = 'saved' | 'canceled';
 
-const TagEditDialogImpl = NiceModal.create<TagEditDialogProps>(({ tag }) => {
+const TagEditDialogImpl = createModal<TagEditDialogProps>(({ tag }) => {
   const { tagsApi } = useApi();
   const modal = useModal();
   const { t } = useTranslation('settings');

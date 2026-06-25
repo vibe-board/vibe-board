@@ -22,8 +22,8 @@ import {
 } from 'lucide-react';
 import { useApi } from '@/hooks/useApi';
 import { DirectoryEntry, DirectoryListResponse } from 'shared/types';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
-import { defineModal } from '@/lib/modals';
+import { useModal } from '@ebay/nice-modal-react';
+import { createModal, defineModal } from '@/lib/modals';
 
 export interface FolderPickerDialogProps {
   value?: string;
@@ -31,7 +31,7 @@ export interface FolderPickerDialogProps {
   description?: string;
 }
 
-const FolderPickerDialogImpl = NiceModal.create<FolderPickerDialogProps>(
+const FolderPickerDialogImpl = createModal<FolderPickerDialogProps>(
   ({
     value = '',
     title = 'Select Folder',

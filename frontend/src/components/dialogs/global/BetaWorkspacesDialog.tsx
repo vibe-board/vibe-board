@@ -6,11 +6,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
-import { defineModal, type NoProps } from '@/lib/modals';
+import { useModal } from '@ebay/nice-modal-react';
+import { defineModal, createModal, type NoProps } from '@/lib/modals';
 import { useTranslation } from 'react-i18next';
 
-const BetaWorkspacesDialogImpl = NiceModal.create<NoProps>(() => {
+const BetaWorkspacesDialogImpl = createModal<NoProps>(() => {
   const modal = useModal();
   const { t } = useTranslation('common');
 

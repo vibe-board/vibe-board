@@ -12,8 +12,8 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { useApi } from '@/hooks/useApi';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
-import { defineModal } from '@/lib/modals';
+import { useModal } from '@ebay/nice-modal-react';
+import { defineModal, createModal } from '@/lib/modals';
 import type { CommitInfo } from 'shared/types';
 
 export interface RevertCommitDialogProps {
@@ -22,7 +22,7 @@ export interface RevertCommitDialogProps {
   repoId: string;
 }
 
-const RevertCommitDialogImpl = NiceModal.create<RevertCommitDialogProps>(
+const RevertCommitDialogImpl = createModal<RevertCommitDialogProps>(
   ({ commit, attemptId, repoId }) => {
     const { attemptsApi } = useApi();
     const modal = useModal();

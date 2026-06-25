@@ -18,8 +18,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
-import { defineModal } from '@/lib/modals';
+import { useModal } from '@ebay/nice-modal-react';
+import { defineModal, createModal } from '@/lib/modals';
 
 export interface ConfigInfo {
   name: string;
@@ -41,7 +41,7 @@ export type CreateConfigurationResult = {
 };
 
 const CreateConfigurationDialogImpl =
-  NiceModal.create<CreateConfigurationDialogProps>(
+  createModal<CreateConfigurationDialogProps>(
     ({ executorType, existingConfigs, configInfos }) => {
       const modal = useModal();
       const [configName, setConfigName] = useState('');

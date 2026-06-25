@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
+import { useModal } from '@ebay/nice-modal-react';
 import { useTranslation } from 'react-i18next';
 import { Download, Loader2 } from 'lucide-react';
 
-import { defineModal, type NoProps } from '@/lib/modals';
+import { createModal, defineModal, type NoProps } from '@/lib/modals';
 import { type ConfigExportEnvelope } from '@/lib/api';
 import { useApi } from '@/hooks/useApi';
 import {
@@ -58,7 +58,7 @@ function getUiPreferencesData(): Record<string, unknown> {
   return data;
 }
 
-const ExportConfigDialogImpl = NiceModal.create<NoProps>(() => {
+const ExportConfigDialogImpl = createModal<NoProps>(() => {
   const { configTransferApi } = useApi();
   const modal = useModal();
   const { t } = useTranslation('settings');

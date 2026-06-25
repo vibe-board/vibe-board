@@ -11,8 +11,8 @@ import {
 } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2 } from 'lucide-react';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
-import { defineModal } from '@/lib/modals';
+import { useModal } from '@ebay/nice-modal-react';
+import { defineModal, createModal } from '@/lib/modals';
 
 export interface DeleteConfigurationDialogProps {
   configName: string;
@@ -22,7 +22,7 @@ export interface DeleteConfigurationDialogProps {
 export type DeleteConfigurationResult = 'deleted' | 'canceled';
 
 const DeleteConfigurationDialogImpl =
-  NiceModal.create<DeleteConfigurationDialogProps>(
+  createModal<DeleteConfigurationDialogProps>(
     ({ configName, executorType }) => {
       const { t } = useTranslation(['settings', 'common']);
       const modal = useModal();

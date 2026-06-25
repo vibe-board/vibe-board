@@ -30,8 +30,8 @@ import { useUserSystem } from '@/components/ConfigProvider';
 
 import { toPrettyCase } from '@/utils/string';
 import { getSortedAgents } from '@/utils/executor';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
-import { defineModal, type NoProps } from '@/lib/modals';
+import { useModal } from '@ebay/nice-modal-react';
+import { createModal, defineModal, type NoProps } from '@/lib/modals';
 import { useEditorAvailability } from '@/hooks/useEditorAvailability';
 import { EditorAvailabilityIndicator } from '@/components/EditorAvailabilityIndicator';
 import { useAgentAvailability } from '@/hooks/useAgentAvailability';
@@ -42,7 +42,7 @@ export type OnboardingResult = {
   editor: EditorConfig;
 };
 
-const OnboardingDialogImpl = NiceModal.create<NoProps>(() => {
+const OnboardingDialogImpl = createModal<NoProps>(() => {
   const modal = useModal();
   const { profiles, config } = useUserSystem();
 

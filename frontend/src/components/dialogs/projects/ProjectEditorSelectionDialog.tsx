@@ -17,15 +17,15 @@ import {
 } from '@/components/ui/select';
 import { EditorType, Project } from 'shared/types';
 import { useOpenProjectInEditor } from '@/hooks/useOpenProjectInEditor';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
-import { defineModal } from '@/lib/modals';
+import { useModal } from '@ebay/nice-modal-react';
+import { createModal, defineModal } from '@/lib/modals';
 
 export interface ProjectEditorSelectionDialogProps {
   selectedProject: Project | null;
 }
 
 const ProjectEditorSelectionDialogImpl =
-  NiceModal.create<ProjectEditorSelectionDialogProps>(({ selectedProject }) => {
+  createModal<ProjectEditorSelectionDialogProps>(({ selectedProject }) => {
     const modal = useModal();
     const handleOpenInEditor = useOpenProjectInEditor(selectedProject, () =>
       modal.hide()

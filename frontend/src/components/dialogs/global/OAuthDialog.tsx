@@ -9,7 +9,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { LogIn, Github, Loader2, Chrome } from 'lucide-react';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
+import { useModal } from '@ebay/nice-modal-react';
 import { useState, useRef, useEffect } from 'react';
 
 import { useAuthMutations } from '@/hooks/auth/useAuthMutations';
@@ -18,7 +18,7 @@ import { useUserSystem } from '@/components/ConfigProvider';
 
 import type { ProfileResponse } from 'shared/types';
 import { useTranslation } from 'react-i18next';
-import { defineModal, type NoProps } from '@/lib/modals';
+import { createModal, defineModal, type NoProps } from '@/lib/modals';
 
 type OAuthProvider = 'github' | 'google';
 
@@ -28,7 +28,7 @@ type OAuthState =
   | { type: 'success'; profile: ProfileResponse }
   | { type: 'error'; message: string };
 
-const OAuthDialogImpl = NiceModal.create<NoProps>(() => {
+const OAuthDialogImpl = createModal<NoProps>(() => {
   const modal = useModal();
   const { t } = useTranslation('common');
   const { reloadSystem } = useUserSystem();

@@ -18,8 +18,8 @@ import {
 } from '@/contexts/GitOperationsContext';
 import type { Merge, Task } from 'shared/types';
 import type { WorkspaceWithSession } from '@/types/attempt';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
-import { defineModal } from '@/lib/modals';
+import { useModal } from '@ebay/nice-modal-react';
+import { createModal, defineModal } from '@/lib/modals';
 
 export interface GitActionsDialogProps {
   attemptId: string;
@@ -106,7 +106,7 @@ function GitActionsDialogContent({
   );
 }
 
-const GitActionsDialogImpl = NiceModal.create<GitActionsDialogProps>(
+const GitActionsDialogImpl = createModal<GitActionsDialogProps>(
   ({ attemptId, task }) => {
     const modal = useModal();
     const { t } = useTranslation('tasks');

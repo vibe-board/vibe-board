@@ -6,8 +6,8 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
-import { defineModal, getErrorMessage } from '@/lib/modals';
+import { useModal } from '@ebay/nice-modal-react';
+import { createModal, defineModal, getErrorMessage } from '@/lib/modals';
 import { useApi } from '@/hooks/useApi';
 import type { GlabCliSetupError } from 'shared/types';
 import { useRef, useState } from 'react';
@@ -122,7 +122,7 @@ glab auth login --hostname HOSTNAME --web      # for self-hosted (replace HOSTNA
   );
 };
 
-const GlabCliSetupDialogImpl = NiceModal.create<GlabCliSetupDialogProps>(
+const GlabCliSetupDialogImpl = createModal<GlabCliSetupDialogProps>(
   ({ attemptId }) => {
     const { attemptsApi } = useApi();
     const modal = useModal();

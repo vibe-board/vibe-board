@@ -12,8 +12,8 @@ import {
 import { Button } from '@/components/ui/button';
 import BranchSelector from '@/components/tasks/BranchSelector';
 import type { GitBranch } from 'shared/types';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
-import { defineModal } from '@/lib/modals';
+import { useModal } from '@ebay/nice-modal-react';
+import { defineModal, createModal } from '@/lib/modals';
 
 export interface RebaseDialogProps {
   branches: GitBranch[];
@@ -28,7 +28,7 @@ export type RebaseDialogResult = {
   upstreamBranch?: string;
 };
 
-const RebaseDialogImpl = NiceModal.create<RebaseDialogProps>(
+const RebaseDialogImpl = createModal<RebaseDialogProps>(
   ({
     branches,
     isRebasing = false,

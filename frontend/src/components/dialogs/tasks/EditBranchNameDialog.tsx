@@ -10,8 +10,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
-import { defineModal, getErrorMessage } from '@/lib/modals';
+import { useModal } from '@ebay/nice-modal-react';
+import { createModal, defineModal, getErrorMessage } from '@/lib/modals';
 import { useRenameBranch } from '@/hooks/useRenameBranch';
 
 export interface EditBranchNameDialogProps {
@@ -24,7 +24,7 @@ export type EditBranchNameDialogResult = {
   branchName?: string;
 };
 
-const EditBranchNameDialogImpl = NiceModal.create<EditBranchNameDialogProps>(
+const EditBranchNameDialogImpl = createModal<EditBranchNameDialogProps>(
   ({ attemptId, currentBranchName }) => {
     const modal = useModal();
     const { t } = useTranslation(['tasks', 'common']);

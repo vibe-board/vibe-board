@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
+import { useModal } from '@ebay/nice-modal-react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, FileUp, Loader2, Upload } from 'lucide-react';
 
-import { defineModal } from '@/lib/modals';
+import { createModal, defineModal } from '@/lib/modals';
 import { type ConfigExportEnvelope } from '@/lib/api';
 import { useApi } from '@/hooks/useApi';
 import {
@@ -35,7 +35,7 @@ export type ImportConfigResult =
   | { action: 'imported' }
   | { action: 'canceled' };
 
-const ImportConfigDialogImpl = NiceModal.create<Record<string, never>>(() => {
+const ImportConfigDialogImpl = createModal<Record<string, never>>(() => {
   const { configTransferApi } = useApi();
   const modal = useModal();
   const { t } = useTranslation('settings');

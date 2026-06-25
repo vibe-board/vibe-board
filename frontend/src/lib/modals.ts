@@ -43,9 +43,41 @@ export function defineModal<P, R>(
 // store (one per connection tab plus a connectionless gateway-shell provider).
 // When a modal is shown, every provider renders its own copy of the component.
 // A modal whose body calls useConnection() (directly or via useApi) crashes in
-// any provider that sits outside a <ConnectionProvider>. Wrap such a modal's
-// render with this so the connectionless copies render nothing; the copy inside
-// a <ConnectionProvider> renders the real dialog.
+// any provider that sits outside a <ConnectionProvider>.
+//
+// `createModal` is the single entry point for defining a modal component. It
+// gates the body on the active connection BY DEFAULT, so connectionless copies
+// render nothing while the copy inside a <ConnectionProvider> renders the real
+// dialog. This replaces hand-wrapping each modal with connectionGated() — the
+// protection is now applied centrally and cannot be forgotten.
+//
+// Pass { requireConnection: false } ONLY for a modal that (a) never touches the
+// connection and (b) must be able to open from a connectionless context (e.g.
+// the gateway home tab). Gating such a modal would make it impossible to open
+// there.
+export interface CreateModalOptions {
+  requireConnection?: boolean;
+}
+
+export function createModal<P>(
+  render: (props: ComponentProps<P>) => React.ReactElement | null,
+  options: CreateModalOptions = {}
+): React.FC<ComponentProps<P>> {
+  const { requireConnection = true } = options;
+  const Body: React.FC<ComponentProps<P>> = requireConnection
+    ? (props) => {
+        const conn = useOptionalConnection();
+        if (!conn) return null;
+        return render(props);
+      }
+    : render;
+  return NiceModal.create(
+    Body as React.FC<ComponentProps<P> & NiceModalHocProps>
+  ) as unknown as React.FC<ComponentProps<P>>;
+}
+
+// Lower-level gate, kept for direct use and for the connectionGated unit test.
+// Prefer createModal() in dialog definitions.
 export function connectionGated<P extends object>(
   render: (props: P) => React.ReactElement | null
 ): (props: P) => React.ReactElement | null {

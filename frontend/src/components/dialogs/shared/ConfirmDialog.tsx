@@ -7,9 +7,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import NiceModal, { useModal } from '@ebay/nice-modal-react';
+import { useModal } from '@ebay/nice-modal-react';
 import { AlertTriangle, Info, CheckCircle, XCircle } from 'lucide-react';
-import { defineModal, type ConfirmResult } from '@/lib/modals';
+import { defineModal, createModal, type ConfirmResult } from '@/lib/modals';
 
 export interface ConfirmDialogProps {
   title: string;
@@ -20,7 +20,7 @@ export interface ConfirmDialogProps {
   icon?: boolean;
 }
 
-const ConfirmDialogImpl = NiceModal.create<ConfirmDialogProps>((props) => {
+const ConfirmDialogImpl = createModal<ConfirmDialogProps>((props) => {
   const modal = useModal();
   const {
     title,
