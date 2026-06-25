@@ -1463,13 +1463,13 @@ struct BashInput {
 
 #[derive(Debug, Deserialize)]
 struct FilePathInput {
-    #[serde(rename = "filePath")]
+    #[serde(rename = "filePath", alias = "file_path")]
     file_path: String,
 }
 
 #[derive(Debug, Deserialize)]
 struct WriteInput {
-    #[serde(rename = "filePath")]
+    #[serde(rename = "filePath", alias = "file_path")]
     file_path: String,
     content: String,
 }
@@ -1566,6 +1566,7 @@ fn extract_file_path_from_permission_metadata(metadata: &Value) -> Option<&str> 
     let candidate = metadata
         .get("filePath")
         .and_then(Value::as_str)
+        .or_else(|| metadata.get("file_path").and_then(Value::as_str))
         .or_else(|| metadata.get("filepath").and_then(Value::as_str))
         .or_else(|| metadata.get("path").and_then(Value::as_str))
         .or_else(|| metadata.get("file").and_then(Value::as_str))?;
@@ -1754,5 +1755,58 @@ mod tests {
             workflow_event_message(e),
             "Workflow child `sub` failed: nope"
         );
+    }
+
+    fn file_edit_action(tool: &str, input: Value) -> ActionType {
+        let mut state = ToolCallState::new("call-1".to_string());
+        state.update_from_part(ToolPart {
+            message_id: "m1".to_string(),
+            call_id: "call-1".to_string(),
+            tool: tool.to_string(),
+            state: ToolStateUpdate::Completed {
+                input: Some(input),
+                output: None,
+                title: None,
+                metadata: None,
+            },
+        });
+        state.build_action_type(Path::new("/work"))
+    }
+
+    #[test]
+    fn edit_input_accepts_snake_case_file_path() {
+        // mimocode's tool SDK serializes edit arguments with snake_case `file_path`.
+        let action = file_edit_action(
+            "edit",
+            serde_json::json!({ "file_path": "/work/src/main.rs" }),
+        );
+        match action {
+            ActionType::FileEdit { path, .. } => assert_eq!(path, "src/main.rs"),
+            other => panic!("expected FileEdit, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn edit_input_still_accepts_camel_case_file_path() {
+        let action = file_edit_action(
+            "edit",
+            serde_json::json!({ "filePath": "/work/src/main.rs" }),
+        );
+        match action {
+            ActionType::FileEdit { path, .. } => assert_eq!(path, "src/main.rs"),
+            other => panic!("expected FileEdit, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn write_input_accepts_snake_case_file_path() {
+        let action = file_edit_action(
+            "write",
+            serde_json::json!({ "file_path": "/work/notes.txt", "content": "hi" }),
+        );
+        match action {
+            ActionType::FileEdit { path, .. } => assert_eq!(path, "notes.txt"),
+            other => panic!("expected FileEdit, got {other:?}"),
+        }
     }
 }
