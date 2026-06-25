@@ -93,6 +93,7 @@ pub(super) enum SdkEvent {
     ActorStuck(ActorStuckEvent),
     TaskCreated(TaskCreatedEvent),
     TaskUpdated(TaskUpdatedEvent),
+    Workflow(WorkflowEvent),
     Unknown {
         type_: String,
         properties: Value,
@@ -163,6 +164,24 @@ impl SdkEvent {
             "task.updated" => {
                 SdkEvent::TaskUpdated(serde_json::from_value(envelope.properties).ok()?)
             }
+            "workflow.started" => SdkEvent::Workflow(WorkflowEvent::Started(
+                serde_json::from_value(envelope.properties).ok()?,
+            )),
+            "workflow.phase" => SdkEvent::Workflow(WorkflowEvent::Phase(
+                serde_json::from_value(envelope.properties).ok()?,
+            )),
+            "workflow.log" => SdkEvent::Workflow(WorkflowEvent::Log(
+                serde_json::from_value(envelope.properties).ok()?,
+            )),
+            "workflow.finished" => SdkEvent::Workflow(WorkflowEvent::Finished(
+                serde_json::from_value(envelope.properties).ok()?,
+            )),
+            "workflow.agent_failed" => SdkEvent::Workflow(WorkflowEvent::AgentFailed(
+                serde_json::from_value(envelope.properties).ok()?,
+            )),
+            "workflow.child_failed" => SdkEvent::Workflow(WorkflowEvent::ChildFailed(
+                serde_json::from_value(envelope.properties).ok()?,
+            )),
             _ => SdkEvent::Unknown {
                 type_: envelope.type_,
                 properties: envelope.properties,
@@ -606,4 +625,55 @@ impl TaskStatusValue {
             TaskStatusValue::Unknown => "pending",
         }
     }
+}
+
+// Workflow event types (workflow.started, workflow.phase, etc.)
+
+#[derive(Debug)]
+pub(super) enum WorkflowEvent {
+    Started(WorkflowStarted),
+    Phase(WorkflowPhase),
+    Log(WorkflowLog),
+    Finished(WorkflowFinished),
+    AgentFailed(WorkflowAgentFailed),
+    ChildFailed(WorkflowChildFailed),
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct WorkflowStarted {
+    pub(super) name: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct WorkflowPhase {
+    pub(super) title: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct WorkflowLog {
+    pub(super) message: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct WorkflowFinished {
+    pub(super) status: String,
+    #[serde(default)]
+    pub(super) error: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct WorkflowAgentFailed {
+    #[serde(rename = "agentType")]
+    pub(super) agent_type: String,
+    pub(super) reason: String,
+    #[serde(rename = "errorMessage", default)]
+    pub(super) error_message: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct WorkflowChildFailed {
+    pub(super) name: String,
+    pub(super) status: String,
+    #[serde(default)]
+    pub(super) error: Option<String>,
 }

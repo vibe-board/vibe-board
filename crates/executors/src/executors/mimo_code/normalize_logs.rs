@@ -10,7 +10,7 @@ use workspace_utils::{
 
 use super::types::{
     MessageInfo, MessageRole, MiMoCodeExecutorEvent, Part, PermissionAskedEvent, QuestionInfo,
-    SdkEvent, SdkTodo, SessionStatus, ToolPart, ToolStateUpdate,
+    SdkEvent, SdkTodo, SessionStatus, ToolPart, ToolStateUpdate, WorkflowEvent,
 };
 use crate::{
     approvals::ToolCallMetadata,
@@ -375,6 +375,9 @@ impl LogState {
             | SdkEvent::ActorStuck(_)
             | SdkEvent::TaskCreated(_)
             | SdkEvent::TaskUpdated(_) => {}
+            SdkEvent::Workflow(event) => {
+                self.add_normalized_entry(system_message(workflow_event_message(&event)));
+            }
             SdkEvent::Unknown { type_, properties } => {
                 self.add_normalized_entry(system_message(format!(
                     "Unrecognized MiMoCode SDK event type `{type_}`: {properties}"
@@ -1602,6 +1605,35 @@ fn parse_question_items(items: &[Value]) -> Vec<AskUserQuestionItem> {
     parse_question_items_from_info(&infos)
 }
 
+fn workflow_event_message(event: &WorkflowEvent) -> String {
+    match event {
+        WorkflowEvent::Started(e) => format!("Workflow `{}` started", e.name),
+        WorkflowEvent::Phase(e) => format!("Workflow phase: {}", e.title),
+        WorkflowEvent::Log(e) => e.message.clone(),
+        WorkflowEvent::Finished(e) => match &e.error {
+            Some(error) if !error.trim().is_empty() => {
+                format!("Workflow finished: {} - {}", e.status, error)
+            }
+            _ => format!("Workflow finished: {}", e.status),
+        },
+        WorkflowEvent::AgentFailed(e) => match &e.error_message {
+            Some(msg) if !msg.trim().is_empty() => {
+                format!(
+                    "Workflow agent `{}` failed ({}): {}",
+                    e.agent_type, e.reason, msg
+                )
+            }
+            _ => format!("Workflow agent `{}` failed ({})", e.agent_type, e.reason),
+        },
+        WorkflowEvent::ChildFailed(e) => match &e.error {
+            Some(error) if !error.trim().is_empty() => {
+                format!("Workflow child `{}` failed: {}", e.name, error)
+            }
+            _ => format!("Workflow child `{}` {}", e.name, e.status),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1636,5 +1668,91 @@ mod tests {
         assert_eq!(format_delay(60_000), "in 1m");
         assert_eq!(format_delay(3_600_000), "in 1h");
         assert_eq!(format_delay(3_900_000), "in 1h5m");
+    }
+
+    fn parse_sdk(json: &str) -> SdkEvent {
+        SdkEvent::parse(&serde_json::from_str::<Value>(json).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn workflow_started_is_recognized_and_rendered() {
+        let event = parse_sdk(
+            r#"{"type":"workflow.started","properties":{"sessionID":"ses_1","runID":"wf_1","name":"deep-research"}}"#,
+        );
+        match &event {
+            SdkEvent::Workflow(e) => {
+                assert_eq!(workflow_event_message(e), "Workflow `deep-research` started");
+            }
+            other => panic!("expected Workflow, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn workflow_phase_is_rendered() {
+        let event = parse_sdk(
+            r#"{"type":"workflow.phase","properties":{"sessionID":"ses_1","runID":"wf_1","title":"Plan"}}"#,
+        );
+        let SdkEvent::Workflow(e) = &event else {
+            panic!("expected Workflow, got {event:?}");
+        };
+        assert_eq!(workflow_event_message(e), "Workflow phase: Plan");
+    }
+
+    #[test]
+    fn workflow_log_is_rendered() {
+        let event = parse_sdk(
+            r#"{"type":"workflow.log","properties":{"sessionID":"ses_1","runID":"wf_1","message":"searching"}}"#,
+        );
+        let SdkEvent::Workflow(e) = &event else {
+            panic!("expected Workflow, got {event:?}");
+        };
+        assert_eq!(workflow_event_message(e), "searching");
+    }
+
+    #[test]
+    fn workflow_finished_renders_status_and_error() {
+        let ok = parse_sdk(
+            r#"{"type":"workflow.finished","properties":{"sessionID":"s","runID":"r","status":"completed"}}"#,
+        );
+        let SdkEvent::Workflow(e) = &ok else {
+            panic!("expected Workflow");
+        };
+        assert_eq!(workflow_event_message(e), "Workflow finished: completed");
+
+        let failed = parse_sdk(
+            r#"{"type":"workflow.finished","properties":{"sessionID":"s","runID":"r","status":"failed","error":"boom"}}"#,
+        );
+        let SdkEvent::Workflow(e) = &failed else {
+            panic!("expected Workflow");
+        };
+        assert_eq!(workflow_event_message(e), "Workflow finished: failed - boom");
+    }
+
+    #[test]
+    fn workflow_agent_failed_is_rendered() {
+        let event = parse_sdk(
+            r#"{"type":"workflow.agent_failed","properties":{"sessionID":"s","runID":"r","agentType":"explore","reason":"timeout","errorMessage":"too slow"}}"#,
+        );
+        let SdkEvent::Workflow(e) = &event else {
+            panic!("expected Workflow, got {event:?}");
+        };
+        assert_eq!(
+            workflow_event_message(e),
+            "Workflow agent `explore` failed (timeout): too slow"
+        );
+    }
+
+    #[test]
+    fn workflow_child_failed_is_rendered() {
+        let event = parse_sdk(
+            r#"{"type":"workflow.child_failed","properties":{"sessionID":"s","runID":"r","childRunID":"c","name":"sub","status":"failed","error":"nope"}}"#,
+        );
+        let SdkEvent::Workflow(e) = &event else {
+            panic!("expected Workflow, got {event:?}");
+        };
+        assert_eq!(
+            workflow_event_message(e),
+            "Workflow child `sub` failed: nope"
+        );
     }
 }
