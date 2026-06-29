@@ -36,6 +36,78 @@ fn system_message(content: String) -> NormalizedEntry {
     }
 }
 
+/// Running total of token usage across all subagent messages.
+///
+/// Subagents emit a completed assistant message (and thus a `TokenUsage` event)
+/// for every step they take. Rendering one usage card per message floods the
+/// conversation, so we fold them into a single, continuously-updated entry.
+#[derive(Default, Clone)]
+struct SubagentUsageTotals {
+    messages: u64,
+    total_tokens: u64,
+    input_tokens: u64,
+    output_tokens: u64,
+    reasoning_tokens: u64,
+    cache_read_input_tokens: u64,
+    cache_creation_input_tokens: u64,
+    cost_usd: f64,
+}
+
+impl SubagentUsageTotals {
+    #[allow(clippy::too_many_arguments)]
+    fn add(
+        &mut self,
+        total_tokens: u32,
+        input_tokens: Option<u64>,
+        output_tokens: Option<u64>,
+        reasoning_tokens: Option<u64>,
+        cache_read_input_tokens: Option<u64>,
+        cache_creation_input_tokens: Option<u64>,
+        cost_usd: Option<f64>,
+    ) {
+        self.messages += 1;
+        self.total_tokens += total_tokens as u64;
+        self.input_tokens += input_tokens.unwrap_or(0);
+        self.output_tokens += output_tokens.unwrap_or(0);
+        self.reasoning_tokens += reasoning_tokens.unwrap_or(0);
+        self.cache_read_input_tokens += cache_read_input_tokens.unwrap_or(0);
+        self.cache_creation_input_tokens += cache_creation_input_tokens.unwrap_or(0);
+        self.cost_usd += cost_usd.unwrap_or(0.0);
+    }
+
+    fn to_entry(&self) -> NormalizedEntry {
+        let opt = |v: u64| if v > 0 { Some(v) } else { None };
+        NormalizedEntry {
+            timestamp: None,
+            entry_type: NormalizedEntryType::TokenUsageInfo(TokenUsageInfo {
+                total_tokens: self.total_tokens as u32,
+                model_name: None,
+                input_tokens: opt(self.input_tokens),
+                output_tokens: opt(self.output_tokens),
+                reasoning_tokens: opt(self.reasoning_tokens),
+                cache_read_input_tokens: opt(self.cache_read_input_tokens),
+                cache_creation_input_tokens: opt(self.cache_creation_input_tokens),
+                cost_usd: if self.cost_usd > 0.0 {
+                    Some(self.cost_usd)
+                } else {
+                    None
+                },
+                context_window: None,
+                model_context_window: None,
+                max_output_tokens: None,
+            }),
+            content: format!(
+                "Subagent tokens used: {} (across {} message{})",
+                self.total_tokens,
+                self.messages,
+                if self.messages == 1 { "" } else { "s" }
+            ),
+            metadata: None,
+            agent_id: None,
+        }
+    }
+}
+
 pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path) {
     let entry_index = EntryIndexProvider::start_from(msg_store.as_ref());
     normalize_stderr_logs(msg_store.clone(), entry_index.clone());
@@ -44,6 +116,11 @@ pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path
     tokio::spawn(async move {
         let mut stored_session_id = false;
         let mut state = LogState::new(entry_index.clone(), msg_store.clone());
+
+        // Aggregated subagent usage rendered as a single, continuously-updated
+        // entry (see `SubagentUsageTotals`). `None` until the first subagent
+        // usage event reserves an index.
+        let mut subagent_usage: Option<(usize, SubagentUsageTotals)> = None;
 
         let mut stdout_lines = msg_store.raw().stdout_lines_stream();
         while let Some(Ok(line)) = stdout_lines.next().await {
@@ -82,7 +159,32 @@ pub fn normalize_logs(msg_store: Arc<dyn ConversationSink>, worktree_path: &Path
                     cache_read_input_tokens,
                     cache_creation_input_tokens,
                     cost_usd,
+                    agent_id,
                 } => {
+                    if agent_id.is_some() {
+                        // Subagent usage: fold into a single running-total entry
+                        // instead of emitting one card per subagent message.
+                        let (index, totals) = subagent_usage.get_or_insert_with(|| {
+                            (entry_index.next(), SubagentUsageTotals::default())
+                        });
+                        totals.add(
+                            total_tokens,
+                            input_tokens,
+                            output_tokens,
+                            reasoning_tokens,
+                            cache_read_input_tokens,
+                            cache_creation_input_tokens,
+                            cost_usd,
+                        );
+                        let entry = totals.to_entry();
+                        upsert_normalized_entry(
+                            &msg_store,
+                            *index,
+                            entry,
+                            totals.messages == 1,
+                        );
+                        continue;
+                    }
                     add_normalized_entry(
                         &msg_store,
                         &entry_index,
@@ -1761,6 +1863,45 @@ mod tests {
             workflow_event_message(e),
             "Workflow child `sub` failed: nope"
         );
+    }
+
+    #[test]
+    fn subagent_usage_totals_accumulate_across_messages() {
+        let mut totals = SubagentUsageTotals::default();
+        totals.add(100, Some(60), Some(40), None, Some(10), None, Some(0.5));
+        totals.add(50, Some(30), Some(20), Some(5), None, Some(2), Some(0.25));
+
+        assert_eq!(totals.messages, 2);
+        assert_eq!(totals.total_tokens, 150);
+        assert_eq!(totals.input_tokens, 90);
+        assert_eq!(totals.output_tokens, 60);
+        assert_eq!(totals.reasoning_tokens, 5);
+        assert_eq!(totals.cache_read_input_tokens, 10);
+        assert_eq!(totals.cache_creation_input_tokens, 2);
+        assert!((totals.cost_usd - 0.75).abs() < 1e-9);
+    }
+
+    #[test]
+    fn subagent_usage_entry_summarizes_total_and_message_count() {
+        let mut totals = SubagentUsageTotals::default();
+        totals.add(100, Some(60), Some(40), None, None, None, None);
+        let one = totals.to_entry();
+        assert_eq!(one.content, "Subagent tokens used: 100 (across 1 message)");
+
+        totals.add(50, Some(30), Some(20), None, None, None, None);
+        let two = totals.to_entry();
+        assert_eq!(two.content, "Subagent tokens used: 150 (across 2 messages)");
+
+        match two.entry_type {
+            NormalizedEntryType::TokenUsageInfo(info) => {
+                assert_eq!(info.total_tokens, 150);
+                assert_eq!(info.input_tokens, Some(90));
+                assert_eq!(info.output_tokens, Some(60));
+                assert_eq!(info.reasoning_tokens, None);
+            }
+            other => panic!("expected TokenUsageInfo, got {other:?}"),
+        }
+        assert_eq!(two.agent_id, None);
     }
 
     fn file_edit_action(tool: &str, input: Value) -> ActionType {

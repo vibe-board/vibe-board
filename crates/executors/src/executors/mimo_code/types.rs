@@ -28,6 +28,11 @@ pub enum MiMoCodeExecutorEvent {
         cache_read_input_tokens: Option<u64>,
         cache_creation_input_tokens: Option<u64>,
         cost_usd: Option<f64>,
+        /// Subagent that produced this usage, if any. `None` for the main agent.
+        /// Used to aggregate per-subagent usage into a single entry instead of
+        /// emitting one usage card per subagent message.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        agent_id: Option<String>,
     },
     ApprovalRequested {
         tool_call_id: String,

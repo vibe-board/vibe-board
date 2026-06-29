@@ -154,6 +154,15 @@ pub(super) async fn maybe_emit_token_usage(context: &EventStreamContext<'_>, eve
 
     let cost_usd = message.cost.filter(|c| c.is_finite() && *c >= 0.0);
 
+    // `None` for the main agent (agentID absent / "main" / empty); `Some(id)` for
+    // a subagent so the renderer can aggregate per-subagent usage into one entry.
+    let agent_id = message
+        .agent_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty() && *id != "main")
+        .map(str::to_string);
+
     let _ = context
         .log_writer
         .log_event(&MiMoCodeExecutorEvent::TokenUsage {
@@ -178,6 +187,7 @@ pub(super) async fn maybe_emit_token_usage(context: &EventStreamContext<'_>, eve
                 None
             },
             cost_usd,
+            agent_id,
         })
         .await;
 }
