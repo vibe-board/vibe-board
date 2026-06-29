@@ -1682,7 +1682,10 @@ mod tests {
         );
         match &event {
             SdkEvent::Workflow(e) => {
-                assert_eq!(workflow_event_message(e), "Workflow `deep-research` started");
+                assert_eq!(
+                    workflow_event_message(e),
+                    "Workflow `deep-research` started"
+                );
             }
             other => panic!("expected Workflow, got {other:?}"),
         }
@@ -1726,7 +1729,10 @@ mod tests {
         let SdkEvent::Workflow(e) = &failed else {
             panic!("expected Workflow");
         };
-        assert_eq!(workflow_event_message(e), "Workflow finished: failed - boom");
+        assert_eq!(
+            workflow_event_message(e),
+            "Workflow finished: failed - boom"
+        );
     }
 
     #[test]

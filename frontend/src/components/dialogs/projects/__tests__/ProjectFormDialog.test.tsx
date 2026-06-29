@@ -51,6 +51,7 @@ vi.mock('@/hooks/useProjectMutations', () => ({
   }),
 }));
 
+import { MemoryRouter } from 'react-router-dom';
 import { ProjectFormDialog } from '../ProjectFormDialog';
 import { ConnectionProvider } from '@/contexts/ConnectionContext';
 import type { UnifiedConnection } from '@/lib/connections/types';
@@ -63,8 +64,9 @@ const fakeConnection = {} as UnifiedConnection;
 
 // Render N copies of the dialog in parallel — mimics N tab providers sharing the
 // same modal store, each rendering the same modal component instance. Each copy
-// lives inside a ConnectionProvider (like a real connection tab); the gateway
-// shell also renders a connectionless copy, which connectionGated() drops.
+// lives inside a ConnectionProvider AND a Router (like a real connection tab,
+// whose <App> always supplies both); the gateway shell also renders a copy with
+// neither, which the createModal gate drops.
 function MultiProvider({ count }: { count: number }) {
   const [, setTick] = useState(0);
   (MultiProvider as unknown as { rerender: () => void }).rerender = () =>
@@ -72,11 +74,14 @@ function MultiProvider({ count }: { count: number }) {
   return (
     <>
       {Array.from({ length: count }, (_, i) => (
-        <ConnectionProvider key={i} connection={fakeConnection}>
-          <InnerImpl />
-        </ConnectionProvider>
+        <MemoryRouter key={i}>
+          <ConnectionProvider connection={fakeConnection}>
+            <InnerImpl />
+          </ConnectionProvider>
+        </MemoryRouter>
       ))}
-      {/* Connectionless gateway-shell copy must render nothing and never create. */}
+      {/* Connectionless, Router-less gateway-shell copy: must render nothing
+          and never create. */}
       <InnerImpl />
     </>
   );
