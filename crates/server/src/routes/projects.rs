@@ -19,7 +19,9 @@ use db::models::{
 };
 use deployment::Deployment;
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
-use services::services::{file_search::SearchQuery, project::ProjectServiceError};
+use services::services::{
+    events::project_patch, file_search::SearchQuery, project::ProjectServiceError,
+};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
@@ -93,6 +95,16 @@ pub async fn create_project(
         .await
     {
         Ok(project) => {
+            // Explicitly emit the "add" patch to the projects stream. The SQLite
+            // update_hook is unreliable here: it runs find_by_rowid on a separate
+            // pool connection and can miss the just-committed row, so the new
+            // project would otherwise not appear in the live list until a manual
+            // refresh. Pushing here mirrors the pre-regression notify_project_upsert.
+            deployment
+                .events()
+                .patch_batcher
+                .push_patch(project_patch::add(&project));
+
             // Track project creation event
             deployment
                 .track_if_analytics_allowed(
@@ -136,7 +148,15 @@ pub async fn update_project(
         .update_project(&deployment.db().pool, &existing_project, payload)
         .await
     {
-        Ok(project) => Ok(ResponseJson(ApiResponse::success(project))),
+        Ok(project) => {
+            // Same rationale as create_project: emit the patch explicitly rather
+            // than relying on the racy update_hook.
+            deployment
+                .events()
+                .patch_batcher
+                .push_patch(project_patch::replace(&project));
+            Ok(ResponseJson(ApiResponse::success(project)))
+        }
         Err(e) => {
             tracing::error!("Failed to update project: {}", e);
             Err(StatusCode::INTERNAL_SERVER_ERROR)
